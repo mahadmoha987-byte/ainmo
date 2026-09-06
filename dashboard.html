@@ -421,6 +421,8 @@ a{color:inherit;text-decoration:none}
   .db-rail{display:none}.db-btabs{display:block}
   .db-main{padding-bottom:60px}
   .db-kpi{min-width:90px;padding:0 10px}
+  .db-brand-full,.db-kpi-strip{display:none}
+  .db-user-area{margin-left:auto}.db-btn-tool{white-space:nowrap}
   body,html{overflow:auto;height:auto}.db-shell{height:auto;overflow:auto}
   .db-body{overflow:visible}.db-main{overflow:visible}.dt-scroll{overflow:auto}
 }
@@ -525,7 +527,7 @@ kbd{font-family:var(--ff-mono);font-size:var(--ts-xs);background:var(--ink-7);bo
 .batch-table tbody tr:hover{background:var(--paper-1)}
 .bst{display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;white-space:nowrap}
 .bst-pending{background:var(--ink-7);color:var(--ink-4)}.bst-running{background:#dbeafe;color:#1e40af}
-.bst-ok{background:#dcfce7;color:#15803d}.bst-sin_dato{background:#fef9c3;color:#854d0e}
+.bst-ok{background:#dcfce7;color:#15803d}.bst-sin_dato,.bst-review{background:#fef9c3;color:#854d0e}
 .bst-error{background:#fef2f2;color:#b91c1c}.bst-cancelled{background:var(--ink-7);color:var(--ink-5)}
 .row-spin{display:inline-block;animation:bspin .7s linear infinite}
 @keyframes bspin{to{transform:rotate(360deg)}}
@@ -550,9 +552,9 @@ kbd{font-family:var(--ff-mono);font-size:var(--ts-xs);background:var(--ink-7);bo
 <!-- ── Header ──────────────────────────────────────────────────────── -->
 <header class="db-header" id="db-header">
   <div class="db-brand">
-    <div class="db-brand-mark">EB</div>
+    <div class="db-brand-mark">ai</div>
     <div class="db-brand-full">
-      <span class="db-brand-name">Edificabilidad</span>
+      <span class="db-brand-name">ainmo</span>
       <span class="db-brand-ref">D.555/2021</span>
     </div>
   </div>
@@ -565,7 +567,7 @@ kbd{font-family:var(--ff-mono);font-size:var(--ts-xs);background:var(--ink-7);bo
     <div class="db-kpi kpi-warn"><div class="db-kpi-label">Exposición sobrepago</div><div class="db-kpi-value loading" id="kpi-expo">—</div></div>
   </div>
   <div class="db-user-area">
-    <a href="/" class="db-btn-tool">+ Análisis</a>
+    <a href="/app" class="db-btn-tool">+ Análisis</a>
     <button class="db-user-chip" id="user-chip">
       <div class="db-user-avatar" id="user-avatar">?</div>
     </button>
@@ -600,7 +602,7 @@ kbd{font-family:var(--ff-mono);font-size:var(--ts-xs);background:var(--ink-7);bo
           <span class="dt-count" id="dt-count"></span>
           <input style="flex:1;max-width:240px;padding:4px 8px;border:var(--rule);border-radius:var(--r1);font-size:var(--ts-xs);background:var(--paper);color:var(--ink-1)" type="search" id="dt-search" placeholder="Buscar dirección, localidad, tag…" oninput="applyFilters()">
           <button class="tb-btn" id="filter-toggle-btn" onclick="toggleFilters()">⊟ Filtros</button>
-          <a href="/" class="tb-btn primary">+ Nuevo</a>
+          <a href="/app" class="tb-btn primary">+ Nuevo</a>
         </div>
 
         <!-- Filter bar -->
@@ -679,7 +681,7 @@ kbd{font-family:var(--ff-mono);font-size:var(--ts-xs);background:var(--ink-7);bo
           <div class="dt-empty" id="dt-empty" style="display:none">
             <h3>Sin lotes analizados</h3>
             <p>Consulta tu primer lote en la herramienta de edificabilidad.</p>
-            <a href="/" class="tb-btn primary" style="margin-top:8px">Ir a la herramienta →</a>
+            <a href="/app" class="tb-btn primary" style="margin-top:8px">Ir a la herramienta →</a>
           </div>
         </div>
       </div>
@@ -2504,7 +2506,11 @@ function renderSupDiffs() {
   }
 }
 
-function _fmtM(v) { return v >= 1_000_000 ? `$${(v/1_000_000).toFixed(1)}M` : `$${(v/1000).toFixed(0)}k`; }
+function _fmtM(v) {
+  return v >= 1_000_000
+    ? `$${(v/1_000_000).toLocaleString('es-CO',{maximumFractionDigits:1})} millones`
+    : `$${(v/1000).toLocaleString('es-CO',{maximumFractionDigits:0})} mil`;
+}
 
 function renderSupComp() {
   const tbody = document.getElementById('sup-comp-tbody');
@@ -2730,7 +2736,7 @@ function closeSheet() {
 function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 function showProRequired() {
-  document.getElementById('dt-empty').innerHTML = `<h3>Historial en Plan Pro</h3><p>Actualiza para guardar y gestionar tu portafolio.</p><a href="/" class="tb-btn primary" style="margin-top:8px">Ir a la herramienta</a>`;
+  document.getElementById('dt-empty').innerHTML = `<h3>Historial en Plan Pro</h3><p>Actualiza para guardar y gestionar tu portafolio.</p><a href="/app" class="tb-btn primary" style="margin-top:8px">Ir a la herramienta</a>`;
   document.getElementById('dt-empty').style.display = '';
   document.getElementById('dt-table').style.display = 'none';
 }
@@ -2743,7 +2749,13 @@ function fmtNum(n) { return n == null ? '—' : Number(n).toLocaleString('es-CO'
 function fmtCOP(n) {
   if (n == null || isNaN(n)) return '—';
   const neg = n < 0; const a = Math.abs(n);
-  const s = a >= 1e12 ? `$${(a/1e12).toFixed(1)} T` : a >= 1e9 ? `$${(a/1e9).toFixed(1)} B` : a >= 1e6 ? `$${(a/1e6).toFixed(1)} MM` : `$${fmtNum(Math.round(a))}`;
+  const s = a >= 1e12
+    ? `$${(a/1e12).toLocaleString('es-CO',{maximumFractionDigits:1})} billones`
+    : a >= 1e9
+    ? `$${(a/1e9).toLocaleString('es-CO',{maximumFractionDigits:1})} mil millones`
+    : a >= 1e6
+    ? `$${(a/1e6).toLocaleString('es-CO',{maximumFractionDigits:1})} millones`
+    : `$${fmtNum(Math.round(a))}`;
   return neg ? `-${s}` : s;
 }
 function fmtDate(s) {
@@ -2784,7 +2796,7 @@ function onBatchTextInput() {
   const lines = (document.getElementById('batch-text-input')?.value || '')
     .split('\n').map(l => l.trim()).filter(Boolean);
   const n = Math.min(lines.length, BATCH_MAX_ROWS);
-  setText('batch-text-count', `${n} dirección${n!==1?'es':''}${lines.length > BATCH_MAX_ROWS ? ` (máx ${BATCH_MAX_ROWS} — se ignorarán ${lines.length-BATCH_MAX_ROWS})` : ''}`);
+  setText('batch-text-count', `${n} ${n===1?'dirección':'direcciones'}${lines.length > BATCH_MAX_ROWS ? ` (máx ${BATCH_MAX_ROWS} — se ignorarán ${lines.length-BATCH_MAX_ROWS})` : ''}`);
   updateBatchRunBtn();
 }
 
@@ -2792,7 +2804,7 @@ function updateBatchRunBtn() {
   const n = getBatchInputCount();
   const btn = document.getElementById('batch-run-btn');
   if (btn) btn.disabled = n === 0;
-  setText('batch-queue-count', n > 0 ? `${n} dirección${n!==1?'es':''} en cola` : 'Sin direcciones');
+  setText('batch-queue-count', n > 0 ? `${n} ${n===1?'dirección':'direcciones'} en cola` : 'Sin direcciones');
 }
 
 function getBatchInputCount() {
@@ -2839,7 +2851,7 @@ function parseBatchCsv(text) {
   setText('batch-csv-status', `${n} fila${n!==1?'s':''} cargadas`);
   if (n > 0 && prev) {
     const rows = _batchParsedCsv.slice(0,5).map(r =>
-      esc(r.direccion) + (r.precio_lote ? ` · $${(r.precio_lote/1e6).toFixed(1)}M` : '') + (r.notas ? ` · ${esc(r.notas.slice(0,30))}` : '')
+      esc(r.direccion) + (r.precio_lote ? ` · $${(r.precio_lote/1e6).toLocaleString('es-CO',{maximumFractionDigits:1})} millones` : '') + (r.notas ? ` · ${esc(r.notas.slice(0,30))}` : '')
     ).join('<br>');
     prev.style.display = '';
     prev.innerHTML = `<div class="batch-csv-head">${n} filas · dir${iPre>=0?', precio':''}${iNot>=0?', notas':''}</div><div class="batch-csv-rows">${rows}${n>5?`<br><span style="color:var(--ink-4)">…y ${n-5} más</span>`:''}</div>`;
@@ -2954,7 +2966,7 @@ async function scanPolygon() {
     else{
       document.getElementById('batch-text-input').value=addrs.join('\n');
       switchBatchTab('text'); onBatchTextInput();
-      setText('batch-scan-status',`${addrs.length} dirección${addrs.length!==1?'es':''} encontradas → pestaña Texto`);
+      setText('batch-scan-status',`${addrs.length} ${addrs.length===1?'dirección encontrada':'direcciones encontradas'} → pestaña Texto`);
     }
   } catch(e){setText('batch-scan-status','Error Overpass: '+e.message);}
   finally{btn.disabled=false;}
@@ -3001,7 +3013,13 @@ async function _batchProcessRow(row) {
     if(row.lat==null) {
       const geo=await fetch('/api/geocode?q='+encodeURIComponent(row.direccion),{headers:authHeaders()}).then(r=>r.json());
       if(!geo.ok||!geo.candidates?.length){row.status='sin_dato';row.error='Sin geocodificación';return;}
-      row.lat=geo.candidates[0].lat; row.lng=geo.candidates[0].lng;
+      const exact=geo.candidates.filter(c=>c.source==='catastro' && c.near_match!==true);
+      if(exact.length!==1){
+        row.status='review';
+        row.error='Dirección aproximada o ambigua: confírmela individualmente en la herramienta';
+        return;
+      }
+      row.lat=exact[0].lat; row.lng=exact[0].lng;
     }
     // Analyze + auto-save
     const p=new URLSearchParams({lat:row.lat,lng:row.lng,address:row.direccion});
@@ -3009,7 +3027,7 @@ async function _batchProcessRow(row) {
     if(!cr.ok){
       const e=cr.error||'';
       if(/zero_features|layer_error|layer_parse/.test(e)){row.status='sin_dato';row.error=cr.message?.slice(0,90)||'Sin datos GIS';}
-      else if(e==='input_required'){row.status='sin_dato';row.error='Requiere datos adicionales';}
+      else if(e==='input_required'){row.status='sin_dato';row.error=cr.message||`Requiere ${cr.field||'datos adicionales'}`;}
       else if(e==='usage_limit'){row.status='error';row.error='Límite de uso alcanzado';_batchCancelled=true;}
       else{row.status='error';row.error=cr.message?.slice(0,90)||'Error';}
       return;
@@ -3043,7 +3061,7 @@ function cancelBatch() {
 }
 
 async function retryBatchRow(id) {
-  const row=_batchRows.find(r=>r.id===id); if(!row||!['error','sin_dato'].includes(row.status)) return;
+  const row=_batchRows.find(r=>r.id===id); if(!row||!['error','sin_dato','review'].includes(row.status)) return;
   row.status='pending'; row.error=null; updateBatchRow(row);
   _batchNext();
 }
@@ -3054,7 +3072,7 @@ function updateBatchProgress() {
   const done =_batchRows.filter(r=>!['pending','running'].includes(r.status)).length;
   const run  =_batchRows.filter(r=>r.status==='running').length;
   const ok   =_batchRows.filter(r=>r.status==='ok').length;
-  const sin  =_batchRows.filter(r=>r.status==='sin_dato').length;
+  const sin  =_batchRows.filter(r=>['sin_dato','review'].includes(r.status)).length;
   const err  =_batchRows.filter(r=>r.status==='error').length;
   setText('batch-progress-counts',`${done} / ${total}`);
   const bar=document.getElementById('batch-progress-bar');
@@ -3086,13 +3104,13 @@ function batchRowHtml(row) {
   let vrl=null;
   if(ac){const s=_supuestos;const ing=ac*s.precio_venta;const cd=ac*s.costo_constr;vrl=ing-cd-cd*(s.indirectos_pct/100)-ing*(s.utilidad_pct/100);}
   const precio=row.precio_lote; const delta=vrl!=null&&precio!=null&&vrl!==0?(precio-vrl)/Math.abs(vrl)*100:null;
-  const SLBL={pending:'Pendiente',running:'Analizando',ok:'OK',sin_dato:'Sin dato',error:'Error',cancelled:'Cancelado'};
+  const SLBL={pending:'Pendiente',running:'Analizando',ok:'OK',sin_dato:'Sin dato',review:'Revisar',error:'Error',cancelled:'Cancelado'};
   const spin=row.status==='running'?'<span class="row-spin">⟳</span>':'';
   const tipAttr=row.error?` data-tip="${esc(row.error)}"`:'';
   const addr=row.direccion.length>38?row.direccion.slice(0,36)+'…':row.direccion;
   const acts=row.status==='ok'&&row.lat
     ?`<button class="row-btn" onclick="window.open('/?lat=${row.lat}&lng=${row.lng}','_blank')" title="Abrir en herramienta">↗</button>`
-    :['error','sin_dato'].includes(row.status)
+    :['error','sin_dato','review'].includes(row.status)
     ?`<button class="row-btn" onclick="retryBatchRow(${row.id})" title="Reintentar">↺</button>`:'';
   const dHtml=delta!=null
     ?`<span class="delta-badge ${delta>10?'delta-pos-hi':delta>0?'delta-pos-lo':delta>-10?'delta-neg-lo':'delta-neg-hi'}">${delta>=0?'+':''}${delta.toFixed(1)}%</span>`
@@ -3115,7 +3133,7 @@ function onBatchFinished() {
   const btn=document.getElementById('batch-cancel-btn'); if(btn){btn.textContent='✓ Completado';btn.disabled=true;}
   document.getElementById('batch-summary').style.display='';
   const ok=_batchRows.filter(r=>r.status==='ok');
-  const sinD=_batchRows.filter(r=>r.status==='sin_dato').length;
+  const sinD=_batchRows.filter(r=>['sin_dato','review'].includes(r.status)).length;
   const errs=_batchRows.filter(r=>r.status==='error').length;
   const s=_supuestos;
   const withVrl=ok.map(r=>{
@@ -3130,7 +3148,7 @@ function onBatchFinished() {
   document.getElementById('batch-summary-stats').innerHTML=`
     <div class="bstat ok"><div class="bstat-val">${ok.length}</div><div class="bstat-lbl">Analizados</div></div>
     <div class="bstat ok"><div class="bstat-val">${viables}</div><div class="bstat-lbl">Viables</div></div>
-    <div class="bstat warn"><div class="bstat-val">${sinD}</div><div class="bstat-lbl">Sin datos GIS</div></div>
+    <div class="bstat warn"><div class="bstat-val">${sinD}</div><div class="bstat-lbl">Sin dato / revisar</div></div>
     <div class="bstat err"><div class="bstat-val">${errs}</div><div class="bstat-lbl">Errores</div></div>
     <div class="bstat"><div class="bstat-val" style="font-size:13px;margin-top:4px">${_batchId}</div><div class="bstat-lbl">Batch ID</div></div>`;
   document.getElementById('batch-top5').innerHTML=top5.length

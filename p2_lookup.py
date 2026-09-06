@@ -14,10 +14,12 @@ Both SDP servers (sinu.sdp.gov.co, serviciosg.sdp.gov.co) are dead; not used her
 from __future__ import annotations
 
 import json
+import math
 import re
 import ssl
 import sys
 import warnings
+from datetime import date
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -57,6 +59,13 @@ L_BIC             = 12   # Bien de Interés Cultural (polygon) — CATEGORIA, NU
 # Search radius when looking for calzada polygons adjacent to a lot centroid.
 # 25 m covers typical lot setbacks and still avoids picking up roads two blocks away.
 _CALZADA_RADIUS_M = 25
+
+# A manually entered point or an address geocode can fall in the public right of
+# way immediately next to its parcel.  Catastro's strict point-intersection
+# query then returns no lot even though a cadastral polygon is nearby.  Keep
+# this deliberately small: this is a recovery for road-edge coordinates, not a
+# general-purpose spatial snap.
+_LOTE_FALLBACK_RADIUS_M = 25
 
 # ── Blocking-restriction layer endpoints ─────────────────────────────────────
 # Queried for every lot regardless of tratamiento.
@@ -265,12 +274,79 @@ def query_fs(layer_id: int, lng: float, lat: float,
     return _arcgis_query(f"{ARCGIS_FS}/{layer_id}", params)
 
 
-def query_catastro_lote(lng: float, lat: float) -> dict:
+def _distance_point_to_segment_m(
+    px: float, py: float, ax: float, ay: float, bx: float, by: float,
+) -> float:
+    """Local equirectangular point-to-segment distance for Bogotá coordinates."""
+    # At Bogotá's latitude this local conversion is accurate to far better than
+    # the 25 m recovery radius, while avoiding a new projection dependency.
+    metres_per_degree_lat = 111_320.0
+    metres_per_degree_lng = metres_per_degree_lat * math.cos(math.radians(py))
+    px, py = px * metres_per_degree_lng, py * metres_per_degree_lat
+    ax, ay = ax * metres_per_degree_lng, ay * metres_per_degree_lat
+    bx, by = bx * metres_per_degree_lng, by * metres_per_degree_lat
+    dx, dy = bx - ax, by - ay
+    length_sq = dx * dx + dy * dy
+    if length_sq == 0:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length_sq))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def _distance_to_lot_boundary_m(lng: float, lat: float, rings: list) -> float:
+    """Return the shortest distance from a WGS84 point to a lot ring boundary."""
+    distances: list[float] = []
+    for ring in rings or []:
+        if len(ring) < 2:
+            continue
+        for a, b in zip(ring, ring[1:] + ring[:1]):
+            distances.append(_distance_point_to_segment_m(lng, lat, a[0], a[1], b[0], b[1]))
+    return min(distances, default=float("inf"))
+
+
+def _query_nearest_catastro_lote(lng: float, lat: float) -> tuple[dict, float]:
+    """Find the closest cadastral lot within the bounded road-edge recovery radius."""
+    candidates = _arcgis_query(f"{CATASTRO_MS}/{L_LOTE}", {
+        "geometry": f"{lng},{lat}",
+        "geometryType": "esriGeometryPoint",
+        "inSR": 4326,
+        "spatialRel": "esriSpatialRelIntersects",
+        "distance": _LOTE_FALLBACK_RADIUS_M,
+        "units": "esriSRUnit_Meter",
+        "outFields": "OBJECTID,LOTCODIGO,LOTUPREDIA,SHAPE.AREA",
+        "returnGeometry": "true",
+        "outSR": 4326,
+    })
+    nearest = min(
+        candidates,
+        key=lambda feature: _distance_to_lot_boundary_m(
+            lng, lat, feature.get("geometry", {}).get("rings", []),
+        ),
+    )
+    distance_m = _distance_to_lot_boundary_m(lng, lat, nearest.get("geometry", {}).get("rings", []))
+    object_id = nearest.get("attributes", {}).get("OBJECTID")
+    if object_id is None:
+        raise ProjectionError("Catastro fallback returned a lot without OBJECTID.")
+
+    # Fetch the selected feature in MAGNA-SIRGAS 9377, preserving the existing
+    # shoelace-area calculation and avoiding an area approximation in WGS84.
+    features = _arcgis_query(f"{CATASTRO_MS}/{L_LOTE}", {
+        "objectIds": object_id,
+        "outFields": "OBJECTID,LOTCODIGO,LOTUPREDIA,SHAPE.AREA",
+        "returnGeometry": "true",
+        "outSR": 9377,
+    })
+    return features[0], distance_m
+
+
+def query_catastro_lote(lng: float, lat: float) -> tuple[dict, float | None]:
     """
     Fetch physical lot polygon from Catastro MapServer Layer 0.
     Returns outSR=9377 (MAGNA-SIRGAS Colombia West / Bogotá, metres) so that
     shoelace area calculation works without any cos(lat) approximation.
-    Raises ZeroFeaturesError if point is not on a cadastral lot.
+    Returns (feature, snap_distance_m). snap_distance_m is None for a strict
+    intersection; otherwise it records Catastro's bounded nearest-lot recovery.
+    Raises ZeroFeaturesError if there is no lot within the recovery radius.
     Raises ProjectionError if geometry is missing from the response.
     """
     params: dict = {
@@ -278,35 +354,43 @@ def query_catastro_lote(lng: float, lat: float) -> dict:
         "geometryType": "esriGeometryPoint",
         "inSR": 4326,                        # explicit even though catastro is natively WGS84
         "spatialRel": "esriSpatialRelIntersects",
-        "outFields": "LOTCODIGO,LOTUPREDIA,SHAPE.AREA",
+        "outFields": "OBJECTID,LOTCODIGO,LOTUPREDIA,SHAPE.AREA",
         "returnGeometry": "true",
         "outSR": 9377,                       # projected metres for shoelace
     }
-    features = _arcgis_query(f"{CATASTRO_MS}/{L_LOTE}", params)
-    feat = features[0]
+    try:
+        features = _arcgis_query(f"{CATASTRO_MS}/{L_LOTE}", params)
+        feat, snap_distance_m = features[0], None
+    except ZeroFeaturesError:
+        feat, snap_distance_m = _query_nearest_catastro_lote(lng, lat)
     if not feat.get("geometry"):
         raise ProjectionError(
             "Catastro returned a feature with no geometry — cannot compute lot area. "
             "outSR=9377 projection may have been rejected by this server version."
         )
-    return feat
+    return feat, snap_distance_m
 
 
-def _fetch_lot_rings_wgs84(lng: float, lat: float) -> list | None:
+def _fetch_lot_rings_wgs84(lng: float, lat: float, object_id: int | None = None) -> list | None:
     """
     Fetch the lot polygon rings in WGS84 (outSR=4326) for map display.
     Returns rings ([[x, y], ...]) or None if the request fails.
     A separate call is needed because the area calculation requires 9377.
     """
     params: dict = {
-        "geometry": f"{lng},{lat}",
-        "geometryType": "esriGeometryPoint",
-        "inSR": 4326,
-        "spatialRel": "esriSpatialRelIntersects",
         "outFields": "LOTCODIGO",
         "returnGeometry": "true",
         "outSR": 4326,
     }
+    if object_id is None:
+        params.update({
+            "geometry": f"{lng},{lat}",
+            "geometryType": "esriGeometryPoint",
+            "inSR": 4326,
+            "spatialRel": "esriSpatialRelIntersects",
+        })
+    else:
+        params["objectIds"] = object_id
     try:
         features = _arcgis_query(f"{CATASTRO_MS}/{L_LOTE}", params)
         return features[0].get("geometry", {}).get("rings")
@@ -942,16 +1026,21 @@ def lookup(lng: float, lat: float, vis_en_sitio: bool = False) -> dict:
     """
     result: dict = {
         "input": {"lng": lng, "lat": lat, "vis_en_sitio": vis_en_sitio},
+        "consulta": {
+            "fecha": date.today().isoformat(),
+            "decreto_version": "D.555/2021",
+            "fuentes": "POT Bogotá FeatureServer y Catastro Bogotá MapServer",
+        },
         "warnings": [],
     }
 
     # ── Step 1: Physical lot (Catastro) ──────────────────────────────────────
-    lote_feat = query_catastro_lote(lng, lat)
+    lote_feat, lote_snap_distance_m = query_catastro_lote(lng, lat)
     lote_attrs = lote_feat.get("attributes", {})
     area_m2 = compute_lot_area_m2(lote_feat)
 
     # WGS84 rings for map display (separate call — area query uses 9377)
-    rings_wgs84 = _fetch_lot_rings_wgs84(lng, lat)
+    rings_wgs84 = _fetch_lot_rings_wgs84(lng, lat, lote_attrs.get("OBJECTID"))
 
     result["lote"] = {
         "area_m2":         {"valor": round(area_m2, 1), "confianza": "alta"},
@@ -963,6 +1052,18 @@ def lookup(lng: float, lat: float, vis_en_sitio: bool = False) -> dict:
             "MAGNA-SIRGAS 9377 (sin aproximación cos(lat))."
         ),
     }
+    if lote_snap_distance_m is not None:
+        result["lote"]["consulta_catastro"] = {
+            "metodo": "predio_mas_cercano",
+            "distancia_m": round(lote_snap_distance_m, 1),
+            "radio_maximo_m": _LOTE_FALLBACK_RADIUS_M,
+            "fuente": "Catastro Bogotá MapServer, capa 0 (LOTE)",
+            "nota": (
+                "La coordenada no intersectó un polígono catastral; se seleccionó el predio "
+                "más cercano dentro de 25 m. Las capas normativas del POT se consultaron "
+                "en la coordenada original. Verifique el predio antes de usar el resultado."
+            ),
+        }
 
     # ── Step 1b: Blocking restrictions — BIC, Aerocivil, Cerros, amenaza, ronda
     # Run after catastro confirms the lot exists. Results are independent of

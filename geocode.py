@@ -218,11 +218,22 @@ def _parse_address(raw: str) -> tuple[str, str] | None:
 # Catastro placadomiciliaria query
 # -----------------------------------------------------------------------
 
-def _catastro_query(pdonvial: str, pdotexto_prefix: str, limit: int = 20) -> list[dict]:
-    if pdotexto_prefix:
-        where = f"PDONVIAL='{pdonvial}' AND PDOTEXTO LIKE '{pdotexto_prefix}%'"
+def _catastro_query(
+    pdonvial: str,
+    pdotexto: str,
+    limit: int = 20,
+    *,
+    exact: bool = True,
+) -> list[dict]:
+    pdonvial_sql = pdonvial.replace("'", "''")
+    pdotexto_sql = pdotexto.replace("'", "''")
+    if pdotexto:
+        # Catastro stores PDOTEXTO with trailing spaces and its ArcGIS SQL
+        # dialect does not support TRIM(). Query a narrow prefix, then enforce
+        # exact equality in Python below.
+        where = f"PDONVIAL='{pdonvial_sql}' AND PDOTEXTO LIKE '{pdotexto_sql}%'"
     else:
-        where = f"PDONVIAL='{pdonvial}'"
+        where = f"PDONVIAL='{pdonvial_sql}'"
 
     params = urllib.parse.urlencode({
         "where": where,
@@ -240,6 +251,8 @@ def _catastro_query(pdonvial: str, pdotexto_prefix: str, limit: int = 20) -> lis
     candidates: list[dict] = []
     for feat in data.get("features", []):
         a = feat["attributes"]
+        if exact and pdotexto and str(a.get("PDOTEXTO", "")).strip() != pdotexto.strip():
+            continue
         g = feat.get("geometry") or {}
         lat = g.get("y")
         lng = g.get("x")
@@ -261,7 +274,7 @@ def _catastro_near(pdonvial: str, cross_num: str) -> list[dict]:
     starts with the cross-street number, e.g. PDOTEXTO LIKE '11 %'.
     Returns up to 5 results tagged near_match=True.
     """
-    results = _catastro_query(pdonvial, f"{cross_num} ", limit=5)
+    results = _catastro_query(pdonvial, f"{cross_num} ", limit=5, exact=False)
     for r in results:
         r["near_match"] = True
     return results
@@ -295,7 +308,10 @@ def _nominatim_query(q: str) -> list[dict]:
         # Trim the label for display
         parts = [p.strip() for p in label.split(",")][:4]
         short_label = ", ".join(parts)
-        candidates.append({"lat": lat, "lng": lng, "label": short_label, "source": "nominatim"})
+        candidates.append({
+            "lat": lat, "lng": lng, "label": short_label,
+            "source": "nominatim", "near_match": True,
+        })
 
     return candidates
 

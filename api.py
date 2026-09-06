@@ -179,7 +179,7 @@ async def calc_endpoint(
             })
 
     try:
-        lu = _gis_lookup_cached(lng, lat, vis_en_sitio)
+        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio)
         result = calc.calculate(lu, anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m)
 
         analysis_id = None
@@ -413,8 +413,18 @@ async def report_endpoint(
     preview: bool = Query(False),
 ):
     user = await get_current_user(request)
+    if not user and not auth.dev_mode():
+        return JSONResponse(status_code=401, content={
+            "ok": False, "error": "auth_required",
+            "message": "Inicia sesión para descargar el informe PDF.",
+        })
+    if user and user["plan"] != "pro" and not auth.dev_mode():
+        return JSONResponse(status_code=403, content={
+            "ok": False, "error": "pro_required",
+            "message": "El informe PDF está disponible en el plan Pro.",
+        })
     try:
-        lu = p2_lookup.lookup(lng, lat, vis_en_sitio=vis_en_sitio)
+        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio)
         result = calc.calculate(lu, anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m)
         loop = asyncio.get_event_loop()
         pdf_bytes = await loop.run_in_executor(
@@ -446,7 +456,7 @@ async def report_html_endpoint(
     address: str = Query("Dirección no especificada"),
 ):
     try:
-        lu = p2_lookup.lookup(lng, lat, vis_en_sitio=vis_en_sitio)
+        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio)
         result = calc.calculate(lu, anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m)
         html_str = pdf_report.generate_html_preview(calc_result=result, lookup_snapshot=lu, address=address)
         from fastapi.responses import Response
@@ -580,7 +590,7 @@ async def dxf_endpoint(
     if not user and not auth.dev_mode():
         return JSONResponse(status_code=401, content={"ok": False, "error": "auth_required"})
     try:
-        lu = _gis_lookup_cached(lng, lat, vis_en_sitio)
+        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio)
         result = calc.calculate(lu, anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m)
         loop = asyncio.get_event_loop()
         dxf_bytes = await loop.run_in_executor(
@@ -711,7 +721,7 @@ async def _calc_slope_pct(lat: float, lng: float) -> float | None:
     pts = [(lat + d, lng), (lat - d, lng), (lat, lng + d), (lat, lng - d)]
     locs = ";".join(f"{la},{lo}" for la, lo in pts)
     try:
-        async with httpx.AsyncClient(timeout=10) as c:
+        async with httpx.AsyncClient(timeout=4) as c:
             r = await c.get(_TOPO_URL, params={"locations": locs})
             results = r.json()["results"]
             elev = [x["elevation"] for x in results]
@@ -740,7 +750,7 @@ async def _query_amenaza_layer(layer_id: int, lat: float, lng: float) -> str | N
             "returnGeometry": "false",
             "f": "json",
         }
-        async with httpx.AsyncClient(timeout=10) as c:
+        async with httpx.AsyncClient(timeout=4) as c:
             r = await c.get(f"{_RISK_FS_BASE}/{layer_id}/query", params=params)
             feats = r.json().get("features", [])
         if not feats:
@@ -782,9 +792,15 @@ async def risk_hazards_endpoint(
         else:
             slope_flag = "baja"
 
+    all_missing = slope is None and flood is None and landslide is None
     return {
         "ok": True,
         "data": {
+            "estado": "SIN_DATO" if all_missing else "OK",
+            "nota": (
+                "Las fuentes de amenaza y pendiente no respondieron; no interprete este resultado como ausencia de riesgo."
+                if all_missing else None
+            ),
             "slope_pct": slope,
             "slope_riesgo": slope_flag,
             "slope_nota": (

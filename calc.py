@@ -24,6 +24,12 @@ import p2_lookup
 from p2_lookup import BuildabilityLookupError, ZeroFeaturesError
 
 
+def _fmt_es(value: float, decimals: int = 1) -> str:
+    """Format a number for user-facing es-CO text."""
+    raw = f"{value:,.{decimals}f}"
+    return raw.replace(",", "\u0000").replace(".", ",").replace("\u0000", ".")
+
+
 # ── Exceptions ───────────────────────────────────────────────────────────────
 
 class InputRequired(BuildabilityLookupError):
@@ -165,13 +171,11 @@ def _resolve_anu(lookup: dict, anu_m2_supplied: float | None) -> tuple[float, st
         # Rangos 1–3 need Plan Parcial ANU
         if anu_m2_supplied is None:
             raise InputRequired(
-                "ANU is required but was not supplied. "
-                "For DESARROLLO Rangos 1–3 the Área Neta Urbanizable comes from the approved "
-                "Plan Parcial — it cannot be inferred from the raw cadastral area. "
-                "Call calculate(lookup_result, anu_m2=<value_from_plan_parcial>)."
+                "Se requiere el ANU del Plan Parcial aprobado para Desarrollo Rangos 1–3. "
+                "No puede inferirse a partir del área catastral bruta."
             )
         warnings.append(
-            f"ANU ingresado por el usuario: {anu_m2_supplied:,.1f} m². "
+            f"ANU ingresado por el usuario: {_fmt_es(anu_m2_supplied)} m². "
             "Verifique que coincide con el Área Neta Urbanizable del Plan Parcial aprobado."
         )
         return anu_m2_supplied, "usuario (Plan Parcial — Rango 1/2/3)", warnings
@@ -180,23 +184,21 @@ def _resolve_anu(lookup: dict, anu_m2_supplied: float | None) -> tuple[float, st
     if lot_area > 10_000:
         if anu_m2_supplied is None:
             raise InputRequired(
-                f"Lot area is {lot_area:,.0f} m² (> 10,000 m²) — cannot use the raw cadastral area "
-                "as ANU for this DESARROLLO lot. Lots of this size typically require a Plan Parcial "
-                "or urbanisation licence where road dedications and public-space obligations reduce "
-                "ANU below gross lot area. "
-                "Call calculate(lookup_result, anu_m2=<verified_ANU_from_plan>)."
+                f"El área del lote es {_fmt_es(lot_area, 0)} m² (> 10.000 m²); no puede usarse "
+                "como ANU en este predio de Desarrollo. Ingrese el ANU verificado del Plan Parcial "
+                "o de la licencia de urbanización."
             )
         warnings.append(
-            f"Área del lote ({lot_area:,.0f} m²) supera el umbral de 10 000 m². "
-            f"Se usa el ANU ingresado ({anu_m2_supplied:,.1f} m²) en lugar del área catastral bruta."
+            f"Área del lote ({_fmt_es(lot_area, 0)} m²) supera el umbral de 10.000 m². "
+            f"Se usa el ANU ingresado ({_fmt_es(anu_m2_supplied)} m²) en lugar del área catastral bruta."
         )
-        return anu_m2_supplied, "usuario (lote > 10,000 m² — ANU neta del plan)", warnings
+        return anu_m2_supplied, "usuario (lote > 10.000 m² — ANU neta del plan)", warnings
 
     # ≤ 10,000 m²: lot area is a valid proxy
     rango = lookup.get("rango", "?")
     return (
         lot_area,
-        f"área catastral del lote (proxy ANU válido para Rango {rango} ≤ 10,000 m²)",
+        f"área catastral del lote (proxy ANU válido para Rango {rango} ≤ 10.000 m²)",
         warnings,
     )
 
@@ -731,6 +733,7 @@ def calculate(
             "ancho_via_m_supplied": ancho_via_m,
         },
         "lote": lookup["lote"],
+        "consulta": lookup.get("consulta"),
         "tratamiento": lookup.get("tratamiento"),
         "warnings": list(lookup.get("warnings", [])),
         "formula_trace": [],
@@ -867,7 +870,7 @@ def _calc_desarrollo(lookup: dict, anu: float, trace: list, N,
         ))
         metrics["area_construible_max_m2"] = {
             "valor": area_max, "confianza": "alta",
-            "nota": f"IC={ic} × ANU={anu:,.1f} m²",
+            "nota": f"IC={ic} × ANU={_fmt_es(anu)} m²",
         }
 
         # VIS ≥75% bonus (4C / 4D only)
@@ -911,7 +914,7 @@ def _calc_desarrollo(lookup: dict, anu: float, trace: list, N,
         ))
         metrics["planta_maxima_m2"] = {
             "valor": fp_max, "confianza": "alta",
-            "nota": f"IO={io} × ANU={anu:,.1f} m²",
+            "nota": f"IO={io} × ANU={_fmt_es(anu)} m²",
         }
     else:
         trace.append(_step(
@@ -980,15 +983,15 @@ def _calc_desarrollo(lookup: dict, anu: float, trace: list, N,
                 metrics["area_techo_ic_m2"] = {
                     "valor": area_max, "confianza": "alta",
                     "nota": (
-                        f"Techo teórico IC={ic} × ANU={anu:,.1f} m². "
+                        f"Techo teórico IC={ic} × ANU={_fmt_es(anu)} m². "
                         "No es la restricción activa — la combinación IO+altura agota el lote antes."
                     ),
                 }
                 metrics["area_construible_max_m2"] = {
                     "valor": area_ef, "confianza": "alta",
                     "nota": (
-                        f"IO={io} × {fp:,.1f} m² huella × {alt_val} pisos. "
-                        f"Alcanzable = {area_ef:,.1f} m² < techo IC = {area_max:,.1f} m² — "
+                        f"IO={io} × {_fmt_es(fp)} m² huella × {alt_val} pisos. "
+                        f"Alcanzable = {_fmt_es(area_ef)} m² < techo IC = {_fmt_es(area_max)} m² — "
                         "la altura y la huella son los controles activos."
                     ),
                 }
@@ -1003,10 +1006,10 @@ def _calc_desarrollo(lookup: dict, anu: float, trace: list, N,
                     },
                     "resultado": "footprint_and_height",
                     "nota": (
-                        f"IO={io} y {alt_val} pisos producen {area_ef:,.1f} m² (alcanzable). "
-                        f"Techo IC×ANU={area_max:,.1f} m² — no se agota. "
+                        f"IO={io} y {alt_val} pisos producen {_fmt_es(area_ef)} m² (alcanzable). "
+                        f"Techo IC×ANU={_fmt_es(area_max)} m² — no se agota. "
                         "Área construible efectiva = min(IO×ANU×pisos, IC×ANU) = "
-                        f"{area_ef:,.1f} m²."
+                        f"{_fmt_es(area_ef)} m²."
                     ),
                 })
             else:
@@ -1022,8 +1025,8 @@ def _calc_desarrollo(lookup: dict, anu: float, trace: list, N,
                     },
                     "resultado": "total_area",
                     "nota": (
-                        f"Con IO={io} y {alt_val} pisos se llegaría a {area_ef:,.1f} m², "
-                        f"pero IC×ANU={area_max:,.1f} m² es el techo regulatorio. "
+                        f"Con IO={io} y {alt_val} pisos se llegaría a {_fmt_es(area_ef)} m², "
+                        f"pero IC×ANU={_fmt_es(area_max)} m² es el techo regulatorio. "
                         "Se deben reducir pisos o planta hasta cumplir IC."
                     ),
                 })
@@ -1066,7 +1069,7 @@ def _calc_desarrollo(lookup: dict, anu: float, trace: list, N,
             },
             "resultado": "total_area_and_footprint",
             "nota": (
-                f"Con IO={io} → planta ≤ {fp:,.1f} m². Con IC={ic} → área total ≤ {area_max:,.1f} m². "
+                f"Con IO={io} → planta ≤ {_fmt_es(fp)} m². Con IC={ic} → área total ≤ {_fmt_es(area_max)} m². "
                 f"La altura resultante implícita es IC/IO ≈ {implied_floors} pisos — "
                 "este número NO está fijado en el decreto y NO debe usarse como altura permitida."
             ),

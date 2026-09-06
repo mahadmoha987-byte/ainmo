@@ -761,6 +761,8 @@ body {
 
 /* ── Data tables ──────────────────────────────────────────────────────────── */
 .dt { width: 100%; border-collapse: collapse; font-size: 7.5pt; }
+.dt thead { display: table-header-group; }
+.dt tr { break-inside: avoid; page-break-inside: avoid; }
 .dt thead tr { background: var(--ink-0); color: var(--paper); }
 .dt thead td { padding: 3pt 5pt; font-size: 7pt; font-weight: 700;
                letter-spacing: 0.3pt; }
@@ -869,6 +871,7 @@ body {
       <tr><td>Tipología</td><td>{{ tipologia }}</td></tr>
       <tr><td>Área de actividad</td><td>{{ area_actividad }}</td></tr>
       {% if anu_usado %}<tr><td>ANU utilizada</td><td>{{ anu_usado }}</td></tr>{% endif %}
+      <tr><td>Consulta GIS</td><td>{{ consultation_date }} · {{ decree_short }}</td></tr>
       <tr><td>Lat / Lng</td><td>{{ lat }}, {{ lng }}</td></tr>
       {% if rango %}<tr><td>Rango (Art. 281)</td><td>{{ rango }}</td></tr>{% endif %}
     </table>
@@ -935,7 +938,7 @@ body {
 {# PAGE 2 — Parameter table                                                   #}
 {# ═══════════════════════════════════════════════════════════════════════════ #}
 
-<div class="pb">
+<div>
   <div class="sh" style="margin-top:0">Tabla de parámetros — fuentes y confianza</div>
   <table class="dt">
     <thead>
@@ -976,7 +979,7 @@ body {
 {# PAGE 4 — Per-floor table + unit estimate                                   #}
 {# ═══════════════════════════════════════════════════════════════════════════ #}
 
-<div class="pb">
+<div>
   {% if floor_rows %}
   <div class="sh" style="margin-top:0">Tabla por piso — niveles y normas aplicables</div>
   <table class="dt" style="margin-bottom:4pt">
@@ -1060,7 +1063,7 @@ body {
 {# PAGE 5 — Próximos pasos + warnings                                         #}
 {# ═══════════════════════════════════════════════════════════════════════════ #}
 
-<div class="pb">
+<div>
   <div class="sh" style="margin-top:0">Próximos pasos</div>
   <div class="legend">
     <div class="legend-item">
@@ -1224,6 +1227,7 @@ def _render_html(
     now = datetime.now(tz=timezone.utc)
     timestamp = now.strftime("%Y-%m-%d %H:%M UTC")
     date_label = _date_label(now)
+    consultation_date = _get(d, "consulta", "fecha") or _get(lu, "consulta", "fecha") or now.strftime("%Y-%m-%d")
 
     # Map
     rings   = (lu.get("lote") or {}).get("geojson_polygon")
@@ -1298,6 +1302,13 @@ def _render_html(
     floor_rows = _floor_rows(d, lu)
     next_steps_list = _next_steps(d, lu)
     warnings   = [w for w in (d.get("warnings") or []) if w]
+    catastro_snap = lote.get("consulta_catastro") or (lu.get("lote") or {}).get("consulta_catastro")
+    if catastro_snap:
+        warnings.insert(0, (
+            f"PREDIO APROXIMADO: la coordenada no intersectó Catastro y se seleccionó el lote "
+            f"más cercano, a {_n(catastro_snap.get('distancia_m'), 1)} m. Confirme el predio "
+            "antes de usar este informe."
+        ))
     trace      = d.get("formula_trace") or []
 
     # Render
@@ -1308,6 +1319,7 @@ def _render_html(
         decree_short = DECREE_SHORT,
         timestamp    = timestamp,
         date_label   = date_label,
+        consultation_date = consultation_date,
         address      = address,
         lotcodigo    = lotcodigo,
         lot_area     = lot_area,
