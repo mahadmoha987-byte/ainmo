@@ -329,7 +329,12 @@ def query_fs(layer_id: int, lng: float, lat: float,
     if distance_m is not None:
         params["distance"] = distance_m
         params["units"] = "esriSRUnit_Meter"
-    return _arcgis_query(f"{ARCGIS_FS}/{layer_id}", params)
+    try:
+        return _arcgis_query(f"{ARCGIS_FS}/{layer_id}", params)
+    except ZeroFeaturesError:
+        raise
+    except BuildabilityLookupError as exc:
+        raise BuildabilityLookupError(f"Layer {layer_id}: {exc}") from exc
 
 
 def _distance_point_to_segment_m(
