@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from jinja2 import Environment, BaseLoader
+from regulatory import REGULATORY_VERSION_LONG, REGULATORY_VERSION
 
 # ── WeasyPrint invocation ─────────────────────────────────────────────────────
 
@@ -60,8 +61,8 @@ def _html_to_pdf(html: str) -> bytes:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-DECREE_VERSION = "Decreto Distrital 555 de 2021 (modificado por Decreto 466 de 2024)"
-DECREE_SHORT   = "D.555/2021 · D.466/2024"
+DECREE_VERSION = REGULATORY_VERSION_LONG
+DECREE_SHORT   = REGULATORY_VERSION
 DISCLAIMER     = (
     "Estimación de prefactibilidad basada en datos públicos POT/catastro — no es norma urbanística certificada. "
     "Verifique con Curaduría Urbana o Secretaría Distrital de Planeación antes de tomar "

@@ -20,6 +20,7 @@ import p2_lookup, calc, geocode, pdf_report, dxf_export
 import db, auth
 from cabida import proforma as proforma_mod
 from cabida.market_defaults import MARKET_DEFAULTS, get_sale_price_default
+from regulatory import context as regulatory_context
 
 # ── GIS response cache (24 h TTL, keyed by rounded coords) ────────────────────
 _GIS_CACHE: dict = {}          # key → (timestamp, result_dict)
@@ -51,7 +52,7 @@ async def lifespan(app: FastAPI):
     await db.close()
 
 
-app = FastAPI(title="Bogotá Edificabilidad POT 555/2021", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Ainmo · Prefactibilidad Bogotá", version="2.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -164,10 +165,11 @@ async def calc_endpoint(
     frente_m: float | None = Query(None),
     ancho_via_m: float | None = Query(None),
     address: str = Query(""),
+    scenario_only: bool = Query(False),
 ):
     user = await get_current_user(request)
 
-    if user:
+    if user and not scenario_only:
         allowed = await db.check_usage_allowed(user["id"])
         if not allowed:
             used, limit = await db.get_usage(user["id"])
@@ -187,9 +189,12 @@ async def calc_endpoint(
         usage_limit = 0
 
         if user:
-            new_count = await db.increment_usage(user["id"])
-            usage_this_month = new_count if new_count >= 0 else 0
-            _, usage_limit = await db.get_usage(user["id"])
+            if scenario_only:
+                usage_this_month, usage_limit = await db.get_usage(user["id"])
+            else:
+                new_count = await db.increment_usage(user["id"])
+                usage_this_month = new_count if new_count >= 0 else 0
+                _, usage_limit = await db.get_usage(user["id"])
 
             if user["plan"] == "pro":
                 analysis_id = await db.save_analysis(
@@ -222,6 +227,8 @@ async def calc_endpoint(
                 "usage_limit": usage_limit,
                 "analysis_id": analysis_id,
                 "authenticated": user is not None,
+                "usage_charged": bool(user and not scenario_only),
+                "regulatory_context": regulatory_context(),
             },
         }
 
@@ -325,6 +332,28 @@ async def proforma_endpoint(
         )
         result = proforma_mod.run(inp)
 
+        # Static two-variable screening sensitivity. It deliberately does not
+        # masquerade as a discounted cash-flow model.
+        sensitivity = []
+        base_sale = result.inputs_echo["precio_venta_cop_m2"]["valor"]
+        base_cost = result.inputs_echo["costo_construccion_cop_m2"]["valor"]
+        efficiency = result.inputs_echo["eficiencia_vendible_pct"]["valor"]
+        soft_pct = result.inputs_echo["costos_blandos_pct"]["valor"]
+        margin_pct = result.inputs_echo["margen_objetivo_pct"]["valor"]
+        for sale_delta in (-0.10, 0.0, 0.10):
+            row = {"precio_venta_variacion_pct": sale_delta, "escenarios": []}
+            for cost_delta in (-0.10, 0.0, 0.10):
+                sale = base_sale * (1 + sale_delta)
+                cost = base_cost * (1 + cost_delta)
+                revenue = area_m2 * efficiency * sale
+                hard = area_m2 * cost
+                residual = round(revenue - hard - hard * soft_pct - revenue * margin_pct)
+                row["escenarios"].append({
+                    "costo_variacion_pct": cost_delta,
+                    "valor_residual_lote_cop": residual,
+                })
+            sensitivity.append(row)
+
         md = MARKET_DEFAULTS
         # Use localidad-specific price default; valor=None means user must supply it
         if lng is not None and lat is not None:
@@ -353,6 +382,10 @@ async def proforma_endpoint(
                 "veredicto": result.veredicto,
                 "veredicto_frase": result.veredicto_frase,
                 "inputs_echo": result.inputs_echo,
+                "sensibilidad": {
+                    "matriz": sensitivity,
+                    "nota": "Sensibilidad estática del VRL; no incluye financiación, impuestos, cronograma ni absorción.",
+                },
                 "defaults_meta": {
                     "precio_venta_cop_m2": {
                         "valor": pv_meta.get("valor"),

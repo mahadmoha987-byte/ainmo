@@ -20,6 +20,7 @@ import ssl
 import sys
 import warnings
 from datetime import date
+from regulatory import REGULATORY_VERSION, REGULATORY_CUTOFF, context as regulatory_context
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -269,13 +270,25 @@ def _normalize_catastro_feature(feature: dict) -> dict:
     return feature
 
 
+def _tag_catastro_source(features: list[dict], source_id: str, source_label: str,
+                         source_date: str | None = None) -> list[dict]:
+    for feature in features:
+        feature["_ainmo_source"] = {
+            "id": source_id,
+            "fuente": source_label,
+            "fecha_referencia": source_date,
+            "es_fallback": source_id != "catastro_bogota_actual",
+        }
+    return features
+
+
 def _query_catastro(params: dict) -> list[dict]:
     """Query primary Catastro, falling back only when its transport fails."""
     try:
-        return _arcgis_query(
+        return _tag_catastro_source(_arcgis_query(
             f"{CATASTRO_MS}/{L_LOTE}", params,
             timeout_s=_CATASTRO_SOURCE_TIMEOUT_S,
-        )
+        ), "catastro_bogota_actual", "Catastro Bogotá MapServer, capa 0 (LOTE)")
     except ZeroFeaturesError:
         raise
     except BuildabilityLookupError as primary_exc:
@@ -302,7 +315,18 @@ def _query_catastro(params: dict) -> list[dict]:
                     "Catastro primary and mirrors were unreachable: "
                     f"primary={primary_exc}; mirror_1={mirror_exc}; mirror_2={final_exc}"
                 ) from final_exc
-        return [_normalize_catastro_feature(feature) for feature in features]
+        normalized = [_normalize_catastro_feature(feature) for feature in features]
+        if 'final_params' in locals():
+            return _tag_catastro_source(
+                normalized, "ideca_superservicios_2018",
+                "Espejo IDECA de Superservicios, capa de lotes",
+                "2018",
+            )
+        return _tag_catastro_source(
+            normalized, "car_ideca_mirror",
+            "Espejo gubernamental CAR de la capa catastral IDECA",
+            "2021",
+        )
 
 
 def query_fs(layer_id: int, lng: float, lat: float,
@@ -1091,9 +1115,11 @@ def lookup(lng: float, lat: float, vis_en_sitio: bool = False) -> dict:
         "input": {"lng": lng, "lat": lat, "vis_en_sitio": vis_en_sitio},
         "consulta": {
             "fecha": date.today().isoformat(),
-            "decreto_version": "D.555/2021",
+            "decreto_version": REGULATORY_VERSION,
+            "corte_normativo": REGULATORY_CUTOFF,
             "fuentes": "POT Bogotá FeatureServer y Catastro Bogotá MapServer",
         },
+        "contexto_regulatorio": regulatory_context(),
         "warnings": [],
     }
 
@@ -1114,7 +1140,20 @@ def lookup(lng: float, lat: float, vis_en_sitio: bool = False) -> dict:
             "Área calculada con fórmula de Gauss (shoelace) sobre polígono proyectado "
             "MAGNA-SIRGAS 9377 (sin aproximación cos(lat))."
         ),
+        "fuente_datos": lote_feat.get("_ainmo_source", {
+            "id": "catastro_bogota_actual",
+            "fuente": "Catastro Bogotá MapServer, capa 0 (LOTE)",
+            "fecha_referencia": None,
+            "es_fallback": False,
+        }),
     }
+    if result["lote"]["fuente_datos"].get("es_fallback"):
+        src = result["lote"]["fuente_datos"]
+        result["warnings"].append(
+            "SIN_DATO DE FRESCURA: la fuente catastral principal no respondió y se usó "
+            f"{src['fuente']} (referencia {src.get('fecha_referencia') or 'no disponible'}). "
+            "Confirme área, código y geometría en Catastro Bogotá antes de decidir."
+        )
     if lote_snap_distance_m is not None:
         result["lote"]["consulta_catastro"] = {
             "metodo": "predio_mas_cercano",
@@ -1132,6 +1171,24 @@ def lookup(lng: float, lat: float, vis_en_sitio: bool = False) -> dict:
     # Run after catastro confirms the lot exists. Results are independent of
     # treatment and do not raise — each check degrades silently on failure.
     result["restricciones_bloqueantes"] = check_blocking_restrictions(lng, lat)
+    result["cobertura_restricciones"] = {
+        "bic": "consultado",
+        "aerocivil": "sin_validacion_espacial",
+        "cerros_orientales": "consultado" if _CERROS_FS else "sin_fuente_configurada",
+        "movimientos_en_masa": "consultado" if _IDIGER_MRM_FS else "sin_fuente_configurada",
+        "inundacion": "consultado" if _IDIGER_INUND_FS else "sin_fuente_configurada",
+        "ronda_hidrica": "consultado" if _RONDA_FS else "sin_fuente_configurada",
+    }
+    missing_restrictions = [
+        name for name, state in result["cobertura_restricciones"].items()
+        if state != "consultado"
+    ]
+    if missing_restrictions:
+        result["warnings"].append(
+            "SIN_DATO DE RESTRICCIONES: no se verificaron automáticamente "
+            + ", ".join(missing_restrictions)
+            + ". Esto no significa ausencia de afectación; consulte las autoridades y mapas oficiales."
+        )
 
     # ── Step 1c: Calzada width (Layer 38) — used for retroceso de fachada ──────
     result["ancho_via_gis"] = _query_ancho_via_gis(lng, lat)

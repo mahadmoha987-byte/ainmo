@@ -49,7 +49,7 @@ CREATE TABLE public.analyses (
   lat            double precision NOT NULL,
   lng            double precision NOT NULL,
   result_json    jsonb NOT NULL,          -- {lookup_snapshot, calc_result, vis_en_sitio}
-  decree_version text NOT NULL DEFAULT 'D.555/2021',
+  decree_version text NOT NULL DEFAULT 'D.555/2021 · D.466/2024 · compilación D.670/2025',
   fetched_at     timestamptz NOT NULL DEFAULT now(),
   created_at     timestamptz NOT NULL DEFAULT now(),
   notas          text NOT NULL DEFAULT '',
@@ -95,6 +95,19 @@ CREATE TABLE public.billing_interest (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.billing_interest ENABLE ROW LEVEL SECURITY;
+
+
+-- ── 5. share_tokens ────────────────────────────────────────────────────────
+-- Opaque, revocable links to immutable analysis snapshots. Public visitors
+-- receive only the snapshot selected by the server, never portfolio access.
+CREATE TABLE IF NOT EXISTS public.share_tokens (
+  token             text PRIMARY KEY,
+  analysis_id       uuid NOT NULL REFERENCES public.analyses(id) ON DELETE CASCADE,
+  include_proforma  boolean NOT NULL DEFAULT false,
+  created_at        timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.share_tokens ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS share_tokens_analysis_id_idx ON public.share_tokens (analysis_id);
 
 
 -- ── RLS Policies ─────────────────────────────────────────────────────────────

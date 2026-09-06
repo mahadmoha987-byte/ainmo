@@ -12,11 +12,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+from regulatory import REGULATORY_VERSION
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 FREE_MONTHLY_LIMIT = 5
-DECREE_VERSION = "D.555/2021"
+DECREE_VERSION = REGULATORY_VERSION
 
 
 def _ok() -> bool:

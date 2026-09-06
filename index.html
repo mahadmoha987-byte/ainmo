@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ainmo — POT Decreto 555/2021 Bogotá</title>
-<meta name="description" content="Ainmo — edificabilidad, índices de construcción y altura máxima para cualquier lote en Bogotá según Decreto 555/2021.">
+<title>Ainmo — Prefactibilidad urbana en Bogotá</title>
+<meta name="description" content="Ainmo — prefactibilidad, edificabilidad, riesgos y valor residual para lotes en Bogotá con fuentes normativas y GIS trazables.">
 <meta property="og:site_name" content="Ainmo">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Ainmo — Edificabilidad Bogotá, Decreto 555/2021">
+<meta property="og:title" content="Ainmo — Prefactibilidad urbana en Bogotá">
 <meta property="og:description" content="Consulta edificabilidad, índices de construcción y altura máxima para cualquier lote en Bogotá.">
 <meta name="twitter:card" content="summary">
 <!-- og-placeholder -->
@@ -506,7 +506,7 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
   <div class="header-inner">
     <div class="brand">
       <a href="/" class="brand-name" style="text-decoration:none">ainmo</a>
-      <span class="brand-ref">D.555/2021</span>
+      <span class="brand-ref">Corte normativo 2026</span>
     </div>
     <div class="header-right" id="auth-area">
       <button class="btn-auth" id="login-btn" onclick="showAuthModal()">Iniciar sesión</button>
@@ -525,7 +525,7 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
     <div class="search-panel" id="search-panel">
       <div id="sp-welcome-card" class="sp-welcome">
         <h2>Consulta edificabilidad de cualquier lote en Bogotá</h2>
-        <p>Índices de construcción, altura máxima, aislamientos y antejardín según D.555/2021.</p>
+        <p>Edificabilidad, restricciones y valor residual con trazabilidad normativa y GIS.</p>
       </div>
       <div class="sp-row" style="margin-top:var(--sp-2)">
         <input type="text" id="addr-input" placeholder="Dirección o clic en el mapa…" autocomplete="off" spellcheck="false" aria-label="Buscar dirección">
@@ -726,6 +726,7 @@ document.getElementById('vis-check').addEventListener('change', async (e) => {
     inp.anu_m2_supplied ?? null,
     inp.frente_m_supplied ?? null,
     inp.ancho_via_m_supplied ?? null,
+    true,
   );
 });
 
@@ -881,7 +882,7 @@ async function runWithConfirmed() {
 ══════════════════════════════════════════════════════════════════════════ */
 // Manual coords: handled by submitManualCoords()
 
-async function runLookup(lat, lng, vis, anu, frente, anchoVia) {
+async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = false) {
   // Cancel any in-flight request and stamp this as the latest lookup.
   if (_lookupAbortCtrl) { _lookupAbortCtrl.abort(); }
   _lookupAbortCtrl = new AbortController();
@@ -896,6 +897,7 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia) {
   if (frente    != null) params.set('frente_m',    frente);
   if (anchoVia  != null) params.set('ancho_via_m', anchoVia);
   if (address)           params.set('address',     address);
+  if (scenarioOnly)      params.set('scenario_only', 'true');
 
   let json;
   try {
@@ -1359,6 +1361,22 @@ function showResult(d, lat, lng, vis, anu) {
   // requires diligence. Built exclusively from the cited calculation result.
   parts.push(acquisitionBrief(d));
 
+  const reg = d.contexto_regulatorio;
+  if (reg) {
+    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-link)">
+      <strong>Base normativa con corte ${escHtml(reg.corte_normativo)}.</strong>
+      ${escHtml(reg.descripcion)}. Alcance: prefactibilidad no certificada; los instrumentos especiales deben verificarse antes de ofertar o licenciar.
+    </div>`);
+  }
+
+  const catSource = d.lote?.fuente_datos;
+  if (catSource?.es_fallback) {
+    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-err)">
+      <strong>Fuente catastral de contingencia.</strong>
+      ${escHtml(catSource.fuente)} · referencia ${escHtml(catSource.fecha_referencia || 'sin fecha')}. Confirme geometría y área en Catastro Bogotá.
+    </div>`);
+  }
+
   const _catastroSnap = d.lote?.consulta_catastro;
   if (_catastroSnap) {
     parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-warn,#f59e0b)">
@@ -1452,12 +1470,12 @@ function showResult(d, lat, lng, vis, anu) {
   _lastCalcData = d;
   _massingInitDone = false;
   parts.push(`<details class="normative-detail" id="normative-detail" open ontoggle="_onNormativeToggle(this)">
-    <summary>Detalle normativo y fuentes<span class="nd-decree">Decreto 555/2021</span></summary>
+    <summary>Detalle normativo y fuentes<span class="nd-decree">D.555/2021 · D.466/2024 · D.670/2025</span></summary>
     <div class="normative-body">${normParts.join('')}</div>
   </details>`);
 
   parts.push(`<div class="print-disclaimer">
-    <strong>ainmo · Estimación de prefactibilidad</strong> — Basada en datos públicos POT/catastro (Decreto 555/2021).
+    <strong>ainmo · Estimación de prefactibilidad</strong> — D.555/2021 · D.466/2024 · reglamentación compilada D.670/2025.
     No constituye norma urbanística certificada ni licencia de construcción.
     Verifique con Curaduría Urbana o Secretaría Distrital de Planeación antes de tomar decisiones
     de transacción, permiso o actuación jurídica.
@@ -1866,6 +1884,7 @@ function acquisitionBrief(d) {
   if (needsModel) questions.push('Modelar la volumetría completa: el decreto deja IC, IO o altura como resultantes.');
   if (m.retroceso_fachada_A_m?.confianza === 'media') questions.push('Levantar el perfil vial total; el GIS aporta calzada, pero puede omitir andenes y separadores.');
   if (hardStop) questions.push('Solicitar concepto de la autoridad competente sobre la restricción identificada.');
+  questions.push('Construir flujo de caja con financiación, impuestos, cronograma y velocidad de ventas; el VRL mostrado es estático.');
   questions.push('Contrastar cabida, cargas, títulos y precio del suelo antes de formular una oferta vinculante.');
   const area = d.lote?.area_m2?.valor;
   const pisos = m.altura_base_pisos?.valor ?? m.altura_maxima_pisos?.valor;
@@ -2882,6 +2901,17 @@ function renderProformaResult(d) {
     <tr><td>Precio del lote ingresado</td><td>${fmtCOP(echo?.precio_lote_cop)}</td></tr>
     <tr><td>Diferencia vs VRL</td><td>${d.diferencia_cop >= 0 ? red(d.diferencia_cop) : green(Math.abs(d.diferencia_cop))}</td></tr>
   ` : '';
+  const sensitivity = d.sensibilidad?.matriz;
+  const sensitivityHtml = sensitivity?.length ? `
+    <div class="proforma-constants-head">Sensibilidad del valor residual</div>
+    <table class="proforma-table" aria-label="Sensibilidad del valor residual del lote">
+      <thead><tr><td>Venta ↓ / costo →</td><td>−10%</td><td>Base</td><td>+10%</td></tr></thead>
+      <tbody>${sensitivity.map(row => `<tr>
+        <td>${row.precio_venta_variacion_pct < 0 ? '−10%' : row.precio_venta_variacion_pct > 0 ? '+10%' : 'Base'}</td>
+        ${row.escenarios.map(cell => `<td>${cell.valor_residual_lote_cop >= 0 ? green(cell.valor_residual_lote_cop) : red(cell.valor_residual_lote_cop)}</td>`).join('')}
+      </tr>`).join('')}</tbody>
+    </table>
+    <p class="units-disclaimer">${escHtml(d.sensibilidad.nota)}</p>` : '';
 
   const efVal  = echo?.eficiencia_vendible_pct?.valor ?? 0.82;
   const efPct  = Math.round(efVal * 100);
@@ -2904,6 +2934,7 @@ function renderProformaResult(d) {
         ${loteRow}
       </tbody>
     </table>
+    ${sensitivityHtml}
     <p class="units-disclaimer" style="margin-top:8px">
       Área bruta: ${(d.area_construible_m2 || 0).toLocaleString('es-CO')} m² · Área vendible: ${(aVend || 0).toLocaleString('es-CO')} m² (${efPct}% eficiencia).
       Precio de venta y costo de construcción: referencias de mercado — verifique antes de tomar decisiones.
@@ -3461,7 +3492,7 @@ function _shareVia(dest) {
   const subject = encodeURIComponent('Análisis de edificabilidad — ' + addr);
   const body = encodeURIComponent(
     'Te comparto el análisis de edificabilidad de ' + addr +
-    ' (Ainmo · Decreto 555/2021):\n\n' + url
+    ' (Ainmo · prefactibilidad Bogotá):\n\n' + url
   );
   const text = encodeURIComponent('Análisis edificabilidad — ' + addr + ' (Ainmo)');
   const eu = encodeURIComponent(url);
@@ -3704,7 +3735,7 @@ function _initMap() {
   _map = L.map('map', { zoomControl: false });
   L.control.zoom({ position: 'bottomright' }).addTo(_map);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> | SDP Bogotá D.555/2021',
+    attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> | SDP Bogotá',
     maxZoom: 21,
   }).addTo(_map);
 

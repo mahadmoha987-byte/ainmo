@@ -734,6 +734,8 @@ def calculate(
         },
         "lote": lookup["lote"],
         "consulta": lookup.get("consulta"),
+        "contexto_regulatorio": lookup.get("contexto_regulatorio"),
+        "cobertura_restricciones": lookup.get("cobertura_restricciones", {}),
         "tratamiento": lookup.get("tratamiento"),
         "warnings": list(lookup.get("warnings", [])),
         "formula_trace": [],
