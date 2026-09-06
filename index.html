@@ -260,6 +260,18 @@ details.trace-block[open] summary::after{content:"\25BE contraer"}
 .kpi-fin .kpi-label{color:var(--ink-3)}
 .kpi-fin .kpi-value{font-size:var(--ts-xl)}
 .kpi-loading .kpi-value{color:var(--ink-6);font-size:var(--ts-xl)}
+/* Acquisition diligence brief */
+.deal-brief{border:var(--rule-heavy);background:var(--paper);margin-bottom:var(--sp-4)}
+.deal-brief-head{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);border-bottom:var(--rule);background:var(--paper-1)}
+.deal-brief-kicker{font-size:var(--ts-2xs);font-weight:var(--fw-7);letter-spacing:.6px;text-transform:uppercase;color:var(--ink-4)}
+.deal-brief-title{font-size:var(--ts-lg);font-weight:var(--fw-7);margin-top:2px}
+.deal-light{width:12px;height:12px;border-radius:50%;flex:0 0 12px}.deal-green{background:#218739}.deal-yellow{background:#d28a00}.deal-red{background:#c83c34}
+.deal-brief-body{display:grid;grid-template-columns:minmax(180px,.8fr) minmax(260px,1.2fr);gap:var(--sp-4);padding:var(--sp-4)}
+.deal-fact{font-size:var(--ts-sm);padding:5px 0;border-bottom:var(--rule-light);display:flex;justify-content:space-between;gap:var(--sp-3)}
+.deal-fact strong{font-family:var(--ff-mono);text-align:right}.deal-questions h4{font-size:var(--ts-xs);text-transform:uppercase;letter-spacing:.4px;margin:0 0 var(--sp-2);color:var(--ink-4)}
+.deal-questions ol{margin:0;padding-left:18px}.deal-questions li{font-size:var(--ts-sm);line-height:1.45;margin-bottom:5px}
+.deal-brief-note{grid-column:1/-1;font-size:var(--ts-xs);color:var(--ink-4);border-top:var(--rule-light);padding-top:var(--sp-2)}
+@media(max-width:700px){.deal-brief-body{grid-template-columns:1fr}}
 /* Proforma color coding */
 .pf-num-green{color:var(--c-a-fg);font-weight:var(--fw-6)}
 .pf-num-red{color:var(--c-r-fg);font-weight:var(--fw-6)}
@@ -699,6 +711,22 @@ function _authHeaders() {
 // addr-input: submit on Enter
 document.getElementById('addr-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); submitGeoSearch(); }
+});
+
+// A VIS/VIP scenario changes height and parking rules. Never leave a result
+// rendered with the previous scenario after the checkbox changes.
+document.getElementById('vis-check').addEventListener('change', async (e) => {
+  if (!_hasAnalyzed || !_lastLookupCoords) return;
+  const d = (_lastRaw?.data || _lastRaw || {});
+  const inp = d.input || {};
+  await runLookup(
+    _lastLookupCoords.lat,
+    _lastLookupCoords.lng,
+    e.target.checked,
+    inp.anu_m2_supplied ?? null,
+    inp.frente_m_supplied ?? null,
+    inp.ancho_via_m_supplied ?? null,
+  );
 });
 
 async function submitGeoSearch() {
@@ -1327,6 +1355,10 @@ function showResult(d, lat, lng, vis, anu) {
   // KPI strip — 6 key numbers immediately below verdict
   parts.push(kpiStrip(d));
 
+  // Acquisition-facing summary of what is decision-ready and what still
+  // requires diligence. Built exclusively from the cited calculation result.
+  parts.push(acquisitionBrief(d));
+
   const _catastroSnap = d.lote?.consulta_catastro;
   if (_catastroSnap) {
     parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-warn,#f59e0b)">
@@ -1816,6 +1848,42 @@ function kpiStrip(d) {
   </div>`;
 }
 
+function acquisitionBrief(d) {
+  const m = d.metrics || {};
+  const bc = d.binding_constraint || 'indeterminado';
+  const blockers = _verdictBlockers(d);
+  const hardStop = ['restriccion_bloqueante','tratamiento_no_implementado','conservacion_no_soportado'].includes(bc);
+  const needsModel = ['indeterminado','anu_required'].includes(bc)
+    || m.area_construible_max_m2?.valor == null
+    || m.planta_maxima_m2?.valor == null;
+  const level = hardStop ? 'red' : (blockers.length || needsModel ? 'yellow' : 'green');
+  const title = hardStop ? 'No avanzar sin resolver restricciones'
+    : level === 'yellow' ? 'Avanzar solo a debida diligencia' : 'Candidato para análisis financiero';
+  const questions = [];
+  if (d.lote?.consulta_catastro) questions.push('Confirmar que el lote seleccionado por proximidad corresponde al predio ofrecido.');
+  if (d.antejardin?.confianza === 'requiere_input') questions.push('Confirmar antejardín en el mapa CU-5.5 antes de modelar la huella.');
+  if (m.altura_con_bonus_pisos?.confianza === 'requiere_input') questions.push('Medir el frente y el perfil vial para validar el escenario de altura adicional.');
+  if (needsModel) questions.push('Modelar la volumetría completa: el decreto deja IC, IO o altura como resultantes.');
+  if (m.retroceso_fachada_A_m?.confianza === 'media') questions.push('Levantar el perfil vial total; el GIS aporta calzada, pero puede omitir andenes y separadores.');
+  if (hardStop) questions.push('Solicitar concepto de la autoridad competente sobre la restricción identificada.');
+  questions.push('Contrastar cabida, cargas, títulos y precio del suelo antes de formular una oferta vinculante.');
+  const area = d.lote?.area_m2?.valor;
+  const pisos = m.altura_base_pisos?.valor ?? m.altura_maxima_pisos?.valor;
+  return `<section class="deal-brief" aria-label="Semáforo de adquisición">
+    <div class="deal-brief-head"><span class="deal-light deal-${level}" aria-hidden="true"></span><div>
+      <div class="deal-brief-kicker">Semáforo de adquisición · ${level === 'red' ? 'alto' : level === 'yellow' ? 'revisión' : 'continuar'}</div>
+      <div class="deal-brief-title">${title}</div></div></div>
+    <div class="deal-brief-body"><div>
+      <div class="deal-fact"><span>Predio</span><strong>${escHtml(d.lote?.lotcodigo || 'Sin dato')}</strong></div>
+      <div class="deal-fact"><span>Área catastral</span><strong>${area != null ? `${fmt(area)} m²` : 'Sin dato'}</strong></div>
+      <div class="deal-fact"><span>Tratamiento</span><strong>${escHtml(d.tratamiento || 'Sin dato')}</strong></div>
+      <div class="deal-fact"><span>Altura base</span><strong>${pisos != null ? `${pisos} pisos` : 'Resultante'}</strong></div>
+    </div><div class="deal-questions"><h4>Preguntas antes de ofertar</h4><ol>
+      ${questions.map(q => `<li>${escHtml(q)}</li>`).join('')}
+    </ol></div><div class="deal-brief-note">Orientación de debida diligencia basada en los datos y citas de este análisis. No constituye recomendación de inversión, licencia ni concepto oficial.</div></div>
+  </section>`;
+}
+
 async function _fetchKpiFinancials(d) {
   // Capture sequence at call time; discard stale responses if a newer lookup started.
   const seqAtStart = _lookupSeq;
@@ -1921,7 +1989,7 @@ function verdictBanner(d) {
     return `<div class="verdict-banner vb-condiciones" role="status">
       <div class="vb-icon" aria-hidden="true">⚠</div>
       <div class="vb-content">
-        <div class="vb-headline">Puedes construir, con verificaciones</div>
+        <div class="vb-headline">Prefactibilidad favorable, con verificaciones</div>
         <div class="vb-sub">${escHtml(sub)}</div>
       </div>
     </div>`;
@@ -1943,7 +2011,7 @@ function verdictBanner(d) {
   return `<div class="verdict-banner vb-viable" role="status">
     <div class="vb-icon" aria-hidden="true">✓</div>
     <div class="vb-content">
-      <div class="vb-headline">Puedes construir aquí</div>
+      <div class="vb-headline">Prefactibilidad favorable</div>
       <div class="vb-sub">${sub}</div>
     </div>
   </div>`;
@@ -2113,8 +2181,11 @@ function metricsSection(d) {
 
     // Setback posterior
     if (m.aislamiento_posterior_m?.valor != null) {
+      const postNote = m.altura_maxima_rango_pisos?.valor != null
+        ? `Escenario conservador para ${m.altura_maxima_rango_pisos.valor} pisos; confirme acceso a la altura adicional. Anexo 5 Cap. 2.4.2.A.2`
+        : 'Anexo 5 Cap. 2.4.2.A.2';
       cards.push(metricCard('Aislamiento posterior', m.aislamiento_posterior_m.valor, 'm',
-        m.aislamiento_posterior_m.confianza, 'Anexo 5 Cap. 2.4.2.A.2'));
+        m.aislamiento_posterior_m.confianza, postNote));
     }
     // Lateral
     if (m.aislamiento_lateral_m != null) {

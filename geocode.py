@@ -102,6 +102,11 @@ def normalize_address(raw: str) -> str:
     s = "".join(c for c in s if unicodedata.category(c) != "Mn")
     s = s.replace(",", " ").replace(".", " ")
     s = re.sub(r"\s+", " ", s)
+    # City/country suffixes are natural user input but are not part of
+    # Catastro's PDOTEXTO field.  Leaving them attached turns exact addresses
+    # into false block-level "near matches".
+    s = re.sub(r"\s+BOGOTA(?:\s+D\s*C)?(?:\s+COLOMBIA)?\s*$", "", s).strip()
+    s = re.sub(r"\s+COLOMBIA\s*$", "", s).strip()
     # Nº / N° / No. / Nro → "#"
     s = re.sub(r"\bN[º°]\s*", "# ", s)
     s = re.sub(r"\b(NO|NRO|NUM|NUMERO)\b\s*", "# ", s)

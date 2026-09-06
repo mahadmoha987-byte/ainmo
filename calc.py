@@ -747,6 +747,7 @@ def calculate(
         return _n[0]
 
     lot_area = lookup["lote"]["area_m2"]["valor"]
+    trat = lookup.get("tratamiento", "").upper().replace("Ó", "O").replace("Á", "A")
 
     # ── Step 1: Lot area ──────────────────────────────────────────────────────
     trace.append(_step(
@@ -759,12 +760,22 @@ def calculate(
 
     # ── Antejardín ────────────────────────────────────────────────────────────
     try:
-        ant = _parse_antejardin(lookup.get("antejardin"))
+        if "RENOVACION" in trat:
+            ant = {
+                "exigido": False,
+                "dimension_m": 0.0,
+                "confianza": "alta",
+                "nota": "Renovación Urbana no exige antejardín obligatorio (Art. 307 Decreto 555/2021).",
+                "fuente": "Art. 307 Decreto 555/2021",
+                "articulo": "Art. 307 Decreto 555/2021",
+            }
+        else:
+            ant = _parse_antejardin(lookup.get("antejardin"))
         result["antejardin"] = ant
         trace.append(_step(
-            N(), "Antejardín (mapa CU-5.5)",
-            "Layer_22.DIMENSION",
-            {"valor_raw": lookup.get("antejardin", {}).get("dimension_m", {}).get("valor")},
+            N(), "Antejardín (Art. 307)" if "RENOVACION" in trat else "Antejardín (mapa CU-5.5)",
+            "no_exigido_por_tratamiento" if "RENOVACION" in trat else "Layer_22.DIMENSION",
+            {"valor_raw": (lookup.get("antejardin") or {}).get("dimension_m", {}).get("valor")},
             ant["dimension_m"], "m",
             fuente=ant["fuente"],
             nota=ant["nota"],
@@ -798,8 +809,6 @@ def calculate(
     ))
 
     # ── Treatment-specific calcs ──────────────────────────────────────────────
-    trat = lookup.get("tratamiento", "").upper().replace("Ó", "O").replace("Á", "A")
-
     if "DESARROLLO" in trat:
         metrics, binding = _calc_desarrollo(lookup, anu, trace, N, ancho_via_m)
     elif "CONSOLIDACION" in trat:
