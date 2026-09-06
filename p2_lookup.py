@@ -42,6 +42,13 @@ ARCGIS_FS = (
 CATASTRO_MS = (
     "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services/catastro/lote/MapServer"
 )
+# Government mirror of IDECA's cadastral lot layer.  Some cloud-provider egress
+# ranges cannot connect to Catastro's primary host, so production falls back to
+# this read-only CAR service only for transport/network failures.
+CATASTRO_MS_FALLBACK = (
+    "https://sig.car.gov.co/arcgis/rest/services/VISOR/Capas_base/FeatureServer"
+)
+CATASTRO_FALLBACK_LAYER = 9
 
 # Layer IDs — POT FeatureServer
 L_EDIFICABILIDAD  = 15   # TRATAMIENTO, TIPOLOGIA, ALTURA_MAXIMA — stored in WKID 102100
@@ -112,6 +119,7 @@ _RECEPTOR_VIS_CODE = "AAERVIS"
 L_LOTE           = 0    # Physical lot polygon, WGS84 native
 
 TIMEOUT_S = 20
+_CATASTRO_PRIMARY_TIMEOUT_S = 6
 
 # ── Heritage (Conservación) constants ────────────────────────────────────────
 # Coded value domain "cdom_categoria_patrimonio" from Layer 12 schema.
@@ -214,9 +222,9 @@ class ProjectionError(BuildabilityLookupError):
 
 # ── Low-level HTTP / ArcGIS helpers ─────────────────────────────────────────
 
-def _fetch_json(url: str) -> dict:
+def _fetch_json(url: str, timeout_s: int = TIMEOUT_S) -> dict:
     try:
-        with urlopen(url, timeout=TIMEOUT_S, context=_SSL_CTX) as resp:
+        with urlopen(url, timeout=timeout_s, context=_SSL_CTX) as resp:
             return json.loads(resp.read().decode())
     except HTTPError as exc:
         raise BuildabilityLookupError(f"HTTP {exc.code}: {url}") from exc
@@ -224,7 +232,7 @@ def _fetch_json(url: str) -> dict:
         raise BuildabilityLookupError(f"Network error — {exc.reason}: {url}") from exc
 
 
-def _arcgis_query(base: str, params: dict) -> list[dict]:
+def _arcgis_query(base: str, params: dict, timeout_s: int = TIMEOUT_S) -> list[dict]:
     """
     Execute an ArcGIS REST query; return features list.
     Raises ZeroFeaturesError when no features match.
@@ -232,7 +240,7 @@ def _arcgis_query(base: str, params: dict) -> list[dict]:
     """
     qs = urlencode({**params, "f": "json"})
     url = f"{base}/query?{qs}"
-    data = _fetch_json(url)
+    data = _fetch_json(url, timeout_s=timeout_s)
 
     if "error" in data:
         raise BuildabilityLookupError(
@@ -245,6 +253,32 @@ def _arcgis_query(base: str, params: dict) -> list[dict]:
             "Point may be on a road, outside the urban perimeter, or in a non-buildable area."
         )
     return features
+
+
+def _normalize_catastro_feature(feature: dict) -> dict:
+    """Normalize the mirror's camel-case field names to Catastro's schema."""
+    attrs = feature.setdefault("attributes", {})
+    attrs.setdefault("LOTCODIGO", attrs.get("LotCodigo"))
+    attrs.setdefault("LOTUPREDIA", attrs.get("LotUPredia"))
+    return feature
+
+
+def _query_catastro(params: dict) -> list[dict]:
+    """Query primary Catastro, falling back only when its transport fails."""
+    try:
+        return _arcgis_query(
+            f"{CATASTRO_MS}/{L_LOTE}", params,
+            timeout_s=_CATASTRO_PRIMARY_TIMEOUT_S,
+        )
+    except ZeroFeaturesError:
+        raise
+    except BuildabilityLookupError:
+        mirror_params = dict(params)
+        mirror_params["outFields"] = "OBJECTID,LotCodigo,LotUPredia,Shape__Area"
+        features = _arcgis_query(
+            f"{CATASTRO_MS_FALLBACK}/{CATASTRO_FALLBACK_LAYER}", mirror_params,
+        )
+        return [_normalize_catastro_feature(feature) for feature in features]
 
 
 def query_fs(layer_id: int, lng: float, lat: float,
@@ -306,7 +340,7 @@ def _distance_to_lot_boundary_m(lng: float, lat: float, rings: list) -> float:
 
 def _query_nearest_catastro_lote(lng: float, lat: float) -> tuple[dict, float]:
     """Find the closest cadastral lot within the bounded road-edge recovery radius."""
-    candidates = _arcgis_query(f"{CATASTRO_MS}/{L_LOTE}", {
+    candidates = _query_catastro({
         "geometry": f"{lng},{lat}",
         "geometryType": "esriGeometryPoint",
         "inSR": 4326,
@@ -330,7 +364,7 @@ def _query_nearest_catastro_lote(lng: float, lat: float) -> tuple[dict, float]:
 
     # Fetch the selected feature in MAGNA-SIRGAS 9377, preserving the existing
     # shoelace-area calculation and avoiding an area approximation in WGS84.
-    features = _arcgis_query(f"{CATASTRO_MS}/{L_LOTE}", {
+    features = _query_catastro({
         "objectIds": object_id,
         "outFields": "OBJECTID,LOTCODIGO,LOTUPREDIA,SHAPE.AREA",
         "returnGeometry": "true",
@@ -359,7 +393,7 @@ def query_catastro_lote(lng: float, lat: float) -> tuple[dict, float | None]:
         "outSR": 9377,                       # projected metres for shoelace
     }
     try:
-        features = _arcgis_query(f"{CATASTRO_MS}/{L_LOTE}", params)
+        features = _query_catastro(params)
         feat, snap_distance_m = features[0], None
     except ZeroFeaturesError:
         feat, snap_distance_m = _query_nearest_catastro_lote(lng, lat)
@@ -392,7 +426,7 @@ def _fetch_lot_rings_wgs84(lng: float, lat: float, object_id: int | None = None)
     else:
         params["objectIds"] = object_id
     try:
-        features = _arcgis_query(f"{CATASTRO_MS}/{L_LOTE}", params)
+        features = _query_catastro(params)
         return features[0].get("geometry", {}).get("rings")
     except Exception:
         return None
