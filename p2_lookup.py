@@ -49,6 +49,12 @@ CATASTRO_MS_FALLBACK = (
     "https://sig.car.gov.co/arcgis/rest/services/VISOR/Capas_base/FeatureServer"
 )
 CATASTRO_FALLBACK_LAYER = 9
+# Older IDECA mirror maintained by Superservicios.  This is the last-resort
+# transport source when both current government hosts reject cloud egress.
+CATASTRO_MS_FALLBACK_2 = (
+    "https://geoportal.superservicios.gov.co/server/rest/services/IDECA/Bogotav0318/MapServer"
+)
+CATASTRO_FALLBACK_LAYER_2 = 2
 
 # Layer IDs — POT FeatureServer
 L_EDIFICABILIDAD  = 15   # TRATAMIENTO, TIPOLOGIA, ALTURA_MAXIMA — stored in WKID 102100
@@ -119,7 +125,7 @@ _RECEPTOR_VIS_CODE = "AAERVIS"
 L_LOTE           = 0    # Physical lot polygon, WGS84 native
 
 TIMEOUT_S = 20
-_CATASTRO_PRIMARY_TIMEOUT_S = 6
+_CATASTRO_SOURCE_TIMEOUT_S = 6
 
 # ── Heritage (Conservación) constants ────────────────────────────────────────
 # Coded value domain "cdom_categoria_patrimonio" from Layer 12 schema.
@@ -268,16 +274,34 @@ def _query_catastro(params: dict) -> list[dict]:
     try:
         return _arcgis_query(
             f"{CATASTRO_MS}/{L_LOTE}", params,
-            timeout_s=_CATASTRO_PRIMARY_TIMEOUT_S,
+            timeout_s=_CATASTRO_SOURCE_TIMEOUT_S,
         )
     except ZeroFeaturesError:
         raise
-    except BuildabilityLookupError:
+    except BuildabilityLookupError as primary_exc:
         mirror_params = dict(params)
         mirror_params["outFields"] = "OBJECTID,LotCodigo,LotUPredia,Shape__Area"
-        features = _arcgis_query(
-            f"{CATASTRO_MS_FALLBACK}/{CATASTRO_FALLBACK_LAYER}", mirror_params,
-        )
+        try:
+            features = _arcgis_query(
+                f"{CATASTRO_MS_FALLBACK}/{CATASTRO_FALLBACK_LAYER}",
+                mirror_params,
+                timeout_s=_CATASTRO_SOURCE_TIMEOUT_S,
+            )
+        except ZeroFeaturesError:
+            raise
+        except BuildabilityLookupError as mirror_exc:
+            try:
+                final_params = dict(mirror_params)
+                final_params["outFields"] = "OBJECTID,LotCodigo,LotUPredia,SHAPE_Area"
+                features = _arcgis_query(
+                    f"{CATASTRO_MS_FALLBACK_2}/{CATASTRO_FALLBACK_LAYER_2}",
+                    final_params,
+                )
+            except BuildabilityLookupError as final_exc:
+                raise BuildabilityLookupError(
+                    "Catastro primary and mirrors were unreachable: "
+                    f"primary={primary_exc}; mirror_1={mirror_exc}; mirror_2={final_exc}"
+                ) from final_exc
         return [_normalize_catastro_feature(feature) for feature in features]
 
 
