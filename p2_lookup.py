@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import math
+import decreto253
 import re
 import ssl
 import sys
@@ -1202,7 +1203,7 @@ def lookup(lng: float, lat: float, vis_en_sitio: bool = False) -> dict:
     # Layer 15 is stored in WKID 102100 — inSR=4326 is mandatory.
     feats_15 = query_fs(
         L_EDIFICABILIDAD, lng, lat,
-        out_fields=["TRATAMIENTO", "TIPOLOGIA", "ALTURA_MAXIMA"],
+        out_fields=["TRATAMIENTO", "TIPOLOGIA", "ALTURA_MAXIMA", "OBSERVACION", "ACTO_ADMINISTRATIVO"],
     )
     a15 = feats_15[0]["attributes"]
     tratamiento_raw = (a15.get("TRATAMIENTO") or "").strip().upper()
@@ -1222,7 +1223,47 @@ def lookup(lng: float, lat: float, vis_en_sitio: bool = False) -> dict:
         result.update(_handle_desarrollo(lng, lat, a15, area_m2, vis_en_sitio, result["warnings"]))
 
     elif "CONSOLIDACION" in trat_norm:
+        is_dotacional_sin_altura = (
+            "DOT" in str(a15.get("OBSERVACION") or "").upper()
+            and not str(a15.get("ALTURA_MAXIMA") or "").strip()
+        )
+        d253 = decreto253.lookup(result["lote"].get("lotcodigo")) if is_dotacional_sin_altura else None
+        if d253:
+            result["equipamiento_decreto_253"] = d253
+            if d253.get("pisos") is not None and not d253.get("requiere_poligono"):
+                a15["ALTURA_MAXIMA"] = str(d253["pisos"])
+                result["warnings"].append(
+                    f"Equipamiento D.253/2026: altura de {d253['pisos']} pisos tomada del Anexo 36.1; "
+                    "verifique régimen de transición, instrumento previo, BIC y Actuación Estratégica."
+                )
+            else:
+                a15["ALTURA_MAXIMA"] = "UNE"
+                reason = (
+                    "el código aparece en polígonos con decisiones distintas; ubique el predio en el Anexo 36.2"
+                    if d253.get("requiere_poligono") else
+                    "el Anexo 36.1 marca N/A; la altura depende de otro instrumento o norma"
+                )
+                result["warnings"].append(f"Equipamiento D.253/2026 SIN_DATO: {reason}.")
+        elif is_dotacional_sin_altura:
+            a15["ALTURA_MAXIMA"] = "UNE"
+            result["equipamiento_decreto_253"] = {
+                "aplica_posible": True,
+                "pisos": None,
+                "requiere_verificacion": True,
+                "norma": "Decreto Distrital 253 de 2026",
+                "fuente": "Layer 15 OBSERVACION=DOT; código no localizado en Anexo 36.1",
+            }
+            result["warnings"].append(
+                "Equipamiento sin altura en Layer 15: verifique D.253/2026 y Anexos 36.1/36.2; "
+                "el código del lote no produjo una coincidencia inequívoca."
+            )
         result.update(_handle_consolidacion(lng, lat, a15, area_m2, result["warnings"]))
+        if d253 and d253.get("pisos") is not None and not d253.get("requiere_poligono"):
+            result["edificabilidad"]["altura_maxima"].update({
+                "fuente": "Anexo 36.1, Decreto Distrital 253 de 2026",
+                "articulo": "Arts. 249.1-249.3 D.670/2025, adicionados por D.253/2026",
+                "confianza": "alta",
+            })
 
     else:
         trat_norm_up = trat_norm.upper()
@@ -1243,8 +1284,69 @@ def lookup(lng: float, lat: float, vis_en_sitio: bool = False) -> dict:
             )
         result["edificabilidad"] = None
 
+    # D.676/2025 is project-dependent, but the treatment-level opportunity can
+    # be identified at parcel screening stage. Never label it as earned.
+    if any(name in trat_norm for name in ("DESARROLLO", "RENOVACION", "CONSOLIDACION")):
+        if "DESARROLLO" in trat_norm:
+            pathway = (
+                "Incentivos de los Arts. 1374.8-1374.10: sujetos al rango, ANU, "
+                "VIS/VIP adicional y modalidad de plan parcial o licencia aplicable."
+            )
+        elif "RENOVACION" in trat_norm:
+            pathway = (
+                "Art. 1374.11: incentivo sobre la obligación de espacio público. "
+                "Si el terreno supera 10.000 m², la obligación total debe dejarse en sitio."
+            )
+        else:
+            pathway = (
+                "Arts. 1374.12-1374.13: reducción condicionada de obligación de espacio público "
+                "con al menos 20% de VIS/VIP adicional y posible incentivo de altura del Anexo 5."
+            )
+        result["incentivo_sostenibilidad_d676"] = {
+            "estado": "potencial_condicionado",
+            "tratamiento_elegible": True,
+            "norma": "Decreto Distrital 676 de 2025",
+            "vigencia_desde": "2025-12-31",
+            "ruta_tratamiento": pathway,
+            "requisitos": [
+                "Proyecto con uso residencial predominante y acogimiento expreso al D.676/2025.",
+                "Cumplir todas las medidas de los Arts. 1374.3-1374.7: aguas lluvias, materiales, verde urbano, isla de calor y energía renovable.",
+                "Incorporar medidas, áreas, elementos y materiales en planos y memorias del proyecto.",
+                "Obtener pre-certificación o reconocimiento de diseño LEED, EDGE, CASA Colombia o Bogotá Construcción Sostenible.",
+                "Presentar autodeclaración firmada por titular y profesionales, con certificación y listado de créditos.",
+                "Presentar al curador el Anexo de Construcción Sostenible del Formulario Único Nacional.",
+            ],
+            "cita_requisitos": "Arts. 1374.2-1374.7 y 1374.15 D.670/2025, adicionados por D.676/2025",
+            "nota": "Ainmo identifica la oportunidad; el incentivo solo se habilita con diseño, certificación, documentos y licencia.",
+        }
+        result["referencia_obligaciones_urbanisticas_2026"] = {
+            "valor_tope_cop_m2": 571000,
+            "estado": "referencia_no_liquidacion",
+            "norma": "Resolución SDP 954 de 2026",
+            "vigencia": 2026,
+            "cita": "Art. 1 Res. SDP 954/2026; Arts. 285, 289, 289-A y 291 D.555/2021; Art. 1352 D.670/2025",
+            "nota": (
+                "Valor tope de referencia para liquidar pagos compensatorios de obligaciones generales, "
+                "espacio público y equipamiento comunal público. Ainmo no calcula aquí el área legal de "
+                "obligación ni el pago exigible."
+            ),
+        }
+
     # ── Step 4: Antejardín (Layer 22 / mapa CU-5.5) — Consolidación only ─────
     if "CONSOLIDACION" in trat_norm:
+        d253 = result.get("equipamiento_decreto_253")
+        if d253 and d253.get("pisos") is not None and not d253.get("requiere_poligono"):
+            result["antejardin"] = {
+                "dimension_m": {"valor": 3.5, "confianza": "alta"},
+                "fuente": "Anexo 36.2 y Art. 249.8, Decreto Distrital 253 de 2026",
+                "articulo": "Art. 249.8 D.670/2025, adicionado por D.253/2026",
+                "nota": (
+                    "Mínimo 3,50 m para los polígonos con altura asignada. Excepción: edificaciones "
+                    "existentes con PRM, Plan de Implantación, Plan Director, licencia o reconocimiento "
+                    "vigente al 4 de julio de 2026 que hubiese previsto una dimensión menor o ninguna."
+                ),
+            }
+            return result
         try:
             feats_22 = query_fs(L_ANTEJARDIN, lng, lat, out_fields=["DIMENSION"])
             dim = feats_22[0]["attributes"].get("DIMENSION")

@@ -10,6 +10,9 @@ __pycache__/
 venv/
 *.db
 
+# downloaded official legal source archive (large, retained locally)
+docs/normativa/
+
 # macos
 .DS_Store
 

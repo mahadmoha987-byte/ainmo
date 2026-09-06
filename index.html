@@ -1361,6 +1361,37 @@ function showResult(d, lat, lng, vis, anu) {
   // requires diligence. Built exclusively from the cited calculation result.
   parts.push(acquisitionBrief(d));
 
+  const eq253 = d.equipamiento_decreto_253;
+  if (eq253) {
+    const floors = eq253.pisos != null ? `${eq253.pisos} pisos` : 'SIN_DATO - requiere verificación';
+    const tone = eq253.pisos != null && !eq253.requiere_poligono ? 'var(--c-link)' : 'var(--c-warn,#f59e0b)';
+    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:${tone}">
+      <strong>Equipamiento en Consolidación - D.253/2026: ${escHtml(floors)}.</strong>
+      ${eq253.antejardin_min_m != null ? `Antejardín mínimo general: ${fmt(eq253.antejardin_min_m)} m. ` : ''}
+      Fuente: ${escHtml(eq253.fuente || 'Anexo 36.1')}. Verifique instrumentos previos, régimen de transición, BIC, Franja de Adecuación y Actuación Estratégica aplicable.
+    </div>`);
+  }
+
+  const eco676 = d.incentivo_sostenibilidad_d676;
+  if (eco676?.tratamiento_elegible) {
+    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:#0f766e">
+      <strong>Oportunidad potencial - incentivos de construcción sostenible D.676/2025.</strong>
+      ${escHtml(eco676.ruta_tratamiento)}
+      <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">Ver requisitos para habilitar el incentivo</summary>
+        <ol style="margin:8px 0 0 20px">${eco676.requisitos.map(x => `<li>${escHtml(x)}</li>`).join('')}</ol>
+        <div style="margin-top:8px;font-size:12px">${escHtml(eco676.cita_requisitos)}. ${escHtml(eco676.nota)}</div>
+      </details>
+    </div>`);
+  }
+
+  const obl2026 = d.referencia_obligaciones_urbanisticas_2026;
+  if (obl2026) {
+    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--ink-4)">
+      <strong>Obligaciones urbanísticas - referencia 2026: $${Number(obl2026.valor_tope_cop_m2).toLocaleString('es-CO')}/m².</strong>
+      ${escHtml(obl2026.nota)} <span style="font-size:12px">${escHtml(obl2026.cita)}</span>
+    </div>`);
+  }
+
   const reg = d.contexto_regulatorio;
   if (reg) {
     parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-link)">
@@ -1470,12 +1501,12 @@ function showResult(d, lat, lng, vis, anu) {
   _lastCalcData = d;
   _massingInitDone = false;
   parts.push(`<details class="normative-detail" id="normative-detail" open ontoggle="_onNormativeToggle(this)">
-    <summary>Detalle normativo y fuentes<span class="nd-decree">D.555/2021 · D.466/2024 · D.670/2025</span></summary>
+    <summary>Detalle normativo y fuentes<span class="nd-decree">D.555/2021 · D.670/2025 · D.676/2025 · D.253-254/2026</span></summary>
     <div class="normative-body">${normParts.join('')}</div>
   </details>`);
 
   parts.push(`<div class="print-disclaimer">
-    <strong>ainmo · Estimación de prefactibilidad</strong> — D.555/2021 · D.466/2024 · reglamentación compilada D.670/2025.
+    <strong>ainmo · Estimación de prefactibilidad</strong> — D.555/2021 · D.670/2025 · D.676/2025 · D.253-254/2026.
     No constituye norma urbanística certificada ni licencia de construcción.
     Verifique con Curaduría Urbana o Secretaría Distrital de Planeación antes de tomar decisiones
     de transacción, permiso o actuación jurídica.
@@ -1884,6 +1915,7 @@ function acquisitionBrief(d) {
   if (needsModel) questions.push('Modelar la volumetría completa: el decreto deja IC, IO o altura como resultantes.');
   if (m.retroceso_fachada_A_m?.confianza === 'media') questions.push('Levantar el perfil vial total; el GIS aporta calzada, pero puede omitir andenes y separadores.');
   if (hardStop) questions.push('Solicitar concepto de la autoridad competente sobre la restricción identificada.');
+  if (d.equipamiento_decreto_253) questions.push('Verificar las excepciones y transiciones de los Arts. 249.4 a 249.11 incorporados por el D.253/2026.');
   questions.push('Construir flujo de caja con financiación, impuestos, cronograma y velocidad de ventas; el VRL mostrado es estático.');
   questions.push('Contrastar cabida, cargas, títulos y precio del suelo antes de formular una oferta vinculante.');
   const area = d.lote?.area_m2?.valor;
