@@ -13,7 +13,7 @@ _SSL_CTX.check_hostname = False
 _SSL_CTX.verify_mode = ssl.CERT_NONE
 
 _CATASTRO_PLACA = (
-    "https://sig.catastrobogota.gov.co/arcgis/rest/services"
+    "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services"
     "/catastro/placadomiciliaria/MapServer/0"
 )
 _NOMINATIM = "https://nominatim.openstreetmap.org/search"

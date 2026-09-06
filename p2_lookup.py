@@ -40,7 +40,7 @@ ARCGIS_FS = (
     "/POT_Bogota_Decreto_555_2021/FeatureServer"
 )
 CATASTRO_MS = (
-    "https://sig.catastrobogota.gov.co/arcgis/rest/services/catastro/lote/MapServer"
+    "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services/catastro/lote/MapServer"
 )
 
 # Layer IDs — POT FeatureServer
