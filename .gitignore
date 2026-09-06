@@ -1,0 +1,50 @@
+# secrets
+.env
+.env.local
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.db
+
+# macos
+.DS_Store
+
+# home directory folders — not part of the project
+Library/
+Pictures/
+Movies/
+Music/
+Downloads/
+Desktop/
+Documents/
+Applications/
+Public/
+.cache/
+.npm/
+.docker/
+.ollama/
+.config/
+.local/
+.cups/
+.idlerc/
+.zsh_sessions/
+.zsh_history
+.CFUserTextEncoding
+.cagent/
+.claude.json
+.claude.json.backup
+.claude/
+djibouti-research/
+"djibouti-research 2/"
+djibouti-research.zip
+djibouti-update.zip
+djibouti-v3.zip
+mystartup/
+cabida-app/
+asia_trade_statistics.xlsx
+goldmine_bottlenecks.xlsx
+real_goldmines.xlsx

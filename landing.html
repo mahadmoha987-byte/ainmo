@@ -1,0 +1,1021 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Ainmo — edificabilidad, aislamientos, estacionamientos y valor residual de cualquier predio de Bogotá, citado al Decreto 555 de 2021.">
+<title>Ainmo — qué se puede construir en cualquier predio de Bogotá</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+*{box-sizing:border-box}img{max-width:100%}[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<style>
+:root{
+  --paper:#F7F7F3;
+  --paper-2:#EEEFE8;
+  --card:#FFFFFF;
+  --ink:#11151A;
+  --ink-2:#3A4048;
+  --muted:#767C82;
+  --line:#DBDCD2;
+  --line-2:#E8E9E1;
+  --blue:#27467A;
+  --blue-2:#3C6099;
+  --blue-soft:#E6EAF2;
+  --flag:#A2501C;
+  --flag-soft:#F5EAE1;
+  --ok:#33654A;
+  --ok-soft:#E4EDE7;
+  --grid:rgba(17,21,26,.10);
+  --grid-2:rgba(39,70,122,.16);
+  --fill:rgba(39,70,122,.10);
+  --mass:#27467A;
+  --mass-2:#1B3358;
+  --mass-3:#40639B;
+  --f-d:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+  --f-b:"Instrument Sans","Helvetica Neue",Arial,sans-serif;
+  --f-m:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F1216; --paper-2:#151920; --card:#161A20;
+    --ink:#E9EAE4; --ink-2:#B4B9BF; --muted:#868C93;
+    --line:#282D35; --line-2:#20252C;
+    --blue:#93B0E0; --blue-2:#A8C1EA; --blue-soft:#1A222E;
+    --flag:#DC9A6C; --flag-soft:#291D16;
+    --ok:#7FBB99; --ok-soft:#17241D;
+    --grid:rgba(233,234,228,.10); --grid-2:rgba(147,176,224,.22);
+    --fill:rgba(147,176,224,.12);
+    --mass:#5E82BC; --mass-2:#3B588A; --mass-3:#7FA0D4;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F1216; --paper-2:#151920; --card:#161A20;
+  --ink:#E9EAE4; --ink-2:#B4B9BF; --muted:#868C93;
+  --line:#282D35; --line-2:#20252C;
+  --blue:#93B0E0; --blue-2:#A8C1EA; --blue-soft:#1A222E;
+  --flag:#DC9A6C; --flag-soft:#291D16;
+  --ok:#7FBB99; --ok-soft:#17241D;
+  --grid:rgba(233,234,228,.10); --grid-2:rgba(147,176,224,.22);
+  --fill:rgba(147,176,224,.12);
+  --mass:#5E82BC; --mass-2:#3B588A; --mass-3:#7FA0D4;
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--f-b);font-size:16px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+.wrap{max-width:1240px;margin:0 auto;padding:0 32px}
+.rule{height:1px;background:var(--line);border:0;margin:0}
+
+/* progress hairline */
+#prog{position:fixed;top:0;left:0;height:2px;width:0;background:var(--blue);z-index:60;transition:width .08s linear}
+
+/* ---------- nav ---------- */
+nav{
+  position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--paper) 88%,transparent);
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
+}
+.nav-in{display:flex;align-items:center;gap:28px;height:60px;max-width:1240px;margin:0 auto;padding:0 32px}
+.mark{font-family:var(--f-d);font-weight:800;font-size:17px;letter-spacing:-.03em;margin-right:auto;display:flex;align-items:baseline;gap:8px}
+.mark span{font-family:var(--f-m);font-size:9.5px;font-weight:500;letter-spacing:.16em;color:var(--muted);text-transform:uppercase}
+.nav-in a.nl{font-size:13.5px;color:var(--ink-2);text-decoration:none}
+.nav-in a.nl:hover{color:var(--blue)}
+.btn{
+  font-family:var(--f-b);font-size:13.5px;font-weight:600;text-decoration:none;
+  padding:8px 15px;border-radius:2px;border:1px solid var(--line);color:var(--ink);
+  background:var(--card);white-space:nowrap;display:inline-block;
+}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn-p{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn-p:hover{background:var(--blue-2);border-color:var(--blue-2);color:#fff}
+:root[data-theme="dark"] .btn-p,:root:not([data-theme="light"]) .btn-p{color:#0F1216}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .btn-p{color:#fff}}
+a:focus-visible,button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* ---------- shared type ---------- */
+.eyebrow{
+  font-family:var(--f-m);font-size:10.5px;font-weight:500;letter-spacing:.19em;
+  text-transform:uppercase;color:var(--muted);margin:0 0 14px;
+}
+h1{
+  font-family:var(--f-d);font-weight:800;letter-spacing:-.035em;line-height:.98;
+  font-size:clamp(42px,6.6vw,80px);margin:0 0 22px;text-wrap:balance;
+}
+h2{
+  font-family:var(--f-d);font-weight:700;letter-spacing:-.028em;line-height:1.04;
+  font-size:clamp(29px,4vw,44px);margin:0 0 16px;text-wrap:balance;
+}
+h3{font-family:var(--f-d);font-weight:700;font-size:20px;letter-spacing:-.018em;margin:0 0 8px;line-height:1.18}
+p{margin:0 0 15px;max-width:64ch;color:var(--ink-2)}
+.big-p{font-size:18.5px;line-height:1.5;color:var(--ink-2)}
+.m{font-family:var(--f-m);font-variant-numeric:tabular-nums}
+
+/* ---------- hero ---------- */
+.hero{padding:76px 0 0;position:relative}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(0,1fr);gap:56px;align-items:center}
+.tag{
+  display:inline-flex;align-items:center;gap:9px;font-family:var(--f-m);font-size:10.5px;
+  letter-spacing:.15em;text-transform:uppercase;color:var(--blue);
+  border:1px solid var(--line);background:var(--card);padding:5px 11px;border-radius:2px;margin-bottom:24px;
+}
+.tag i{width:5px;height:5px;background:var(--blue);border-radius:50%;font-style:normal;display:block}
+.hero p.lead{font-size:18.5px;line-height:1.5;max-width:52ch;margin-bottom:26px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.hsearch{display:flex;gap:0;margin:0 0 9px;max-width:530px;border:1px solid var(--ink);border-radius:2px;background:var(--card);overflow:hidden}
+.hsearch:focus-within{outline:2px solid var(--blue);outline-offset:1px}
+.hsearch input{
+  flex:1 1 auto;min-width:0;border:0;background:transparent;color:var(--ink);
+  font-family:var(--f-b);font-size:15px;padding:13px 15px;
+}
+.hsearch input::placeholder{color:var(--muted)}
+.hsearch input:focus{outline:none}
+.hsearch button{
+  flex:none;border:0;border-left:1px solid var(--ink);background:var(--ink);color:var(--paper);
+  font-family:var(--f-b);font-size:14.5px;font-weight:600;padding:0 20px;cursor:pointer;
+}
+.hsearch button:hover{background:var(--blue);border-left-color:var(--blue)}
+.hint{font-family:var(--f-m);font-size:11.5px;color:var(--muted);margin:0 0 22px;line-height:1.55;max-width:52ch}
+.hint.norm{color:var(--blue)}
+.cta-row{display:flex;flex-wrap:wrap;gap:11px;align-items:center;margin-bottom:26px}
+.cta-row .btn{padding:11px 20px;font-size:14.5px}
+.hero-src{font-family:var(--f-m);font-size:11px;color:var(--muted);line-height:1.65;max-width:46ch}
+
+.plate{
+  border:1px solid var(--line);background:var(--card);border-radius:2px;overflow:hidden;
+  box-shadow:0 1px 1px rgba(17,21,26,.03),0 20px 44px -32px rgba(17,21,26,.35);
+}
+.plate-bar{
+  display:flex;justify-content:space-between;gap:12px;padding:8px 13px;
+  border-bottom:1px solid var(--line-2);background:var(--paper-2);
+  font-family:var(--f-m);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+}
+#heroCanvas{display:block;width:100%;height:352px}
+.plate-foot{
+  display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line-2);
+}
+.pf{padding:11px 13px 13px;border-right:1px solid var(--line-2)}
+.pf:last-child{border-right:0}
+.pf dt{font-family:var(--f-m);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.pf dd{margin:0;font-family:var(--f-m);font-size:17px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--ink);line-height:1}
+.pf dd small{font-size:10.5px;color:var(--muted);font-weight:400;margin-left:2px}
+
+/* ---------- marquee band ---------- */
+.band{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--paper-2);margin-top:76px}
+.band-in{display:flex;flex-wrap:wrap;gap:0;max-width:1240px;margin:0 auto}
+.bcell{flex:1 1 240px;padding:24px 28px;border-right:1px solid var(--line)}
+.bcell:last-child{border-right:0}
+.bcell b{display:block;font-family:var(--f-d);font-size:26px;font-weight:800;letter-spacing:-.03em;line-height:1;margin-bottom:7px}
+.bcell span{font-size:13.5px;color:var(--muted);line-height:1.4;display:block}
+
+/* ---------- scroll sequence ---------- */
+.seq{position:relative}
+.seq-track{position:relative;height:380vh}
+.seq-sticky{position:sticky;top:60px;height:calc(100vh - 60px);min-height:560px;display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);align-items:center;gap:40px;max-width:1240px;margin:0 auto;padding:0 32px}
+.seq-copy{position:relative}
+.seq-step{
+  position:absolute;top:50%;transform:translateY(-50%);left:0;right:0;
+  opacity:0;visibility:hidden;transition:opacity .34s ease,visibility 0s linear .34s;pointer-events:none;
+}
+.seq-step.on{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .34s ease,visibility 0s}
+.seq-step .num{font-family:var(--f-m);font-size:10.5px;letter-spacing:.18em;color:var(--blue);text-transform:uppercase;margin-bottom:11px;display:block}
+.seq-step h3{font-size:clamp(23px,2.7vw,31px);letter-spacing:-.025em;margin-bottom:10px}
+.seq-step p{font-size:16.5px;max-width:40ch;margin-bottom:0}
+.seq-step .cite{font-family:var(--f-m);font-size:11.5px;color:var(--muted);margin-top:13px;display:block;line-height:1.6}
+.seq-canvas-hold{position:relative;border:1px solid var(--line);background:var(--card);border-radius:2px;overflow:hidden;height:min(70vh,600px)}
+#seqCanvas{display:block;width:100%;height:100%}
+.seq-hud{
+  position:absolute;left:0;right:0;bottom:0;display:flex;gap:0;
+  border-top:1px solid var(--line-2);background:color-mix(in srgb,var(--card) 92%,transparent);
+}
+.hcell{flex:1;padding:9px 12px 11px;border-right:1px solid var(--line-2)}
+.hcell:last-child{border-right:0}
+.hcell dt{font-family:var(--f-m);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.hcell dd{margin:0;font-family:var(--f-m);font-size:14.5px;font-variant-numeric:tabular-nums;color:var(--ink);line-height:1}
+.seq-badge{
+  position:absolute;top:11px;left:12px;font-family:var(--f-m);font-size:10px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--muted);
+}
+.seq-flag{
+  position:absolute;top:11px;right:12px;font-family:var(--f-m);font-size:10px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--flag);background:var(--flag-soft);border:1px solid var(--flag);
+  padding:3px 8px;border-radius:2px;opacity:0;transition:opacity .4s ease;
+}
+.seq-flag.on{opacity:1}
+
+/* ---------- generic section ---------- */
+section.pad{padding:100px 0}
+.head-2{max-width:62ch;margin-bottom:44px}
+
+/* ---------- traceability ---------- */
+.trace{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.92fr);gap:0;border:1px solid var(--line);border-radius:2px;background:var(--card);overflow:hidden}
+.trace-list{border-right:1px solid var(--line)}
+.tl-head,.tp-head{
+  padding:9px 16px;border-bottom:1px solid var(--line-2);background:var(--paper-2);
+  font-family:var(--f-m);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+  display:flex;justify-content:space-between;gap:10px;
+}
+.tl-row{
+  display:flex;justify-content:space-between;align-items:baseline;gap:14px;width:100%;
+  padding:12px 16px;border:0;border-bottom:1px solid var(--line-2);background:transparent;
+  font-family:var(--f-b);font-size:15px;color:var(--ink);text-align:left;cursor:pointer;
+}
+.tl-row:last-child{border-bottom:0}
+.tl-row:hover{background:var(--paper-2)}
+.tl-row[aria-selected="true"]{background:var(--blue-soft);box-shadow:inset 3px 0 0 var(--blue)}
+.tl-row b{font-family:var(--f-m);font-size:14px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ink)}
+.tl-row span.lbl{color:var(--ink-2)}
+.tl-row[aria-selected="true"] span.lbl{color:var(--ink);font-weight:500}
+.trace-panel{padding:0;display:flex;flex-direction:column}
+.tp-body{padding:22px 22px 24px;flex:1}
+.tp-art{font-family:var(--f-m);font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--blue);margin-bottom:12px}
+.tp-body h4{font-family:var(--f-d);font-weight:700;font-size:19px;letter-spacing:-.016em;margin:0 0 10px}
+.tp-body p{font-size:15px;margin-bottom:13px}
+.tp-quote{
+  font-family:var(--f-m);font-size:12.5px;line-height:1.62;color:var(--ink);
+  background:var(--paper-2);border-left:2px solid var(--blue);padding:11px 13px;margin:0 0 13px;
+}
+.tp-meta{font-family:var(--f-m);font-size:11px;color:var(--muted);line-height:1.7;white-space:pre-line}
+
+/* ---------- comparator ---------- */
+.tscroll{overflow-x:auto;border:1px solid var(--line);border-radius:2px;background:var(--card)}
+table{border-collapse:collapse;width:100%;min-width:680px;font-size:14.5px}
+th,td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--line-2);vertical-align:top}
+thead th{
+  font-family:var(--f-m);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+  font-weight:500;background:var(--paper-2);border-bottom:1px solid var(--line);
+}
+tbody tr:last-child td{border-bottom:0}
+td.k{font-family:var(--f-m);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+td.n{font-family:var(--f-m);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.win{color:var(--ok);font-weight:600}
+.warn{color:var(--flag);font-weight:600}
+caption{caption-side:bottom;text-align:left;padding:11px 16px;font-size:12.5px;color:var(--muted);border-top:1px solid var(--line-2);line-height:1.5}
+
+/* ---------- workflow cards ---------- */
+.wf{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:2px}
+.wf > div{background:var(--card);padding:24px 22px 26px}
+.wf .k{font-family:var(--f-m);font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--blue);margin-bottom:13px}
+.wf p{font-size:14.5px;margin-bottom:0}
+
+/* ---------- scope / not ---------- */
+.scope{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:34px}
+.scope ul{list-style:none;padding:0;margin:0}
+.scope li{padding:10px 0 10px 26px;border-bottom:1px solid var(--line-2);font-size:15px;color:var(--ink-2);position:relative;line-height:1.45}
+.scope li:before{position:absolute;left:0;top:10px;font-family:var(--f-m);font-size:13px}
+.scope .yes li:before{content:"✓";color:var(--ok)}
+.scope .no li:before{content:"—";color:var(--muted)}
+.scope h3{margin-bottom:4px}
+.scope .sub{font-family:var(--f-m);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+
+/* ---------- pricing ---------- */
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:2px}
+.plan{background:var(--card);padding:26px 22px 28px;display:flex;flex-direction:column}
+.plan.hi{background:var(--blue-soft)}
+.plan .pn{font-family:var(--f-m);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+.plan.hi .pn{color:var(--blue)}
+.plan .pp{font-family:var(--f-d);font-weight:800;font-size:31px;letter-spacing:-.035em;line-height:1;margin-bottom:4px;font-variant-numeric:tabular-nums}
+.plan .pu{font-family:var(--f-m);font-size:11.5px;color:var(--muted);margin-bottom:16px;display:block}
+.plan .pd{font-size:14px;color:var(--ink-2);margin-bottom:16px;line-height:1.45}
+.plan ul{list-style:none;padding:0;margin:0 0 20px;flex:1}
+.plan li{font-size:13.5px;color:var(--ink-2);padding:5px 0 5px 18px;position:relative;line-height:1.4}
+.plan li:before{content:"·";position:absolute;left:4px;color:var(--blue);font-weight:700}
+.anchor-note{
+  margin-top:18px;font-family:var(--f-m);font-size:11.5px;line-height:1.75;color:var(--muted);
+  border-left:2px solid var(--line);padding-left:14px;max-width:74ch;
+}
+
+/* ---------- sources ---------- */
+.src{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:26px}
+.src div{border-top:2px solid var(--ink);padding-top:12px}
+.src h4{font-family:var(--f-d);font-weight:700;font-size:15.5px;margin:0 0 6px;letter-spacing:-.012em}
+.src p{font-size:13.5px;margin-bottom:8px}
+.src .u{font-family:var(--f-m);font-size:11px;color:var(--blue);word-break:break-word}
+.legal{
+  margin-top:44px;border:1px solid var(--line);background:var(--card);border-radius:2px;
+  padding:20px 22px;font-size:13.5px;line-height:1.6;color:var(--ink-2);
+}
+.legal b{color:var(--ink)}
+
+footer{border-top:1px solid var(--line);margin-top:0;padding:26px 0 46px}
+.fin{display:flex;flex-wrap:wrap;gap:20px;align-items:center;font-family:var(--f-m);font-size:11.5px;color:var(--muted)}
+.fin a{color:var(--muted);text-decoration:none}
+.fin a:hover{color:var(--blue)}
+.fin .sp{margin-left:auto}
+
+@media (max-width:960px){
+  .hero-grid{grid-template-columns:1fr;gap:38px}
+  .seq-sticky{grid-template-columns:1fr;gap:20px;height:auto;min-height:0;padding-top:22px;padding-bottom:22px;top:60px}
+  .seq-track{height:auto}
+  .seq-step{position:relative;top:auto;transform:none;opacity:1;margin-bottom:0}
+  .seq-step:not(.on){display:none}
+  .seq-canvas-hold{height:min(52vh,420px)}
+  .trace{grid-template-columns:1fr}
+  .trace-list{border-right:0;border-bottom:1px solid var(--line)}
+}
+@media (max-width:640px){
+  .wrap,.nav-in,.seq-sticky{padding-left:18px;padding-right:18px}
+  .plate-foot{grid-template-columns:repeat(2,1fr)}
+  .pf:nth-child(2){border-right:0}
+  .pf:nth-child(1),.pf:nth-child(2){border-bottom:1px solid var(--line-2)}
+  .nav-in a.nl{display:none}
+  section.pad{padding:66px 0}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *{transition-duration:.01ms!important;animation-duration:.01ms!important}
+}
+</style>
+
+<div id="prog"></div>
+
+<nav>
+  <div class="nav-in">
+    <div class="mark">ainmo</div>
+    <a class="nl" href="#secuencia">Cómo funciona</a>
+    <a class="nl" href="#trazabilidad">Trazabilidad</a>
+    <a class="nl" href="#comparador">Comparador</a>
+    <a class="btn" href="/app">Abrir herramienta</a>
+    <a class="btn btn-p" href="/app">Empezar</a>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <span class="tag"><i></i>Decreto Distrital 555 de 2021</span>
+        <h1>Dos semanas de estudio de norma. Una tarde.</h1>
+        <p class="lead">Para quien firma el informe: abogados urbanistas, arquitectos y consultores que responden <em>«¿qué se puede construir aquí?»</em> por encargo. Cada cifra sale de las capas oficiales de la SDP y llega citada a su artículo.</p>
+        <form class="hsearch" id="heroSearch" action="/app" method="get" role="search">
+          <label class="sr" for="q">Dirección, CHIP o matrícula del predio</label>
+          <input id="q" name="q" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Dirección, CHIP o matrícula — ej. Calle 90 # 11-73">
+          <button type="submit">Consultar</button>
+        </form>
+        <p class="hint" id="normHint">Acepta CL · KR · AK · AC · TV · DG, con o sin <span class="m">#</span>, <span class="m">No.</span> o <span class="m">Nº</span>.</p>
+        <div class="cta-row">
+          <a class="btn" href="/app">Abrir el mapa</a>
+          <a class="btn" href="#secuencia">Ver un informe completo</a>
+        </div>
+        <p class="hero-src">Fuentes · SDP Capas 15, 21 y 22 (ArcGIS Feature Services) · Catastro Distrital · Decreto 555/2021, Anexos 3 y 5</p>
+      </div>
+
+      <div class="plate">
+        <div class="plate-bar">
+          <span>Predio · Cll. 72 # 7-55 · Chapinero</span>
+          <span class="m">Consolidación T3</span>
+        </div>
+        <canvas id="heroCanvas" aria-label="Trama catastral de Chapinero con el predio de ejemplo resaltado"></canvas>
+        <dl class="plate-foot">
+          <div class="pf"><dt>Área del lote</dt><dd>480<small>m²</small></dd></div>
+          <div class="pf"><dt>Índice constr.</dt><dd>4.5</dd></div>
+          <div class="pf"><dt>Ocupación</dt><dd>0.60</dd></div>
+          <div class="pf"><dt>Pisos</dt><dd>5<small>máx</small></dd></div>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <div class="band">
+    <div class="band-in">
+      <div class="bcell"><b>5</b><span>tratamientos del POT cubiertos, del Desarrollo a la Conservación</span></div>
+      <div class="bcell"><b>~12 s</b><span>de la dirección al informe, contra dos semanas de estudio manual</span></div>
+      <div class="bcell"><b>1:1</b><span>cada indicador citado a un artículo del decreto, sin excepción</span></div>
+      <div class="bcell"><b>Marca blanca</b><span>el PDF sale con el membrete de su firma, no con el nuestro</span></div>
+    </div>
+  </div>
+</header>
+
+<!-- ============ SCROLL SEQUENCE ============ -->
+<section class="seq" id="secuencia">
+  <div class="seq-track" id="seqTrack">
+    <div class="seq-sticky">
+      <div class="seq-copy" id="seqCopy">
+        <div class="seq-step on" data-step="0">
+          <span class="num">01 · Catastro</span>
+          <h3>Empieza en la manzana, no en un formulario</h3>
+          <p>Escriba la dirección, el CHIP o haga clic en el mapa. El sistema resuelve el predio contra la cartografía catastral vigente y trae su área, su tratamiento y su UPZ.</p>
+          <span class="cite">Catastro Distrital · UAECD<br>Nomenclatura normalizada (CL/KR/AK/TV/DG)</span>
+        </div>
+        <div class="seq-step" data-step="1">
+          <span class="num">02 · Norma</span>
+          <h3>El predio, aislado y con su norma encima</h3>
+          <p>Tratamiento, índice de construcción, índice de ocupación, altura, aislamientos y antejardín — leídos de las capas de la SDP en el momento de la consulta, no de una copia local desactualizada.</p>
+          <span class="cite">SDP Capa 15 · tratamientos y usos<br>SDP Capa 21 · rangos de edificabilidad</span>
+        </div>
+        <div class="seq-step" data-step="2">
+          <span class="num">03 · Volumen</span>
+          <h3>La envolvente se resuelve, no se estima</h3>
+          <p>La huella máxima sale del IO, y el volumen crece piso por piso aplicando aislamientos y retrocesos del Anexo 5 hasta que una norma lo detiene. Se ve exactamente cuál.</p>
+          <span class="cite">Anexo 5 · aislamientos por altura efectiva<br>Art. 310 · Decreto 555/2021</span>
+        </div>
+        <div class="seq-step" data-step="3">
+          <span class="num">04 · Restricción dominante</span>
+          <h3>Y aquí es donde el informe vale lo que cobra</h3>
+          <p>El IC permite 2.160 m². Pero con IO 0.60 y cinco pisos solo se alcanzan 1.440 m². <strong>La altura manda, no el índice.</strong> Ese matiz es la diferencia entre una oferta sensata y una sobreoferta del 50 %.</p>
+          <span class="cite">Aprovechamiento real 66,7 % del IC permitido<br>Restricción dominante: altura máxima</span>
+        </div>
+      </div>
+
+      <div class="seq-canvas-hold">
+        <span class="seq-badge m" id="seqBadge">Chapinero · UPZ 97</span>
+        <span class="seq-flag m" id="seqFlag">Restricción: altura</span>
+        <canvas id="seqCanvas" aria-label="Secuencia: la trama catastral se acerca a un predio y la envolvente normativa se levanta piso por piso"></canvas>
+        <dl class="seq-hud">
+          <div class="hcell"><dt>Huella máx</dt><dd id="hFoot">—</dd></div>
+          <div class="hcell"><dt>Pisos</dt><dd id="hFloors">0</dd></div>
+          <div class="hcell"><dt>Área construible</dt><dd id="hArea">0 m²</dd></div>
+          <div class="hcell"><dt>Altura</dt><dd id="hHeight">0.0 m</dd></div>
+        </dl>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============ TRACEABILITY ============ -->
+<section class="pad" id="trazabilidad">
+  <div class="wrap">
+    <div class="head-2">
+      <p class="eyebrow">Trazabilidad</p>
+      <h2>Usted no vende el número. Vende poder defenderlo.</h2>
+      <p class="big-p">Ningún profesional firma una cifra que no puede sustentar. Cada línea del informe abre su fuente: el artículo, el texto y la capa GIS de la que salió, con la fecha de consulta. Haga clic en cualquier renglón.</p>
+    </div>
+
+    <div class="trace">
+      <div class="trace-list" role="tablist" aria-label="Renglones del informe">
+        <div class="tl-head"><span>Informe · Cll. 72 # 7-55</span><span>Valor</span></div>
+        <button class="tl-row" role="tab" aria-selected="true" data-t="0"><span class="lbl">Tratamiento urbanístico</span><b>Consolidación T3</b></button>
+        <button class="tl-row" role="tab" aria-selected="false" data-t="1"><span class="lbl">Índice de construcción</span><b>4.5</b></button>
+        <button class="tl-row" role="tab" aria-selected="false" data-t="2"><span class="lbl">Índice de ocupación</span><b>0.60</b></button>
+        <button class="tl-row" role="tab" aria-selected="false" data-t="3"><span class="lbl">Aislamiento posterior</span><b>3.00 m</b></button>
+        <button class="tl-row" role="tab" aria-selected="false" data-t="4"><span class="lbl">Antejardín</span><b>Sin dato</b></button>
+        <button class="tl-row" role="tab" aria-selected="false" data-t="5"><span class="lbl">Estacionamientos mínimos</span><b>12 veh · 4 moto</b></button>
+        <button class="tl-row" role="tab" aria-selected="false" data-t="6"><span class="lbl">Restricción dominante</span><b>Altura</b></button>
+      </div>
+      <div class="trace-panel">
+        <div class="tp-head"><span>Sustento normativo</span><span class="m" id="tpDate">Consultado 02.09.2026</span></div>
+        <div class="tp-body">
+          <div class="tp-art m" id="tpArt">Art. 310 · Decreto 555/2021</div>
+          <h4 id="tpTitle">Tratamiento de Consolidación</h4>
+          <p class="tp-quote m" id="tpQuote">—</p>
+          <p id="tpText">—</p>
+          <p class="tp-meta m" id="tpMeta">—</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============ COMPARATOR ============ -->
+<section class="pad" id="comparador">
+  <div class="wrap">
+    <div class="head-2">
+      <p class="eyebrow">Comparador</p>
+      <h2>Su cliente no tiene un predio. Tiene tres y una decisión.</h2>
+      <p class="big-p">Ponga hasta seis predios en una sola tabla y expórtela con su membrete. La fila que importa no es el área construible — es dónde se rompe cada opción.</p>
+    </div>
+
+    <div class="tscroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Indicador</th>
+            <th>Cll. 72 # 7-55</th>
+            <th>Cll. 90 # 11-73</th>
+            <th>Cra. 13 # 45-20</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="k">Tratamiento</td><td>Consolidación T3</td><td>Consolidación T2</td><td>Renovación · Reactivación</td></tr>
+          <tr><td class="k">Área del lote</td><td class="n">480 m²</td><td class="n">1.240 m²</td><td class="n">3.888 m²</td></tr>
+          <tr><td class="k">Índice aplicable</td><td class="n">IC 4.5</td><td class="n">IC 3.0</td><td class="n">ICe 5.0 – 7.0</td></tr>
+          <tr><td class="k">Área construible</td><td class="n">1.440 m²</td><td class="n">3.720 m²</td><td class="n win">19.442 m²</td></tr>
+          <tr><td class="k">Restricción dominante</td><td class="n warn">Altura</td><td class="n">Índice (IC)</td><td class="n">Índice efectivo (ICe)</td></tr>
+          <tr><td class="k">Aprovechamiento del índice</td><td class="n warn">66,7 %</td><td class="n win">100 %</td><td class="n">100 %</td></tr>
+          <tr><td class="k">Antejardín</td><td class="n warn">Sin dato · Capa 22</td><td class="n">5,00 m</td><td class="n">No exigido · Art. 307</td></tr>
+          <tr><td class="k">Englobe posible</td><td class="n">No</td><td class="n">No</td><td class="n win">Sí · ICe 5.0 → 7.0</td></tr>
+          <tr><td class="k">Alertas abiertas</td><td class="n warn">1</td><td class="n win">0</td><td class="n warn">2</td></tr>
+        </tbody>
+        <caption>Ejemplo ilustrativo con datos de demostración. Un predio con 66,7 % de aprovechamiento y una alerta abierta no es comparable con uno que agota su índice — y esa es exactamente la fila que su cliente necesita ver antes de ofertar.</caption>
+      </table>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============ FIRM WORKFLOW ============ -->
+<section class="pad">
+  <div class="wrap">
+    <div class="head-2">
+      <p class="eyebrow">Para firmas</p>
+      <h2>Organizado como trabaja un despacho: por cliente y por encargo.</h2>
+      <p class="big-p">No es un buscador con historial. Los predios viven dentro de expedientes, los expedientes pertenecen a un cliente, y todo lo que pasa queda registrado con autor y fecha.</p>
+    </div>
+
+    <div class="wf">
+      <div>
+        <div class="k">Expedientes</div>
+        <h3>Un encargo, varios predios</h3>
+        <p>Agrupe los predios de un mismo cliente, escriba notas por lote y deje el estado a la vista: en estudio, con alertas, cerrado. Lo que el equipo necesita saber sin preguntar.</p>
+      </div>
+      <div>
+        <div class="k">Enlace de entrega</div>
+        <h3>El informe se comparte, no se adjunta</h3>
+        <p>Un enlace con caducidad y registro de apertura, en vez de un PDF que circula por correo sin control. Si la norma cambia, el enlace avisa que el informe quedó desactualizado.</p>
+      </div>
+      <div>
+        <div class="k">Observaciones</div>
+        <h3>La discusión, sobre el informe</h3>
+        <p>Comentarios anclados al renglón exacto — no un chat aparte. El cliente pregunta sobre el aislamiento posterior y la pregunta queda pegada a esa línea, con su artículo al lado.</p>
+      </div>
+      <div>
+        <div class="k">Membrete</div>
+        <h3>Sale con su firma</h3>
+        <p>Logo, colores y pie de página de su despacho. Su cliente recibe un documento suyo; nosotros no aparecemos en la portada.</p>
+      </div>
+      <div>
+        <div class="k">Bitácora</div>
+        <h3>Quién consultó qué, y cuándo</h3>
+        <p>Cada informe guarda la versión de la norma y la fecha de consulta de cada capa. Si el POT cambia, el informe anterior sigue siendo reproducible tal como se emitió.</p>
+      </div>
+      <div>
+        <div class="k">Acceso</div>
+        <h3>Entrar sin fricción</h3>
+        <p>Correo con enlace de acceso o Google. Sin contraseñas que administrar, con roles por firma y facturación única. La consulta pública no exige cuenta.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============ SCOPE ============ -->
+<section class="pad">
+  <div class="wrap">
+    <div class="head-2">
+      <p class="eyebrow">Alcance</p>
+      <h2>Lo que esto responde, y lo que sigue siendo su trabajo.</h2>
+      <p class="big-p">Si va a poner su nombre en un documento, necesita saber dónde termina la herramienta. Preferimos decirlo en la página de inicio y no en una nota al pie.</p>
+    </div>
+
+    <div class="scope">
+      <div>
+        <h3>Lo resuelve la herramienta</h3>
+        <div class="sub">Automático · con cita normativa</div>
+        <ul class="yes">
+          <li>Tratamiento urbanístico y área de actividad del predio</li>
+          <li>Índices, altura, aislamientos, retrocesos y antejardín</li>
+          <li>Envolvente máxima resuelta y restricción dominante</li>
+          <li>Estacionamientos mínimos y máximos según el Art. 389</li>
+          <li>Prefactibilidad financiera y valor residual del suelo</li>
+          <li>Comparación entre predios y detección de englobe</li>
+          <li>Informe con trazabilidad artículo por artículo</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Sigue siendo suyo</h3>
+        <div class="sub">Criterio profesional · no automatizable</div>
+        <ul class="no">
+          <li>El concepto de norma urbanística oficial, que expide la SDP</li>
+          <li>El estudio de títulos y la cadena de tradición del predio</li>
+          <li>Gravámenes, embargos, sucesiones y limitaciones al dominio</li>
+          <li>La licencia de construcción, que expide un curador urbano</li>
+          <li>La interpretación de casos atípicos, empates y predios en litigio</li>
+          <li>La decisión de inversión y la responsabilidad del concepto</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============ SOURCES ============ -->
+<section class="pad">
+  <div class="wrap">
+    <div class="head-2">
+      <p class="eyebrow">Fuentes</p>
+      <h2>De dónde sale cada dato.</h2>
+    </div>
+    <div class="src">
+      <div>
+        <h4>Decreto Distrital 555 de 2021</h4>
+        <p>POT vigente de Bogotá. Índices, alturas, aislamientos, retrocesos y estacionamientos para los cinco tratamientos. Anexo 5 para volumetría, Anexo 3 para Desarrollo.</p>
+        <div class="u">Alcaldía Mayor de Bogotá · Registro Distrital</div>
+      </div>
+      <div>
+        <h4>Secretaría Distrital de Planeación</h4>
+        <p>Capas GIS consultadas en el momento: Capa 15 (tratamientos y usos), Capa 21 (rangos de edificabilidad) y Capa 22 (antejardines, mapa CU-5.5).</p>
+        <div class="u">serviciosgis.sdp.gov.co · ArcGIS Feature Services</div>
+      </div>
+      <div>
+        <h4>Catastro Distrital</h4>
+        <p>Geometría, área y CHIP del predio. Base del Área Neta Urbanizable en Desarrollo y referencia de área en los demás tratamientos.</p>
+        <div class="u">uaecd.gov.co · UAECD</div>
+      </div>
+      <div>
+        <h4>Referencias de mercado</h4>
+        <p>Precios de venta y costos de construcción por localidad para la prefactibilidad. Estimaciones de referencia, configurables por el usuario.</p>
+        <div class="u">Coordenada Urbana · Camacol · Galería Inmobiliaria</div>
+      </div>
+    </div>
+
+    <div class="legal">
+      <b>Aviso legal.</b> Esta herramienta es un auxiliar de consulta y prefactibilidad urbanística. Sus resultados <b>no constituyen concepto de norma urbanística, licencia de construcción ni documento oficial</b>, y no sustituyen el criterio del profesional que suscribe el informe. Para actos de habilitación urbana o licencias, acuda a un curador urbano o a la Secretaría Distrital de Planeación. Las tablas provienen del Decreto Distrital 555 de 2021; en caso de contradicción prevalece el texto oficial. Los precios de mercado son estimaciones de referencia y no garantizan rentabilidad. Los datos mostrados en esta página son ilustrativos.
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="fin">
+      <span>Ainmo · Bogotá, Colombia</span>
+      <a href="#secuencia">Cómo funciona</a>
+      <a href="#trazabilidad">Trazabilidad</a>
+      <a href="#">Contacto</a>
+      <span class="sp">© 2026</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/static/nomenclatura.js"></script>
+<script>
+(function(){
+  "use strict";
+  var RM = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function clamp(v,a,b){return v<a?a:v>b?b:v;}
+  function lerp(a,b,t){return a+(b-a)*t;}
+  function ease(t){return t<.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;}
+  function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+
+  /* ---------- progress hairline ---------- */
+  var prog = document.getElementById("prog");
+  function updProg(){
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    prog.style.width = (h>0 ? (window.scrollY/h)*100 : 0) + "%";
+  }
+
+  /* ---------- cadastral fabric generator ---------- */
+  // Plan coords in metres. Target lot at origin: 20 (x) x 24 (y) = 480 m².
+  var LOT = {x0:0, y0:0, x1:20, y1:24};
+  var lots = [];
+  (function build(){
+    var seed = 20260902;
+    function rnd(){ seed = (seed*1664525 + 1013904223) % 4294967296; return seed/4294967296; }
+    // Manzanas: 3 columns x 3 rows, each manzana holds a strip of lots.
+    for(var mi=-1; mi<=1; mi++){
+      for(var mj=-1; mj<=1; mj++){
+        var ox = mi*(20*4 + 16);   // manzana width + street
+        var oy = mj*(24*2 + 14);   // manzana depth + street
+        for(var i=0;i<4;i++){
+          for(var j=0;j<2;j++){
+            var w = 20, d = 24;
+            var x0 = ox + i*w, y0 = oy + j*d;
+            var isTarget = (mi===0 && mj===0 && i===0 && j===0);
+            if(isTarget) continue;
+            lots.push({
+              x0:x0, y0:y0, x1:x0+w-1.2, y1:y0+d-1.2,
+              h: 3 + Math.floor(rnd()*5)*3,
+              tone: .55 + rnd()*.35
+            });
+          }
+        }
+      }
+    }
+  })();
+
+  /* ---------- isometric renderer ---------- */
+  function makeRenderer(canvas){
+    var ctx = canvas.getContext("2d");
+    var W=0,H=0,DPR=1;
+    function resize(){
+      DPR = Math.min(window.devicePixelRatio||1, 2);
+      var r = canvas.getBoundingClientRect();
+      W = Math.max(1, Math.round(r.width)); H = Math.max(1, Math.round(r.height));
+      canvas.width = W*DPR; canvas.height = H*DPR;
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+    }
+    function iso(x,y,z,cam){
+      return [ cam.cx + (x-y)*0.8660*cam.s,
+               cam.cy + ((x+y)*0.5 - z)*cam.s ];
+    }
+    function quad(pts,fill,stroke,lw){
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0],pts[0][1]);
+      for(var i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]);
+      ctx.closePath();
+      if(fill){ ctx.fillStyle=fill; ctx.fill(); }
+      if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=lw||1; ctx.stroke(); }
+    }
+    function box(L,h,cam,cTop,cLeft,cRight,cStroke,lw){
+      var a=iso(L.x0,L.y0,h,cam), b=iso(L.x1,L.y0,h,cam),
+          c=iso(L.x1,L.y1,h,cam), d=iso(L.x0,L.y1,h,cam);
+      if(h>0.01){
+        var b0=iso(L.x1,L.y0,0,cam), c0=iso(L.x1,L.y1,0,cam), d0=iso(L.x0,L.y1,0,cam);
+        quad([b,c,c0,b0],cRight,cStroke,lw);   // +x face
+        quad([c,d,d0,c0],cLeft,cStroke,lw);    // +y face
+      }
+      quad([a,b,c,d],cTop,cStroke,lw);
+    }
+    return {ctx:ctx, resize:resize, iso:iso, quad:quad, box:box,
+            get W(){return W;}, get H(){return H;}};
+  }
+
+  /* ---------- HERO canvas ---------- */
+  var heroC = document.getElementById("heroCanvas");
+  if(heroC){
+    var hr = makeRenderer(heroC);
+    var mx = 0, my = 0, tmx = 0, tmy = 0;
+    heroC.parentElement.addEventListener("mousemove", function(e){
+      var r = heroC.getBoundingClientRect();
+      tmx = ((e.clientX - r.left)/r.width - .5)*2;
+      tmy = ((e.clientY - r.top)/r.height - .5)*2;
+    });
+    heroC.parentElement.addEventListener("mouseleave", function(){ tmx=0; tmy=0; });
+
+    function drawHero(){
+      var ctx = hr.ctx, W = hr.W, H = hr.H;
+      var line = css("--grid"), fill = css("--fill"), blue = css("--blue"),
+          mass = css("--mass"), mass2 = css("--mass-2"), mass3 = css("--mass-3"),
+          paper = css("--card"), muted = css("--muted");
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle = paper; ctx.fillRect(0,0,W,H);
+
+      mx = lerp(mx, tmx, .07); my = lerp(my, tmy, .07);
+      var cam = { cx: W*0.5 - mx*16, cy: H*0.40 - my*10, s: Math.min(W,H)/135 };
+
+      var all = lots.slice();
+      all.sort(function(a,b){ return (a.x0+a.y0)-(b.x0+b.y0); });
+
+      for(var i=0;i<all.length;i++){
+        var L = all[i];
+        var p = hr.iso((L.x0+L.x1)/2,(L.y0+L.y1)/2,0,cam);
+        if(p[0]<-260||p[0]>W+260||p[1]<-260||p[1]>H+260) continue;
+        hr.box(L, L.h*0.55, cam, "rgba(0,0,0,0)", "rgba(0,0,0,0)", "rgba(0,0,0,0)", line, 1);
+      }
+      // target lot: filled + outlined
+      hr.box(LOT, 0, cam, fill, null, null, blue, 1.8);
+      var tl = {x0:LOT.x0+0, y0:LOT.y0+0, x1:LOT.x0+20, y1:LOT.y0+14.4};
+      hr.box(tl, 15, cam, mass3, mass2, mass, blue, 1.2);
+
+      // leader line + label
+      var top = hr.iso(tl.x1, tl.y0, 15, cam);
+      ctx.strokeStyle = blue; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(top[0],top[1]); ctx.lineTo(top[0]+40,top[1]-38); ctx.lineTo(top[0]+112,top[1]-38); ctx.stroke();
+      ctx.fillStyle = blue;
+      ctx.font = "500 11px 'IBM Plex Mono',monospace";
+      ctx.fillText("1.440 m²", top[0]+44, top[1]-43);
+      ctx.fillStyle = muted;
+      ctx.font = "400 10px 'IBM Plex Mono',monospace";
+      ctx.fillText("5 pisos · 15,0 m", top[0]+44, top[1]-30);
+    }
+    var heroRaf = null, heroVis = true;
+    function heroLoop(){ drawHero(); heroRaf = heroVis ? requestAnimationFrame(heroLoop) : null; }
+    hr.resize(); drawHero();
+    if(!RM){
+      if("IntersectionObserver" in window){
+        new IntersectionObserver(function(es){
+          heroVis = es[0].isIntersecting;
+          if(heroVis && !heroRaf) heroLoop();
+        },{threshold:0}).observe(heroC);
+      } else { heroLoop(); }
+    }
+    window.addEventListener("resize", function(){ hr.resize(); drawHero(); });
+  }
+
+  /* ---------- SEQUENCE canvas ---------- */
+  var seqC = document.getElementById("seqCanvas"),
+      track = document.getElementById("seqTrack");
+  if(seqC && track){
+    var sr = makeRenderer(seqC);
+    var FLOORS = 5, FH = 3, FOOT = {x0:0, y0:0, x1:20, y1:14.4};
+    var steps = Array.prototype.slice.call(document.querySelectorAll(".seq-step"));
+    var elFoot = document.getElementById("hFoot"), elFl = document.getElementById("hFloors"),
+        elAr = document.getElementById("hArea"), elHt = document.getElementById("hHeight"),
+        elFlag = document.getElementById("seqFlag"), elBadge = document.getElementById("seqBadge");
+    var lastStep = -1;
+
+    function progress(){
+      var r = track.getBoundingClientRect();
+      var total = r.height - window.innerHeight;
+      if(total <= 0) return 0;
+      return clamp((-r.top)/total, 0, 1);
+    }
+
+    function drawSeq(p){
+      var ctx = sr.ctx, W = sr.W, H = sr.H;
+      var line = css("--grid"), line2 = css("--grid-2"), fill = css("--fill"),
+          blue = css("--blue"), mass = css("--mass"), mass2 = css("--mass-2"),
+          mass3 = css("--mass-3"), paper = css("--card"), muted = css("--muted"),
+          flag = css("--flag"), ink = css("--ink");
+
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle = paper; ctx.fillRect(0,0,W,H);
+
+      // camera: wide -> close
+      var zoom = ease(clamp(p/0.34, 0, 1));
+      var base = Math.min(W,H);
+      var cam = { cx: W*0.5 - 14*zoom, cy: lerp(H*0.42, H*0.50, zoom), s: lerp(base/200, base/90, zoom) };
+
+      // context fade
+      var ctxAlpha = 1 - 0.72*zoom;
+
+      var all = lots.slice();
+      all.sort(function(a,b){ return (a.x0+a.y0)-(b.x0+b.y0); });
+      ctx.globalAlpha = ctxAlpha;
+      for(var i=0;i<all.length;i++){
+        var L = all[i];
+        var q = sr.iso((L.x0+L.x1)/2,(L.y0+L.y1)/2,0,cam);
+        if(q[0]<-340||q[0]>W+340||q[1]<-340||q[1]>H+340) continue;
+        sr.box(L, L.h*0.5*(1-zoom*0.85), cam, "rgba(0,0,0,0)","rgba(0,0,0,0)","rgba(0,0,0,0)", line, 1);
+      }
+      ctx.globalAlpha = 1;
+
+      // lot outline (always)
+      sr.box(LOT, 0, cam, fill, null, null, blue, 2);
+
+      // lot dimension ticks appear in phase 1
+      var dimA = clamp((p-0.20)/0.14, 0, 1);
+      if(dimA > 0.01){
+        ctx.globalAlpha = dimA;
+        ctx.strokeStyle = line2; ctx.lineWidth = 1;
+        ctx.setLineDash([3,3]);
+        var g0 = sr.iso(LOT.x0, LOT.y1, 0, cam), g1 = sr.iso(LOT.x1, LOT.y1, 0, cam);
+        ctx.beginPath(); ctx.moveTo(g0[0],g0[1]+16); ctx.lineTo(g1[0],g1[1]+16); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = muted; ctx.font = "400 10.5px 'IBM Plex Mono',monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("20,0 m", (g0[0]+g1[0])/2, g0[1]+30);
+        ctx.textAlign = "left";
+        var lbl = sr.iso(LOT.x0, LOT.y0, 0, cam);
+        ctx.fillStyle = blue; ctx.font = "500 11px 'IBM Plex Mono',monospace";
+        ctx.fillText("480 m² · CHIP AAA0142NFXX", lbl[0]-6, lbl[1]-12);
+        ctx.globalAlpha = 1;
+      }
+
+      // massing extrusion, phase 2
+      var t = clamp((p-0.46)/0.34, 0, 1);
+      var shown = t*FLOORS;
+      var full = Math.floor(shown);
+      var frac = shown - full;
+
+      for(var f=0; f<Math.min(full, FLOORS); f++){
+        var z0 = f*FH;
+        sr.box(FOOT, z0+FH, cam, mass3, mass2, mass, blue, 1);
+        // floor slab line
+        var s0=sr.iso(FOOT.x0,FOOT.y1,z0+FH,cam), s1=sr.iso(FOOT.x1,FOOT.y1,z0+FH,cam);
+        ctx.strokeStyle = blue; ctx.globalAlpha=.35; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(s0[0],s0[1]); ctx.lineTo(s1[0],s1[1]); ctx.stroke();
+        ctx.globalAlpha=1;
+      }
+      if(full < FLOORS && frac > 0.01){
+        sr.box(FOOT, full*FH + FH*frac, cam, mass3, mass2, mass, blue, 1);
+      }
+
+      var hNow = Math.min(shown, FLOORS)*FH;
+      var areaNow = Math.min(shown, FLOORS)*288;
+
+      // IC ceiling plane + dominant-restriction annotation, phase 3
+      var capA = clamp((p-0.80)/0.13, 0, 1);
+      if(capA > 0.01){
+        ctx.globalAlpha = capA*0.85;
+        var capZ = FLOORS*FH;
+        var e = 3.4;
+        var cp = [ sr.iso(LOT.x0-e, LOT.y0-e, capZ, cam), sr.iso(LOT.x1+e, LOT.y0-e, capZ, cam),
+                   sr.iso(LOT.x1+e, LOT.y1+e, capZ, cam), sr.iso(LOT.x0-e, LOT.y1+e, capZ, cam) ];
+        ctx.setLineDash([5,4]);
+        sr.quad(cp, "rgba(162,80,28,.10)", flag, 1.4);
+        ctx.setLineDash([]);
+        var anchor = sr.iso(LOT.x1+e, LOT.y0-e, capZ, cam);
+        ctx.strokeStyle = flag; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(anchor[0],anchor[1]); ctx.lineTo(anchor[0]+26,anchor[1]-24); ctx.lineTo(anchor[0]+120,anchor[1]-24); ctx.stroke();
+        ctx.fillStyle = flag; ctx.font = "500 11px 'IBM Plex Mono',monospace";
+        ctx.fillText("tope de altura · 15,0 m", anchor[0]+30, anchor[1]-29);
+        ctx.fillStyle = muted; ctx.font = "400 10px 'IBM Plex Mono',monospace";
+        ctx.fillText("IC permite 2.160 m² · alcanzable 1.440", anchor[0]+30, anchor[1]-16);
+        ctx.globalAlpha = 1;
+      }
+
+      // HUD
+      elFl.textContent = Math.min(Math.round(shown*10)/10, FLOORS).toFixed(1).replace(".",",");
+      elAr.textContent = Math.round(areaNow).toLocaleString("es-CO") + " m²";
+      elHt.textContent = hNow.toFixed(1).replace(".",",") + " m";
+      elFoot.textContent = (p > 0.42 ? "288 m²" : "—");
+      elBadge.textContent = p < 0.30 ? "Chapinero · UPZ 97" : "Predio · Cll. 72 # 7-55";
+      if(capA > 0.5) elFlag.classList.add("on"); else elFlag.classList.remove("on");
+    }
+
+    function stepFor(p){
+      if(p < 0.19) return 0;
+      if(p < 0.44) return 1;
+      if(p < 0.79) return 2;
+      return 3;
+    }
+    function sync(){
+      var p = progress();
+      drawSeq(p);
+      var s = stepFor(p);
+      if(s !== lastStep){
+        lastStep = s;
+        for(var i=0;i<steps.length;i++) steps[i].classList.toggle("on", i===s);
+      }
+    }
+
+    sr.resize(); sync();
+    var ticking = false;
+    function onScroll(){
+      updProg();
+      if(!ticking){ ticking = true; requestAnimationFrame(function(){ sync(); ticking = false; }); }
+    }
+    window.addEventListener("scroll", onScroll, {passive:true});
+    window.addEventListener("resize", function(){ sr.resize(); sync(); });
+  }
+  updProg();
+
+  /* ---------- traceability panel ---------- */
+  var TRACE = [
+    { art:"Art. 310 · Decreto 555/2021", title:"Tratamiento de Consolidación",
+      quote:"Consolidación T3 — sectores urbanizados con capacidad de densificación moderada, sujetos a los índices y alturas de la tabla del artículo.",
+      text:"El tratamiento define qué tabla de edificabilidad aplica. Todo lo demás en el informe depende de este renglón, por eso encabeza el documento.",
+      meta:"Capa SDP 15 · tratamientos y usos\nGeometría: intersección del predio con el polígono de tratamiento\nConfianza: alta · el predio queda íntegramente dentro del polígono" },
+    { art:"Art. 310 · tabla de edificabilidad", title:"Índice de construcción 4.5",
+      quote:"El índice de construcción determina el área máxima edificable como múltiplo del área neta del predio.",
+      text:"480 m² × 4.5 = 2.160 m² permitidos por índice. Es un techo, no una meta: hay que verificar que la volumetría lo alcance.",
+      meta:"Capa SDP 21 · rangos de edificabilidad\nCálculo: área catastral × IC de la tabla\nConfianza: alta" },
+    { art:"Art. 310 · tabla de edificabilidad", title:"Índice de ocupación 0.60",
+      quote:"El índice de ocupación establece la fracción máxima del predio que puede cubrirse en planta.",
+      text:"480 m² × 0.60 = 288 m² de huella máxima. Con cinco pisos rinde 1.440 m², por debajo de lo que el IC permitiría.",
+      meta:"Capa SDP 21 · rangos de edificabilidad\nHuella resultante: 20,0 m × 14,4 m\nConfianza: alta" },
+    { art:"Anexo 5 · Cap. 1.2.2", title:"Aislamiento posterior 3,00 m",
+      quote:"El aislamiento posterior se determina en función de la altura efectiva de la edificación según la tabla del Anexo 5.",
+      text:"A cinco pisos corresponde un aislamiento posterior de 3,00 m. Si el proyecto sube, el aislamiento sube con él y la huella se reduce.",
+      meta:"Anexo 5 · tabla de aislamientos por altura\nDependiente de la altura: recalculado en cada escenario\nConfianza: alta" },
+    { art:"Art. 307 · mapa CU-5.5", title:"Antejardín — sin dato",
+      quote:"La exigencia de antejardín se establece según el mapa CU-5.5 y la sección vial correspondiente.",
+      text:"La Capa 22 no devuelve geometría para este frente. No lo inventamos: queda marcado como alerta abierta y se verifica contra el plano antes de firmar.",
+      meta:"Capa SDP 22 · antejardines (mapa CU-5.5)\nEstado: sin cobertura en el frente consultado\nConfianza: ninguna · requiere verificación manual" },
+    { art:"Art. 389 · Decreto 555/2021", title:"Estacionamientos 12 veh · 4 moto",
+      quote:"Los cupos mínimos de estacionamiento se calculan según el área de actividad y el número de unidades de vivienda.",
+      text:"Calculado sobre 24 unidades no VIS en área de actividad de proximidad. El área de parqueo se excluye de la base de área cubierta, así que se resuelve por iteración.",
+      meta:"Art. 389 y 390 · tablas de estacionamiento\nBase: 24 unidades · no VIS\nConfianza: media · sujeta al mix definitivo" },
+    { art:"Síntesis · Arts. 310 y Anexo 5", title:"Restricción dominante: altura",
+      quote:"—",
+      text:"El IC habilita 2.160 m² pero la combinación de IO 0.60 y cinco pisos solo alcanza 1.440 m². El aprovechamiento real es del 66,7 %. Quien ofertó sobre 2.160 m² pagó de más.",
+      meta:"Derivado · no es un dato de capa\nDiferencia: 720 m² no alcanzables\nEste renglón es el que cambia la oferta" }
+  ];
+  var rows = Array.prototype.slice.call(document.querySelectorAll(".tl-row"));
+  var tpArt = document.getElementById("tpArt"), tpTitle = document.getElementById("tpTitle"),
+      tpQuote = document.getElementById("tpQuote"), tpText = document.getElementById("tpText"),
+      tpMeta = document.getElementById("tpMeta");
+  function selectTrace(i){
+    var d = TRACE[i]; if(!d) return;
+    tpArt.textContent = d.art;
+    tpTitle.textContent = d.title;
+    tpQuote.textContent = d.quote;
+    tpQuote.style.display = d.quote === "—" ? "none" : "";
+    tpText.textContent = d.text;
+    tpMeta.textContent = d.meta;
+    for(var k=0;k<rows.length;k++) rows[k].setAttribute("aria-selected", k===i ? "true":"false");
+  }
+  rows.forEach(function(r){
+    r.addEventListener("click", function(){ selectTrace(+r.dataset.t); });
+    r.addEventListener("mouseenter", function(){ selectTrace(+r.dataset.t); });
+  });
+  selectTrace(0);
+
+  var qEl = document.getElementById("q"), hintEl = document.getElementById("normHint");
+  var HINT_DEFAULT = hintEl ? hintEl.innerHTML : "";
+  if(qEl && hintEl){
+    qEl.addEventListener("input", function(){
+      var n = window.normalizarDireccion(qEl.value);
+      var isChip = /^[A-Z0-9]{8,}$/.test(n.replace(/\s/g,""));
+      if(!qEl.value.trim()){ hintEl.innerHTML = HINT_DEFAULT; hintEl.classList.remove("norm"); return; }
+      hintEl.classList.add("norm");
+      hintEl.textContent = isChip ? ("Se consultará como CHIP · " + n)
+                                  : ("Se consultará como · " + n);
+    });
+    // Do NOT normalize qEl.value on submit: Catastro and Nominatim both handle
+    // the original text ("Calle 90 # 11-73") better than the abbreviated form
+    // ("CL 90 # 11-73") that confuses Nominatim's geocoder.
+    // The hint above already shows the normalized form for reference only.
+  }
+})();
+</script>
+
+</body>
+</html>

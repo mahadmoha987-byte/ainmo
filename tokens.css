@@ -1,0 +1,63 @@
+/* tokens.css — Edificabilidad Bogotá design system */
+@import url('https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  /* ── Ink / Paper ──────────────────────────────────────── */
+  --ink-0:   #111318;
+  --ink-1:   #252830;
+  --ink-2:   #3C404C;
+  --ink-3:   #5E6370;
+  --ink-4:   #8D929E;
+  --ink-5:   #B8BBC4;
+  --ink-6:   #D5D8DE;
+  --ink-7:   #E8EAED;
+  --ink-8:   #F2F2F0;
+  --paper:   #FAFAF8;
+  --paper-1: #F4F4F1;
+  --paper-2: #ECEAE6;
+
+  /* ── Accent — binding constraint ONLY ─────────────────── */
+  --accent:     #1B48D4;
+  --accent-dim: #C8D5F8;
+  --accent-bg:  #EDF0FC;
+
+  /* ── Semantic: Confianza ──────────────────────────────── */
+  --c-a-bg:  #E3F2E9; --c-a-fg: #145E35; --c-a-b: #5CB88A;
+  --c-m-bg:  #FEF2D8; --c-m-fg: #7A4500; --c-m-b: #D09400;
+  --c-r-bg:  #FDE8E8; --c-r-fg: #831010; --c-r-b: #C83232;
+
+  /* ── Typography ───────────────────────────────────────── */
+  --ff-ui:   'Inter Tight', system-ui, -apple-system, sans-serif;
+  --ff-mono: 'JetBrains Mono', 'Fira Mono', ui-monospace, monospace;
+
+  /* ── Type scale ───────────────────────────────────────── */
+  --ts-2xs:  9px;
+  --ts-xs:   10px;
+  --ts-sm:   11px;
+  --ts-base: 13px;
+  --ts-md:   14px;
+  --ts-lg:   15px;
+  --ts-xl:   18px;
+  --ts-2xl:  24px;
+  --ts-3xl:  32px;
+
+  /* ── Weight ───────────────────────────────────────────── */
+  --fw-4: 400; --fw-5: 500; --fw-6: 600; --fw-7: 700; --fw-8: 800;
+
+  /* ── Space ────────────────────────────────────────────── */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+
+  /* ── Rules (hairlines) ────────────────────────────────── */
+  --rule:       1px solid var(--ink-6);
+  --rule-light: 1px solid var(--ink-7);
+  --rule-mid:   1px solid var(--ink-5);
+  --rule-heavy: 2px solid var(--ink-0);
+
+  /* ── Radius (minimal — technical look) ───────────────── */
+  --r1: 2px;
+  --r2: 3px;
+
+  /* ── Layout ───────────────────────────────────────────── */
+  --col-max: 900px;
+}

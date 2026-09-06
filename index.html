@@ -1,0 +1,3710 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ainmo — POT Decreto 555/2021 Bogotá</title>
+<meta name="description" content="Ainmo — edificabilidad, índices de construcción y altura máxima para cualquier lote en Bogotá según Decreto 555/2021.">
+<meta property="og:site_name" content="Ainmo">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Ainmo — Edificabilidad Bogotá, Decreto 555/2021">
+<meta property="og:description" content="Consulta edificabilidad, índices de construcción y altura máxima para cualquier lote en Bogotá.">
+<meta name="twitter:card" content="summary">
+<!-- og-placeholder -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="/static/massing3d.js" id="massing3d-mod"></script>
+<script src="/static/nomenclatura.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&family=Syne:wght@700&display=swap');
+/* ── Design tokens ────────────────────────────────────────────── */
+:root{
+  --ink-0:#111318;--ink-1:#252830;--ink-2:#3C404C;--ink-3:#5E6370;
+  --ink-4:#8D929E;--ink-5:#B8BBC4;--ink-6:#D5D8DE;--ink-7:#E8EAED;
+  --ink-8:#F2F2F0;--paper:#FAFAF8;--paper-1:#F4F4F1;--paper-2:#ECEAE6;
+  --accent:#1B48D4;--accent-dim:#C8D5F8;--accent-bg:#EDF0FC;
+  --c-a-bg:#E3F2E9;--c-a-fg:#145E35;--c-a-b:#5CB88A;
+  --c-m-bg:#FEF2D8;--c-m-fg:#7A4500;--c-m-b:#D09400;
+  --c-r-bg:#FDE8E8;--c-r-fg:#831010;--c-r-b:#C83232;
+  --ff-ui:'Inter Tight',system-ui,-apple-system,sans-serif;
+  --ff-mono:'JetBrains Mono','Fira Mono',ui-monospace,monospace;
+  --ts-2xs:9px;--ts-xs:10px;--ts-sm:11px;--ts-base:13px;--ts-md:14px;
+  --ts-lg:15px;--ts-xl:18px;--ts-2xl:24px;--ts-3xl:32px;
+  --fw-4:400;--fw-5:500;--fw-6:600;--fw-7:700;--fw-8:800;
+  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;
+  --sp-5:20px;--sp-6:24px;--sp-8:32px;--sp-10:40px;
+  --rule:1px solid var(--ink-6);--rule-light:1px solid var(--ink-7);
+  --rule-mid:1px solid var(--ink-5);--rule-heavy:2px solid var(--ink-0);
+  --r1:2px;--r2:3px;--col-max:900px;
+}
+/* ── Reset ───────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-family:var(--ff-ui);font-size:var(--ts-base);line-height:1.5;color:var(--ink-0);background:var(--paper)}
+body{display:flex;flex-direction:column;min-height:100vh}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ── Legacy aliases (keeps existing JS inline styles working) ── */
+:root{
+  --c-bg:var(--paper-1);--c-surface:var(--paper);--c-border:var(--ink-6);
+  --c-text:var(--ink-0);--c-muted:var(--ink-3);--c-link:var(--accent);
+  --c-warn:var(--c-m-fg);--c-warn-bg:var(--c-m-bg);--c-warn-border:var(--c-m-b);
+  --c-err:var(--c-r-fg);--c-err-bg:var(--c-r-bg);--c-err-border:var(--c-r-b);
+  --c-ok:var(--c-a-fg);--c-ok-bg:var(--c-a-bg);--c-ok-border:var(--c-a-b);
+  --c-disclaimer:var(--ink-0);
+  --c-height:var(--accent);--c-height-light:var(--accent-bg);
+  --c-fp:var(--accent);--c-fp-light:var(--accent-bg);
+  --c-area:var(--accent);--c-area-light:var(--accent-bg);
+  --c-both:var(--accent);--c-both-light:var(--accent-bg);
+  --c-unk:var(--ink-2);--c-unk-light:var(--paper-2);
+  --radius:var(--r2);--shadow:none;
+}
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+main{max-width:var(--col-max);margin:0 auto;padding:var(--sp-5) var(--sp-4) 80px;width:100%}
+
+/* ── Notice bar ──────────────────────────────────────────────────────────── */
+.notice-bar{background:var(--ink-1);border-bottom:var(--rule-heavy)}
+.notice-bar summary{padding:5px var(--sp-4);cursor:pointer;list-style:none;display:flex;align-items:center;font-family:var(--ff-mono);font-size:var(--ts-xs);color:var(--ink-4);user-select:none}
+.notice-bar summary::-webkit-details-marker{display:none}
+.notice-bar summary::after{content:'▸ ver aviso';margin-left:auto;font-size:var(--ts-2xs)}
+.notice-bar[open] summary::after{content:'▾ contraer'}
+.notice-body{padding:var(--sp-3) var(--sp-4) var(--sp-4);max-width:var(--col-max);font-size:var(--ts-xs);color:var(--ink-4);line-height:1.7}
+.notice-body a{color:var(--ink-5)}
+
+/* ── Page header ──────────────────────────────────────────────────────────── */
+.page-header{background:var(--ink-0);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--ink-1)}
+.header-inner{width:100%;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:var(--sp-3)}
+.brand{display:flex;align-items:baseline;gap:var(--sp-2)}
+.brand-name{font-family:'Syne',system-ui,sans-serif;font-size:20px;font-weight:700;color:#fff;letter-spacing:-.01em;line-height:1}
+.brand-ref{font-family:var(--ff-mono);font-size:var(--ts-xs);color:var(--ink-4)}
+.header-right{display:flex;align-items:center;gap:var(--sp-2)}
+.btn-auth{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:var(--r2);color:var(--ink-6);font-size:var(--ts-sm);font-family:var(--ff-ui);padding:var(--sp-1) var(--sp-3);cursor:pointer}
+.btn-auth:hover{background:rgba(255,255,255,.18)}
+.user-chip{display:inline-flex;align-items:center;gap:var(--sp-2);font-size:var(--ts-sm);color:var(--ink-5)}
+.user-chip .chip-tier{font-size:var(--ts-2xs);font-weight:var(--fw-7);letter-spacing:.5px;text-transform:uppercase;padding:1px 6px;border-radius:var(--r1);background:rgba(255,255,255,.15);color:var(--ink-6)}
+.user-chip .chip-tier.pro{background:var(--c-m-bg);color:var(--c-m-fg)}
+.user-chip .chip-usage{font-family:var(--ff-mono);font-size:var(--ts-2xs);color:var(--ink-4)}
+
+/* ── Card / Panel ─────────────────────────────────────────────────────────── */
+.card,.panel{background:var(--paper);border:var(--rule);margin-bottom:var(--sp-4);padding:var(--sp-4)}
+.card h2{font-size:var(--ts-md);font-weight:var(--fw-6);margin-bottom:var(--sp-3)}
+.card h3{font-size:var(--ts-sm);font-weight:var(--fw-6);margin-bottom:var(--sp-2);color:var(--ink-3);text-transform:uppercase;letter-spacing:.4px}
+
+/* ── Form ─────────────────────────────────────────────────────────────────── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
+@media(max-width:520px){.form-grid{grid-template-columns:1fr}}
+.form-col-full{grid-column:1/-1}
+label{display:block;font-size:var(--ts-sm);font-weight:var(--fw-5);margin-bottom:var(--sp-1);color:var(--ink-3)}
+label .hint{font-weight:var(--fw-4);font-size:var(--ts-xs);display:block;margin-top:1px;color:var(--ink-4)}
+input[type=number],input[type=text]{width:100%;padding:7px var(--sp-3);border:var(--rule);border-radius:var(--r1);font-size:var(--ts-base);font-family:var(--ff-ui);color:var(--ink-0);background:var(--paper)}
+input[type=number]{font-family:var(--ff-mono);font-variant-numeric:tabular-nums}
+input[type=number]:focus,input[type=text]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
+.checkbox-row{display:flex;align-items:flex-start;gap:var(--sp-2)}
+.checkbox-row input[type=checkbox]{width:14px;height:14px;margin-top:2px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+.checkbox-row label{margin:0;cursor:pointer;color:var(--ink-0);font-weight:var(--fw-5);font-size:var(--ts-base)}
+.checkbox-row .hint{font-size:var(--ts-xs);color:var(--ink-4);margin-top:2px}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:var(--sp-2);padding:7px var(--sp-4);border:1px solid transparent;border-radius:var(--r1);font-size:var(--ts-base);font-family:var(--ff-ui);font-weight:var(--fw-5);cursor:pointer;white-space:nowrap}
+.btn:hover{opacity:.85}.btn:active{opacity:.7}.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{background:var(--ink-0);color:var(--paper);border-color:var(--ink-0)}
+.btn-secondary{background:var(--paper-1);color:var(--ink-1);border:var(--rule)}
+.btn-ghost{background:transparent;color:var(--ink-2);border:var(--rule)}
+.btn-sm{padding:4px var(--sp-3);font-size:var(--ts-sm)}
+
+/* ── Geocoder, states, metrics, everything else ──────────────────────────── */
+.addr-row{display:flex;gap:var(--sp-2)}.addr-row input{flex:1}.addr-row .btn{flex-shrink:0}
+
+.geo-confirm{background:var(--c-a-bg);border:1px solid var(--c-a-b);padding:var(--sp-3) var(--sp-4)}
+.geo-confirm-addr{font-weight:var(--fw-6);color:var(--c-a-fg);font-size:var(--ts-md)}
+.geo-confirm-meta{font-family:var(--ff-mono);font-size:var(--ts-xs);color:var(--ink-3);margin-top:3px}
+.geo-confirm-actions{display:flex;gap:var(--sp-2);margin-top:var(--sp-3);flex-wrap:wrap}
+.geo-error{background:var(--c-r-bg);border:1px solid var(--c-r-b);padding:var(--sp-3) var(--sp-4);color:var(--c-r-fg);font-size:var(--ts-base)}
+.geo-error .hint{color:var(--ink-3);font-size:var(--ts-sm)}
+.geo-error code{font-family:var(--ff-mono);font-size:var(--ts-xs);background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px}
+.geo-near-note{font-size:var(--ts-sm);color:var(--ink-3);margin-bottom:var(--sp-2);padding:var(--sp-2) var(--sp-3);background:var(--c-w-bg,#fffbeb);border:1px solid var(--c-w-b,#f59e0b);border-radius:3px}
+.candidate-list{display:flex;flex-direction:column;gap:var(--sp-1)}
+.candidate-item{display:flex;flex-direction:column;gap:2px;padding:var(--sp-2) var(--sp-3);border:var(--rule);cursor:pointer;background:none;width:100%;text-align:left;font-family:inherit;color:inherit;border-radius:4px;margin-bottom:4px}
+.candidate-item:hover,.candidate-item:focus{border-color:var(--accent);background:var(--accent-bg);outline:none}
+.candidate-label{font-size:var(--ts-base);font-weight:var(--fw-5)}
+.candidate-meta{grid-column:2;font-family:var(--ff-mono);font-size:var(--ts-xs);color:var(--ink-4)}
+.manual-coords-toggle{margin-top:var(--sp-3);text-align:right}
+.manual-coords-toggle button{background:none;border:none;color:var(--ink-3);font-size:var(--ts-sm);font-family:var(--ff-ui);cursor:pointer;text-decoration:underline;padding:0}
+.manual-coords-form{margin-top:var(--sp-4);padding-top:var(--sp-4);border-top:var(--rule)}
+.state-card{border:var(--rule);padding:var(--sp-6);margin-bottom:var(--sp-4)}
+.state-loading{background:var(--paper-1);color:var(--ink-3);text-align:center}
+.state-zero{background:var(--c-r-bg);border-color:var(--c-r-b)}
+.state-not-impl{background:var(--c-m-bg);border-color:var(--c-m-b)}
+.state-error{background:var(--c-r-bg);border-color:var(--c-r-b)}
+.state-card .state-icon{font-size:24px;margin-bottom:var(--sp-2)}
+.state-card h3{font-size:var(--ts-lg);font-weight:var(--fw-7);margin-bottom:var(--sp-2)}
+.state-card p{font-size:var(--ts-base);line-height:1.6;color:var(--ink-2)}
+.state-card ul{padding-left:var(--sp-5);margin-top:var(--sp-2);font-size:var(--ts-base);color:var(--ink-2)}
+.state-card ul li{margin-bottom:var(--sp-1)}
+.blocking-restrictions-list{display:flex;flex-direction:column;gap:var(--sp-3);margin-top:var(--sp-4)}
+.bri-item{border:1px solid var(--c-r-b);background:var(--c-r-bg);border-radius:6px;padding:var(--sp-3) var(--sp-4)}
+.bri-header{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-2)}
+.bri-icon{font-size:18px;line-height:1;flex-shrink:0}
+.bri-header strong{font-size:var(--ts-sm);font-weight:var(--fw-7);color:var(--ink-1)}
+.bri-desc{font-size:var(--ts-sm);line-height:1.55;color:var(--ink-2);margin-bottom:var(--sp-2)}
+.bri-cite{font-size:var(--ts-xs);color:var(--ink-4);font-family:var(--ff-mono)}
+.spinner{width:24px;height:24px;border:2px solid var(--ink-6);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto var(--sp-3)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes skel{0%{background-position:-300px 0}100%{background-position:calc(300px + 100%) 0}}
+.skeleton-line{height:14px;border-radius:4px;background:linear-gradient(90deg,var(--paper-2) 25%,var(--paper-1) 50%,var(--paper-2) 75%);background-size:300px 100%;animation:skel 1.4s ease-in-out infinite;margin-bottom:8px}
+.skeleton-line.sk-title{height:20px;width:60%}
+.skeleton-line.sk-wide{width:90%}
+.skeleton-line.sk-mid{width:70%}
+.skeleton-line.sk-short{width:40%}
+.skeleton-card{background:var(--paper);border:var(--rule);padding:var(--sp-4);margin-bottom:var(--sp-4)}
+.loading-steps{margin:var(--sp-3) 0;font-size:var(--ts-sm);display:flex;flex-direction:column;gap:6px}
+.loading-step{display:flex;align-items:center;gap:8px;color:var(--ink-4);font-family:var(--ff-mono)}
+.loading-step.ls-active{color:var(--ink-0);font-weight:var(--fw-5)}
+.loading-step::before{content:'○';font-size:10px;flex-shrink:0}
+.loading-step.ls-active::before{content:'●';color:var(--accent)}
+.profile-wrap{border:var(--rule);background:var(--paper-1);margin-bottom:var(--sp-4);padding:var(--sp-3) var(--sp-4) var(--sp-2)}
+.binding-banner{border:1px solid var(--accent);border-left:4px solid var(--accent);background:var(--accent-bg);padding:var(--sp-4) var(--sp-5);margin-bottom:var(--sp-4)}
+.bc-height,.bc-fp,.bc-area,.bc-both{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.bc-unk{background:var(--paper-2);border-color:var(--ink-4);color:var(--ink-2)}
+.binding-banner .bc-label{font-size:var(--ts-xs);font-weight:var(--fw-7);letter-spacing:.8px;text-transform:uppercase;color:var(--accent);margin-bottom:var(--sp-1)}
+.bc-unk .bc-label{color:var(--ink-3)}
+.binding-banner .bc-headline{font-size:var(--ts-xl);font-weight:var(--fw-8);color:var(--accent);margin-bottom:var(--sp-2);line-height:1.2}
+.bc-unk .bc-headline{color:var(--ink-2)}
+.binding-banner .bc-sub{font-size:var(--ts-sm);line-height:1.65;color:var(--ink-2)}
+.lot-id{background:var(--paper);border:var(--rule);border-bottom:var(--rule-heavy);display:flex;flex-wrap:wrap;gap:0;margin-bottom:var(--sp-4)}
+.lot-id .id-group{padding:var(--sp-2) var(--sp-4);border-right:var(--rule);display:flex;flex-direction:column;min-width:110px}
+.lot-id .id-group:last-child{border-right:none}
+.lot-id .id-label{font-size:var(--ts-2xs);color:var(--ink-4);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
+.lot-id .id-value{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;font-size:var(--ts-base);font-weight:var(--fw-5)}
+.metrics-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:0;margin-bottom:var(--sp-4);border-top:var(--rule);border-left:var(--rule)}
+.metric-card{background:var(--paper);border-right:var(--rule);border-bottom:var(--rule);padding:var(--sp-3) var(--sp-4);box-shadow:none}
+.metric-card .m-label{font-size:var(--ts-xs);color:var(--ink-4);text-transform:uppercase;letter-spacing:.4px;margin-bottom:var(--sp-1)}
+.metric-card .m-value{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;font-size:var(--ts-2xl);font-weight:var(--fw-7);line-height:1.1;color:var(--ink-0)}
+.metric-card .m-unit{font-size:var(--ts-sm);color:var(--ink-4);margin-top:1px}
+.metric-card .m-note{font-size:var(--ts-xs);color:var(--ink-3);margin-top:var(--sp-2);line-height:1.5}
+.metric-card .m-cond{font-size:var(--ts-xs);color:var(--accent);margin-top:var(--sp-1)}
+.metric-card.m-null{opacity:.75}.metric-card.m-null .m-value{font-size:var(--ts-md);font-weight:var(--fw-4);color:var(--ink-4)}
+.confianza-badge{display:inline-block;font-size:var(--ts-2xs);font-weight:var(--fw-6);letter-spacing:.3px;padding:1px 6px;border-radius:var(--r1);margin-top:var(--sp-1);text-transform:uppercase}
+.conf-alta{background:var(--c-a-bg);color:var(--c-a-fg);border:1px solid var(--c-a-b)}
+.conf-media{background:var(--c-m-bg);color:var(--c-m-fg);border:1px solid var(--c-m-b)}
+.conf-input{background:var(--c-r-bg);color:var(--c-r-fg);border:1px solid var(--c-r-b)}
+.section-head{font-size:var(--ts-xs);font-weight:var(--fw-7);text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);margin-bottom:var(--sp-3);padding-bottom:var(--sp-2);border-bottom:var(--rule)}
+.setback-row{display:flex;justify-content:space-between;align-items:flex-start;padding:var(--sp-3) 0;border-bottom:var(--rule-light);gap:var(--sp-4)}
+.setback-row:last-child{border-bottom:none}
+.setback-row .sb-name{font-size:var(--ts-base);font-weight:var(--fw-5);flex:1}
+.setback-row .sb-val{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;font-size:var(--ts-base);font-weight:var(--fw-6);text-align:right;min-width:70px;flex-shrink:0}
+.setback-row .sb-sub{font-size:var(--ts-xs);color:var(--ink-4);margin-top:2px}
+.art-ref{font-family:var(--ff-mono);font-size:var(--ts-2xs);color:var(--ink-4);display:block;margin-top:2px}
+.ant-card{border:var(--rule);padding:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-4);display:flex;gap:var(--sp-3);align-items:flex-start}
+.ant-ok{border-left:3px solid var(--c-a-b);background:var(--c-a-bg)}
+.ant-0{border-left:3px solid var(--c-a-b);background:var(--paper-1)}
+.ant-req{border-left:3px solid var(--c-m-b);background:var(--c-m-bg)}
+.ant-icon{font-size:var(--ts-lg);flex-shrink:0;margin-top:1px}
+.ant-text .ant-title{font-size:var(--ts-base);font-weight:var(--fw-6);margin-bottom:2px}
+.ant-text .ant-sub{font-size:var(--ts-sm);color:var(--ink-3);line-height:1.5}
+.warnings-list{margin-bottom:var(--sp-4)}
+.warn-item{background:var(--c-m-bg);border:1px solid var(--c-m-b);padding:var(--sp-2) var(--sp-3);font-size:var(--ts-sm);color:var(--c-m-fg);margin-bottom:var(--sp-2);line-height:1.5}
+.warn-item::before{content:"\26A0 "}
+.badge{display:inline-block;font-size:var(--ts-2xs);font-weight:var(--fw-6);letter-spacing:.3px;padding:1px 6px;border-radius:var(--r1);text-transform:uppercase}
+.badge-alta{background:var(--c-a-bg);color:var(--c-a-fg)}.badge-media{background:var(--c-m-bg);color:var(--c-m-fg)}
+.badge-req{background:var(--c-r-bg);color:var(--c-r-fg)}.badge-est{background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-dim)}
+details.units-panel,details.trace-block,details.lookups-panel,details.proforma-panel{background:var(--paper);border:var(--rule);margin-bottom:var(--sp-4);overflow:hidden}
+details.units-panel>summary,details.trace-block summary,details.lookups-panel>summary,details.proforma-panel>summary{padding:var(--sp-3) var(--sp-4);cursor:pointer;font-size:var(--ts-base);font-weight:var(--fw-5);user-select:none;list-style:none;display:flex;align-items:center;background:var(--paper-1);border-bottom:var(--rule);color:var(--ink-0)}
+details.units-panel>summary::-webkit-details-marker,details.trace-block summary::-webkit-details-marker,details.lookups-panel>summary::-webkit-details-marker,details.proforma-panel>summary::-webkit-details-marker{display:none}
+details.units-panel>summary:hover,details.trace-block summary:hover,details.lookups-panel>summary:hover,details.proforma-panel>summary:hover{background:var(--paper-2)}
+.units-body,.lookups-body{padding:var(--sp-4)}.trace-inner{padding:var(--sp-2) var(--sp-4) var(--sp-4)}
+details.trace-block summary::after{content:"\25B8 expandir";margin-left:auto;font-size:var(--ts-xs);color:var(--ink-4);font-weight:var(--fw-4)}
+details.trace-block[open] summary::after{content:"\25BE contraer"}
+.units-disclaimer{font-size:var(--ts-xs);color:var(--ink-4);margin:var(--sp-2) 0 var(--sp-3);line-height:1.5}
+.units-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2) var(--sp-4);margin-bottom:var(--sp-2)}
+.units-grid label{font-size:var(--ts-sm);color:var(--ink-3);display:flex;flex-direction:column;gap:3px}
+.units-grid input{width:80px;padding:4px var(--sp-2);border:var(--rule);font-size:var(--ts-base);font-family:var(--ff-mono)}
+.units-mix-head{grid-column:1/-1;font-size:var(--ts-xs);font-weight:var(--fw-6);text-transform:uppercase;letter-spacing:.4px;color:var(--ink-4);margin-top:var(--sp-2)}
+.proforma-body{padding:var(--sp-4)}
+.proforma-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-3)}
+.proforma-grid label{font-size:var(--ts-sm);color:var(--ink-3);display:flex;flex-direction:column;gap:3px}
+.proforma-grid input{padding:5px var(--sp-2);border:var(--rule);font-size:var(--ts-base);font-family:var(--ff-mono);width:100%}
+.proforma-source{font-size:var(--ts-2xs);color:var(--ink-4);margin-top:2px;line-height:1.4}
+.proforma-table{width:100%;border-collapse:collapse;font-size:var(--ts-sm);margin-top:var(--sp-3)}
+.proforma-table tr td{padding:5px var(--sp-2)}
+.proforma-table tr td:last-child{text-align:right;font-family:var(--ff-mono);font-size:var(--ts-xs)}
+.proforma-table tr.pf-section td{font-size:var(--ts-2xs);font-weight:var(--fw-6);text-transform:uppercase;letter-spacing:.4px;color:var(--ink-4);padding-top:var(--sp-3);padding-bottom:2px}
+.proforma-table tr.pf-total td{font-weight:var(--fw-7);border-top:2px solid var(--ink-4)}
+.proforma-table tr.pf-rlv td{font-weight:var(--fw-7);border-top:2px solid var(--ink-0);font-size:var(--ts-base)}
+.proforma-table tr.pf-rlv td:last-child{font-size:var(--ts-base)}
+.veredicto-banner{margin-top:var(--sp-3);padding:var(--sp-3) var(--sp-4);border-radius:var(--r1);font-size:var(--ts-sm);line-height:1.55}
+.veredicto-banner.v-sobrepago{background:var(--c-r-bg);border:1px solid var(--c-r-b);color:var(--c-r-fg)}
+.veredicto-banner.v-margen{background:var(--c-a-bg);border:1px solid var(--c-a-b);color:var(--c-a-fg)}
+.veredicto-banner.v-en_linea{background:#e8f5e9;border:1px solid #a5d6a7;color:#1b5e20}
+/* ── KPI strip — 6 key numbers immediately below verdict banner ──────────── */
+.kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);border-top:var(--rule);border-left:var(--rule);margin-bottom:var(--sp-4);overflow-x:auto}
+@media(max-width:700px){.kpi-strip{grid-template-columns:1fr 1fr}}
+.kpi-cell{padding:var(--sp-3) var(--sp-4);border-right:var(--rule);border-bottom:var(--rule);min-width:130px;overflow:hidden}
+.kpi-label{font-size:var(--ts-2xs);font-weight:var(--fw-7);text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi-value{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;font-size:var(--ts-2xl);font-weight:var(--fw-7);line-height:1;color:var(--ink-0)}
+.kpi-unit{font-size:var(--ts-xs);color:var(--ink-4);margin-top:3px}
+.kpi-null .kpi-value{font-family:var(--ff-ui);font-size:var(--ts-md);font-weight:var(--fw-4);color:var(--ink-4)}
+.kpi-reason{font-size:var(--ts-xs);color:var(--ink-4);margin-top:3px}
+.kpi-fin{background:var(--paper-1)}
+.kpi-fin .kpi-label{color:var(--ink-3)}
+.kpi-fin .kpi-value{font-size:var(--ts-xl)}
+.kpi-loading .kpi-value{color:var(--ink-6);font-size:var(--ts-xl)}
+/* Proforma color coding */
+.pf-num-green{color:var(--c-a-fg);font-weight:var(--fw-6)}
+.pf-num-red{color:var(--c-r-fg);font-weight:var(--fw-6)}
+.pf-blocked-form{background:var(--paper-2);border:var(--rule);padding:var(--sp-4)}
+.proforma-constants-head{font-size:var(--ts-2xs);font-weight:var(--fw-6);text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);margin:var(--sp-4) 0 var(--sp-2)}
+.proforma-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-3) var(--sp-3)}
+.proforma-grid-3 label{font-size:var(--ts-sm);color:var(--ink-3);display:flex;flex-direction:column;gap:3px}
+.pf-const-row{display:flex;align-items:center;gap:4px}
+.pf-const-row input{padding:5px var(--sp-2);border:var(--rule);font-size:var(--ts-base);font-family:var(--ff-mono);width:68px}
+.pf-const-unit{font-size:var(--ts-sm);color:var(--ink-3)}
+.pf-reset{font-size:10px;color:var(--c-b-fg);background:none;border:none;cursor:pointer;padding:0 2px;text-decoration:underline;line-height:1}
+.pf-reset:hover{opacity:.7}
+
+/* ── Verdict banner — top-level feasibility verdict ─────────────────────── */
+.verdict-banner{display:flex;align-items:flex-start;gap:var(--sp-4);padding:var(--sp-5);margin-bottom:var(--sp-4);border-left:5px solid}
+.verdict-banner .vb-icon{font-size:28px;line-height:1;flex-shrink:0;margin-top:1px}
+.verdict-banner .vb-headline{font-size:var(--ts-2xl);font-weight:var(--fw-8);line-height:1.2;margin-bottom:5px}
+.verdict-banner .vb-sub{font-size:var(--ts-md);line-height:1.5}
+.vb-viable{background:var(--c-a-bg);border-color:var(--c-a-fg);color:var(--c-a-fg)}
+.vb-condiciones{background:var(--c-m-bg);border-color:var(--c-m-fg);color:var(--c-m-fg)}
+.vb-bloqueado{background:var(--c-r-bg);border-color:var(--c-r-fg);color:var(--c-r-fg)}
+/* ── Normative detail collapsible ────────────────────────────────────────── */
+details.normative-detail{border:var(--rule);margin-bottom:var(--sp-4)}
+details.normative-detail>summary{display:flex;align-items:center;padding:var(--sp-3) var(--sp-4);cursor:pointer;font-size:var(--ts-base);font-weight:var(--fw-5);color:var(--ink-2);background:var(--paper-1);user-select:none;list-style:none;gap:var(--sp-2)}
+details.normative-detail>summary::-webkit-details-marker{display:none}
+details.normative-detail>summary:hover{background:var(--paper-2);color:var(--ink-0)}
+details.normative-detail>summary::before{content:"\25B8";font-size:10px;transition:transform .15s}
+details.normative-detail[open]>summary::before{content:"\25BE"}
+details.normative-detail>summary .nd-decree{margin-left:auto;font-size:var(--ts-xs);color:var(--ink-4);font-weight:var(--fw-4)}
+.normative-body{padding:var(--sp-4) 0}
+.trace-step{border-left:2px solid var(--ink-6);margin:var(--sp-3) 0;padding:var(--sp-2) var(--sp-3);background:var(--paper-1);font-size:var(--ts-sm)}
+.trace-step.step-error{border-left-color:var(--c-r-b);background:var(--c-r-bg)}
+.trace-step .ts-n{font-size:var(--ts-2xs);color:var(--ink-4);font-weight:var(--fw-7);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
+.trace-step .ts-desc{font-weight:var(--fw-5);margin-bottom:var(--sp-1)}
+.trace-step .ts-expr{font-family:var(--ff-mono);font-size:var(--ts-xs);color:var(--ink-1);background:var(--paper-2);padding:2px var(--sp-2);display:inline-block;margin-bottom:var(--sp-1)}
+.trace-step .ts-vals{font-family:var(--ff-mono);font-size:var(--ts-xs);color:var(--ink-4);white-space:pre-wrap}
+.trace-step .ts-res{font-family:var(--ff-mono);font-size:var(--ts-base);font-weight:var(--fw-6);color:var(--ink-0);margin-top:var(--sp-1)}
+.trace-step .ts-note{font-size:var(--ts-xs);color:var(--ink-4);margin-top:var(--sp-1);line-height:1.5;font-style:italic}
+.trace-step .ts-src{font-family:var(--ff-mono);font-size:var(--ts-2xs);color:var(--ink-4);margin-top:var(--sp-1)}
+.input-req-card{background:var(--c-m-bg);border:1px solid var(--c-m-b);padding:var(--sp-6);margin-bottom:var(--sp-4)}
+.input-req-card .req-icon{font-size:28px;margin-bottom:var(--sp-3)}
+.input-req-card h3{font-size:var(--ts-lg);font-weight:var(--fw-7);margin-bottom:var(--sp-2);color:var(--c-m-fg)}
+.input-req-card .req-desc{font-size:var(--ts-base);color:var(--ink-2);line-height:1.65;margin-bottom:var(--sp-4)}
+.input-req-card .req-where{font-size:var(--ts-sm);color:var(--ink-3);background:var(--paper);border:var(--rule);padding:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-4);line-height:1.6}
+.input-req-card .req-where strong{color:var(--ink-0)}
+.req-form-row{display:flex;gap:var(--sp-2);align-items:flex-end;flex-wrap:wrap}
+.req-form-row input{flex:1;max-width:220px}
+.export-row{display:flex;justify-content:flex-end;gap:var(--sp-2);margin-bottom:var(--sp-3)}
+#map-wrap{margin-bottom:var(--sp-4);border:var(--rule);overflow:hidden;cursor:crosshair;position:relative}
+#map{height:320px;width:100%;background:var(--paper-2)}
+@media(max-width:520px){#map-wrap{margin-left:calc(-1 * var(--sp-4));margin-right:calc(-1 * var(--sp-4));border-left:none;border-right:none}#map{height:260px}}
+.lot-tooltip{background:rgba(250,250,248,.96)!important;border:1px solid var(--ink-6)!important;border-radius:2px!important;padding:3px 8px!important;font-family:var(--ff-mono)!important;font-size:11px!important;color:var(--ink-0)!important;pointer-events:none!important;box-shadow:none!important}
+.lot-tooltip::before{display:none!important}
+.map-hint{position:absolute;bottom:5px;right:6px;z-index:900;background:rgba(250,250,248,.88);font-size:var(--ts-xs);color:var(--ink-4);padding:2px 6px;pointer-events:none}
+.map-pin{width:10px;height:10px;background:#C83232;border:2px solid var(--paper);border-radius:50%}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:var(--sp-4)}
+.modal-box{background:var(--paper);border:var(--rule-heavy);padding:var(--sp-8);width:100%;max-width:440px;position:relative}
+.modal-box h2{font-size:var(--ts-xl);font-weight:var(--fw-7);margin-bottom:var(--sp-2)}
+.modal-box .modal-sub{font-size:var(--ts-base);color:var(--ink-3);margin-bottom:var(--sp-6)}
+.modal-box .modal-row{display:flex;gap:var(--sp-2)}
+.modal-box input[type=email]{flex:1;padding:7px var(--sp-3);border:var(--rule);font-size:var(--ts-base);font-family:var(--ff-ui);background:var(--paper);color:var(--ink-0)}
+.modal-box .modal-note{font-size:var(--ts-xs);color:var(--ink-4);margin-top:var(--sp-3);line-height:1.5}
+.modal-close{position:absolute;top:var(--sp-4);right:var(--sp-4);background:none;border:none;font-size:var(--ts-xl);color:var(--ink-4);cursor:pointer;line-height:1;padding:var(--sp-1)}
+.toast{position:fixed;bottom:52px;left:50%;transform:translateX(-50%);background:var(--ink-0);color:var(--paper);padding:var(--sp-3) var(--sp-6);font-size:var(--ts-base);z-index:2000;animation:fadeInUp .2s ease;pointer-events:none}
+.toast.toast-ok{border-left:3px solid var(--c-a-b)}.toast.toast-err{border-left:3px solid var(--c-r-b)}
+@keyframes fadeInUp{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.lookup-item{display:flex;justify-content:space-between;align-items:flex-start;padding:var(--sp-3) 0;border-bottom:var(--rule-light);gap:var(--sp-3)}
+.lookup-item:last-child{border-bottom:none}
+.lookup-item .li-addr{font-size:var(--ts-base);font-weight:var(--fw-5)}
+.lookup-item .li-meta{font-family:var(--ff-mono);font-size:var(--ts-xs);color:var(--ink-4)}
+.lookup-item .li-actions{display:flex;gap:var(--sp-1);flex-shrink:0}
+.notes-area{width:100%;padding:var(--sp-2) var(--sp-3);border:var(--rule);font-size:var(--ts-sm);font-family:var(--ff-ui);color:var(--ink-0);background:var(--paper);resize:vertical;min-height:60px}
+.notes-area:focus{outline:none;border-color:var(--accent)}
+.notes-label{font-size:var(--ts-xs);color:var(--ink-4);margin-bottom:var(--sp-1);font-weight:var(--fw-5)}
+.footer-disclaimer{position:fixed;bottom:0;left:0;right:0;background:var(--ink-0);color:var(--ink-4);font-family:var(--ff-mono);font-size:var(--ts-xs);padding:var(--sp-2) var(--sp-4);border-top:1px solid var(--ink-1);line-height:1.4;z-index:100}
+.footer-disclaimer strong{color:var(--ink-5)}
+.hidden{display:none!important}
+hr.divider{border:none;border-top:var(--rule);margin:var(--sp-4) 0}
+.text-muted{color:var(--ink-4);font-size:var(--ts-sm)}
+.mt8{margin-top:var(--sp-2)}
+
+/* ══ Map-first layout ════════════════════════════════════════════════════════ */
+:root{--hdr-h:40px}
+body{overflow:hidden}
+.page-header{height:var(--hdr-h);flex-shrink:0}
+#app{position:fixed;top:var(--hdr-h);left:0;right:0;bottom:0;display:flex;overflow:hidden}
+#map-wrap{flex:1;position:relative;min-width:0;height:100%}
+#map{position:absolute;inset:0;z-index:0;height:100%}
+#result-col{width:60%;flex-shrink:0;overflow-y:auto;height:100%;background:var(--paper);border-left:var(--rule-heavy)}
+#app.has-result #map-wrap{flex:none;width:40%}
+
+/* ── Search panel (floats over map) ─────────────────────────────────────────*/
+.search-panel{position:absolute;top:16px;left:16px;width:296px;z-index:1000;background:var(--paper);border:var(--rule-heavy);padding:var(--sp-3);box-shadow:0 4px 20px rgba(0,0,0,.18)}
+.sp-row{display:flex;gap:var(--sp-1);margin-bottom:var(--sp-2)}
+.sp-row input[type=text]{flex:1;padding:8px var(--sp-3);border:var(--rule);font-size:var(--ts-base);font-family:var(--ff-ui);color:var(--ink-0);background:var(--paper);border-radius:0}
+.sp-row input[type=text]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
+.sp-go{padding:8px 13px;background:var(--ink-0);color:var(--paper);border:none;cursor:pointer;font-size:var(--ts-md);font-weight:var(--fw-5);flex-shrink:0;line-height:1}
+.sp-go:hover{background:var(--ink-1)}
+.sp-hint{font-size:var(--ts-xs);color:var(--ink-4);margin-bottom:var(--sp-2);line-height:1.5}
+.sp-chips{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:var(--sp-2)}
+.ejemplo-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border:1px solid var(--accent-dim);background:var(--accent-bg);color:var(--accent);font-size:var(--ts-sm);font-weight:var(--fw-6);cursor:pointer;border-radius:var(--r1);font-family:var(--ff-ui)}
+.ejemplo-chip:hover{background:var(--accent-dim);border-color:var(--accent)}
+.sp-vis{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-1)}
+.sp-vis input[type=checkbox]{width:14px;height:14px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+.sp-vis label{font-size:var(--ts-sm);color:var(--ink-2);cursor:pointer;margin:0;font-weight:var(--fw-4)}
+.sp-geo-results{margin-top:var(--sp-2)}
+.sp-manual-toggle{margin-top:var(--sp-2);text-align:right}
+.sp-manual-toggle button{background:none;border:none;color:var(--ink-4);font-size:var(--ts-xs);font-family:var(--ff-ui);cursor:pointer;text-decoration:underline;padding:0}
+.sp-manual-form{margin-top:var(--sp-2);padding-top:var(--sp-2);border-top:var(--rule-light)}
+.sp-manual-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2);margin-bottom:var(--sp-2)}
+.sp-manual-grid label{font-size:var(--ts-xs);color:var(--ink-3);margin-bottom:3px;display:block}
+.sp-manual-grid input{width:100%;padding:5px var(--sp-2);border:var(--rule);font-family:var(--ff-mono);font-size:var(--ts-sm);color:var(--ink-0);background:var(--paper)}
+
+/* ── Tratamiento legend (bottom-right of map) ───────────────────────────── */
+.trat-legend{position:absolute;bottom:30px;right:8px;z-index:500;background:rgba(250,250,248,.93);border:var(--rule);padding:var(--sp-2) var(--sp-3);max-width:170px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.trat-legend-title{font-size:var(--ts-2xs);font-weight:var(--fw-7);color:var(--ink-4);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px}
+.trat-legend-item{display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:var(--ts-xs);color:var(--ink-2);white-space:nowrap}
+.trat-swatch{width:11px;height:11px;flex-shrink:0;border-radius:1px;border:1px solid rgba(0,0,0,.1)}
+.trat-legend-notice{font-size:var(--ts-2xs);color:var(--ink-3);line-height:1.4;font-style:italic}
+.trat-legend-error{color:#c0392b}
+
+/* ── Result column ──────────────────────────────────────────────────────── */
+.result-inner{padding:var(--sp-4) var(--sp-5)}
+.back-btn{display:inline-flex;align-items:center;gap:4px;font-size:var(--ts-sm);color:var(--ink-3);cursor:pointer;background:none;border:none;font-family:var(--ff-ui);padding:0 0 var(--sp-3);text-decoration:none;line-height:1}
+.back-btn:hover{color:var(--ink-0)}
+
+/* ── Map click hint ─────────────────────────────────────────────────────── */
+.map-hint{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(17,19,24,.8);color:var(--ink-6);font-family:var(--ff-mono);font-size:var(--ts-xs);padding:3px 10px;pointer-events:none;white-space:nowrap;z-index:500;display:none}
+.has-result .map-hint{display:block}
+
+/* ── Lot tooltip ─────────────────────────────────────────────────────────── */
+.lot-tooltip{background:var(--ink-0)!important;border:none!important;color:var(--paper)!important;font-family:var(--ff-mono)!important;font-size:11px!important;line-height:1.4!important;padding:4px 8px!important;border-radius:2px!important;box-shadow:none!important}
+.lot-tooltip::before{display:none!important}
+
+/* ── Auth modal extras ───────────────────────────────────────────────────── */
+.btn-google{display:flex;align-items:center;justify-content:center;gap:var(--sp-2);width:100%;padding:9px var(--sp-4);border:var(--rule);border-radius:var(--r2);background:var(--paper);color:var(--ink-1);font-size:var(--ts-base);font-family:var(--ff-ui);font-weight:var(--fw-5);cursor:pointer;margin-bottom:var(--sp-3)}
+.btn-google:hover{background:var(--paper-1)}
+.btn-google svg{flex-shrink:0}
+.auth-divider{display:flex;align-items:center;gap:var(--sp-3);margin-bottom:var(--sp-3);color:var(--ink-4);font-size:var(--ts-xs)}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--ink-6)}
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+@media(max-width:700px){
+  body{overflow:auto}
+  #app{position:static;flex-direction:column;overflow:visible;height:auto;min-height:calc(100svh - var(--hdr-h))}
+  #map-wrap{flex:none;height:100svh;position:relative}
+  #app.has-result #map-wrap{width:100%;height:40svh}
+  #result-col{width:100%;height:auto;overflow-y:visible;border-left:none;border-top:var(--rule-heavy)}
+  .search-panel{width:calc(100vw - 32px)}
+  .trat-legend{right:8px;bottom:44px;max-width:140px}
+}
+
+/* ── Welcome card (landing state) ──────────────────────────────────────────── */
+.sp-welcome{padding:var(--sp-3) 0 var(--sp-2)}
+.sp-welcome h2{font-size:var(--ts-base);font-weight:var(--fw-6);color:var(--ink-0);margin-bottom:var(--sp-1);line-height:1.3}
+.sp-welcome p{font-size:var(--ts-xs);color:var(--ink-3);line-height:1.55}
+
+/* ── History list (landing) ─────────────────────────────────────────────────── */
+.sp-history{margin-top:var(--sp-3);padding-top:var(--sp-3);border-top:var(--rule)}
+.sp-history-title{font-size:var(--ts-2xs);font-weight:var(--fw-6);text-transform:uppercase;letter-spacing:.4px;color:var(--ink-4);margin-bottom:var(--sp-2)}
+.hist-item{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);padding:var(--sp-2) var(--sp-1);border-bottom:1px solid var(--ink-7);cursor:pointer}
+.hist-item:hover{background:var(--paper-1);border-radius:var(--r1)}
+.hist-addr{font-size:var(--ts-xs);color:var(--ink-1);font-weight:var(--fw-5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.hist-meta{font-size:var(--ts-2xs);color:var(--ink-4);font-family:var(--ff-mono)}
+
+/* ── Error state improvements ───────────────────────────────────────────────── */
+.error-actions{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-top:var(--sp-4)}
+
+/* ── Share modal ─────────────────────────────────────────────────────────────── */
+.share-link-box{background:var(--paper-1);border:var(--rule);padding:var(--sp-2) var(--sp-3);font-family:var(--ff-mono);font-size:var(--ts-xs);word-break:break-all;border-radius:var(--r1);margin:var(--sp-2) 0;user-select:all}
+.share-toggle{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--ts-sm);color:var(--ink-2);margin-bottom:var(--sp-2)}
+.share-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-2);margin-top:var(--sp-3)}
+.share-dest{display:flex;flex-direction:column;align-items:center;gap:6px;padding:var(--sp-3) var(--sp-2);border:var(--rule);border-radius:var(--r2);background:var(--paper-1);cursor:pointer;font-size:11px;line-height:1.3;color:var(--ink-2);font-family:var(--ff-ui);text-align:center;transition:background .12s,border-color .12s;min-width:0}
+.share-dest:hover{background:var(--accent-bg);border-color:var(--accent);color:var(--ink-0)}
+.share-dest:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.share-dest svg{width:26px;height:26px;display:block;flex-shrink:0}
+.sd-label{font-size:11px;color:inherit;line-height:1.2}
+.share-dest.sd-copy-ok{border-color:var(--c-ok,#22a85c);background:rgba(34,168,92,.08);color:var(--c-ok,#22a85c)}
+
+/* ── Share button in result header ─────────────────────────────────────────── */
+.share-btn{display:inline-flex;align-items:center;gap:4px;font-size:var(--ts-xs);color:var(--ink-3);background:none;border:var(--rule);border-radius:var(--r1);padding:3px 10px;cursor:pointer;font-family:var(--ff-ui)}
+.share-btn:hover{background:var(--paper-1);color:var(--ink-1)}
+
+/* ── Screen-reader only ─────────────────────────────────────────────────────── */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* ── Skip to content ────────────────────────────────────────────────────────── */
+.skip-link{position:absolute;top:-100%;left:8px;background:var(--accent);color:#fff;padding:6px 14px;z-index:9999;border-radius:0 0 4px 4px;font-size:var(--ts-sm);font-weight:var(--fw-6)}
+.skip-link:focus{top:0;outline:3px solid var(--ink-0);outline-offset:2px}
+
+/* ── Focus visible enhancement ─────────────────────────────────────────────── */
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:2px}
+button:focus-visible,a:focus-visible{border-radius:var(--r1)}
+
+/* ── Print ───────────────────────────────────────────────────────────────────── */
+@media print{
+  .page-header,.search-panel,#map-wrap,.trat-legend,.back-btn,.map-hint,
+  .modal-overlay,.error-actions,.share-btn,details#units-panel,details#proforma-panel{display:none!important}
+  #app{display:block!important;position:static!important;height:auto!important}
+  #result-col{display:block!important;width:100%!important;height:auto!important;overflow:visible!important;border:none!important}
+  .result-inner{padding:0!important}
+  details{display:block!important}
+  details>summary{display:none!important}
+  details>div,details>.trace-inner,details>.units-body,details>.lookups-body{display:block!important}
+  .print-disclaimer{display:block!important}
+  @page{margin:1.5cm}
+}
+.print-disclaimer{display:none;font-size:10px;color:#555;border-top:1px solid #ccc;margin-top:24px;padding-top:8px;line-height:1.5}
+
+/* ── 3D Massing view ─────────────────────────────────────────────────────────── */
+.massing-wrap{margin:var(--sp-3) 0;border:var(--rule);border-radius:var(--r2);overflow:hidden;background:#f0ede8}
+.massing-toolbar{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);background:var(--paper-1);border-bottom:var(--rule);flex-wrap:wrap}
+.massing-toolbar .mtb-label{font-size:var(--ts-xs);color:var(--ink-3);font-family:var(--ff-ui);flex:1;min-width:0}
+.massing-btn{font-size:var(--ts-xs);font-family:var(--ff-ui);background:none;border:var(--rule);border-radius:var(--r1);padding:3px 10px;cursor:pointer;color:var(--ink-2)}
+.massing-btn:hover{background:var(--paper-2)}
+.massing-btn.active{background:var(--accent-bg);border-color:var(--accent);color:var(--accent);font-weight:600}
+#massing-container{width:100%;height:360px;position:relative;overflow:hidden}
+.massing-info{padding:var(--sp-2) var(--sp-3);background:var(--paper-1);border-top:var(--rule);font-size:var(--ts-xs);color:var(--ink-3);font-family:var(--ff-ui);display:flex;flex-wrap:wrap;gap:var(--sp-4)}
+.massing-info span{white-space:nowrap}
+.massing-info .mi-warn{color:#b84444}
+.massing-no-data{display:flex;align-items:center;justify-content:center;height:120px;color:var(--ink-4);font-size:var(--ts-sm);font-family:var(--ff-ui)}
+@media print{.massing-wrap{display:none!important}}
+
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#results">Saltar al contenido</a>
+
+<!-- Page header -->
+<header class="page-header">
+  <div class="header-inner">
+    <div class="brand">
+      <a href="/" class="brand-name" style="text-decoration:none">ainmo</a>
+      <span class="brand-ref">D.555/2021</span>
+    </div>
+    <div class="header-right" id="auth-area">
+      <button class="btn-auth" id="login-btn" onclick="showAuthModal()">Iniciar sesión</button>
+    </div>
+  </div>
+</header>
+
+<!-- Main app: map fills viewport, search panel floats top-left -->
+<div id="app">
+
+  <!-- Map (always visible) -->
+  <div id="map-wrap">
+    <div id="map"></div>
+
+    <!-- Floating search panel -->
+    <div class="search-panel" id="search-panel">
+      <div id="sp-welcome-card" class="sp-welcome">
+        <h2>Consulta edificabilidad de cualquier lote en Bogotá</h2>
+        <p>Índices de construcción, altura máxima, aislamientos y antejardín según D.555/2021.</p>
+      </div>
+      <div class="sp-row" style="margin-top:var(--sp-2)">
+        <input type="text" id="addr-input" placeholder="Dirección o clic en el mapa…" autocomplete="off" spellcheck="false" aria-label="Buscar dirección">
+        <button class="sp-go" id="geo-btn" onclick="submitGeoSearch()" aria-label="Buscar">→</button>
+      </div>
+      <div class="sp-chips">
+        <button class="ejemplo-chip" onclick="loadEjemplo()">✦ ejemplo Consolidación</button>
+      </div>
+      <div id="sp-history" class="sp-history" style="display:none"></div>
+      <div class="sp-vis">
+        <input type="checkbox" id="vis-check">
+        <label for="vis-check">VIS/VIP en sitio</label>
+      </div>
+      <div class="sp-geo-results" id="geo-results" style="display:none"></div>
+      <div class="sp-manual-toggle">
+        <button type="button" onclick="toggleManualCoords()">Ingresar coordenadas</button>
+      </div>
+      <div class="sp-manual-form" id="manual-coords-form" style="display:none">
+        <div class="sp-manual-grid">
+          <div>
+            <label>Latitud</label>
+            <input type="number" id="lat" step="any" placeholder="4.6750">
+          </div>
+          <div>
+            <label>Longitud</label>
+            <input type="number" id="lng" step="any" placeholder="-74.0525">
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:6px" onclick="submitManualCoords()">Consultar coordenadas</button>
+      </div>
+    </div>
+
+    <!-- Tratamiento legend -->
+    <div class="trat-legend">
+      <div class="trat-legend-title">Tratamiento POT</div>
+      <div id="trat-legend-items"></div>
+    </div>
+
+    <!-- Map hint shown in result mode -->
+    <div class="map-hint">Clic en el mapa para consultar otro lote</div>
+  </div>
+
+  <!-- Result column (hidden until first lookup) -->
+  <div id="result-col" class="hidden">
+    <div class="result-inner">
+      <button class="back-btn" onclick="enterLanding()">← Nueva búsqueda</button>
+      <div id="results" aria-live="polite" aria-atomic="false"></div>
+      <div id="lookups-container"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Auth modal -->
+<div class="modal-overlay hidden" id="auth-modal" style="position:fixed">
+  <div class="modal-box" style="position:relative">
+    <button class="modal-close" onclick="hideAuthModal()" title="Cerrar">×</button>
+    <h2>Acceder</h2>
+    <p class="modal-sub">Crea una cuenta o accede con Google o correo.</p>
+    <button class="btn-google" id="google-btn" onclick="signInWithGoogle()">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
+      Continuar con Google
+    </button>
+    <div class="auth-divider"><span>o con correo</span></div>
+    <div id="auth-form-wrap">
+      <div class="modal-row">
+        <input type="email" id="auth-email" placeholder="tu@email.com" autocomplete="email">
+        <button class="btn btn-primary" id="auth-send-btn" onclick="submitMagicLink()">Enviar enlace</button>
+      </div>
+      <p class="modal-note">Recibirás un enlace de acceso sin contraseña. Expira en 15 min.</p>
+    </div>
+    <div id="auth-sent-wrap" class="hidden">
+      <p style="color:var(--c-ok);font-weight:600;margin-bottom:8px">✓ Enlace enviado</p>
+      <p class="modal-note">Revisa tu correo (y spam). Haz clic en el enlace para acceder.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Upgrade / Pro modal -->
+<div class="modal-overlay hidden" id="upgrade-modal" style="position:fixed">
+  <div class="modal-box" style="position:relative">
+    <button class="modal-close" onclick="hideUpgradeModal()" title="Cerrar">×</button>
+    <h2>Plan Pro — próximamente</h2>
+    <p class="modal-sub">PDF ilimitados, historial guardado, traza de cálculo completa y consultas ilimitadas.</p>
+    <div id="upgrade-interest-wrap">
+      <p style="font-size:14px;margin-bottom:12px">Deja tu correo y te avisamos cuando esté disponible:</p>
+      <div class="modal-row">
+        <input type="email" id="upgrade-email" placeholder="tu@email.com" autocomplete="email">
+        <button class="btn btn-primary" id="upgrade-send-btn" onclick="submitBillingInterest()">Avisar</button>
+      </div>
+      <p class="modal-note">Mercado Pago (PSE, Nequi, tarjetas) · Sin compromiso.</p>
+    </div>
+    <div id="upgrade-sent-wrap" class="hidden">
+      <p style="color:var(--c-ok);font-weight:600">✓ ¡Anotado! Te avisaremos cuando el Plan Pro esté listo.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Share modal -->
+<div class="modal-overlay hidden" id="share-modal" style="position:fixed" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+  <div class="modal-box" style="position:relative;max-width:420px">
+    <button class="modal-close" onclick="hideShareModal()" title="Cerrar" aria-label="Cerrar">×</button>
+    <h2 id="share-modal-title">Compartir análisis</h2>
+    <p class="modal-sub">Enlace de solo lectura — no requiere cuenta.</p>
+    <label class="share-toggle">
+      <input type="checkbox" id="share-include-pf"> Incluir panel financiero
+    </label>
+    <div id="share-link-area">
+      <span style="font-size:var(--ts-sm);color:var(--ink-4)">Preparando enlace…</span>
+    </div>
+    <!-- Sharing destinations -->
+    <div class="share-grid">
+      <!-- Gmail -->
+      <button class="share-dest" onclick="_shareVia('gmail')" title="Compartir por Gmail" aria-label="Compartir por Gmail">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.272H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.909 1.528-1.145C21.69 2.28 24 3.434 24 5.457z" fill="#EA4335"/></svg>
+        <span class="sd-label">Gmail</span>
+      </button>
+      <!-- WhatsApp -->
+      <button class="share-dest" onclick="_shareVia('whatsapp')" title="Compartir en WhatsApp" aria-label="Compartir en WhatsApp">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" fill="#25D366"/></svg>
+        <span class="sd-label">WhatsApp</span>
+      </button>
+      <!-- Telegram -->
+      <button class="share-dest" onclick="_shareVia('telegram')" title="Compartir en Telegram" aria-label="Compartir en Telegram">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" fill="#2AABEE"/></svg>
+        <span class="sd-label">Telegram</span>
+      </button>
+      <!-- X / Twitter -->
+      <button class="share-dest" onclick="_shareVia('twitter')" title="Compartir en X" aria-label="Compartir en X (Twitter)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z" fill="currentColor"/></svg>
+        <span class="sd-label">X / Twitter</span>
+      </button>
+      <!-- LinkedIn -->
+      <button class="share-dest" onclick="_shareVia('linkedin')" title="Compartir en LinkedIn" aria-label="Compartir en LinkedIn">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" fill="#0A66C2"/></svg>
+        <span class="sd-label">LinkedIn</span>
+      </button>
+      <!-- Copy link -->
+      <button class="share-dest" id="share-copy-dest" onclick="_shareVia('copy')" title="Copiar enlace" aria-label="Copiar enlace al portapapeles">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span class="sd-label">Copiar enlace</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- share-placeholder -->
+
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   State
+══════════════════════════════════════════════════════════════════════════ */
+let _lastRaw = null;            // raw API response (for JSON export)
+let _pendingAnu = null;         // {lng, lat, vis} waiting for user ANU input
+let _pendingFrente = null;      // {lng, lat, vis, anu} waiting for frente_m / ancho_via_m
+let _confirmedCoords = null;    // {lat, lng} confirmed from geocoder
+let _geoCandidates = [];        // disambiguation list from geocoder
+let _currentUser = null;        // {email, plan, usage_this_month, usage_limit} or null
+let _currentAnalysisId = null;  // analysis_id returned by last successful /api/calc
+let _supabase = null;           // Supabase JS client (initialized in initSupabase)
+let _session = null;            // current Supabase session
+let _lastLookupCoords = null;   // {lat, lng, vis} of most recent successful lookup
+let _hasAnalyzed = false;       // true after first successful analysis (hides welcome card)
+let _massingInst = null;        // active buildMassing() instance (disposed on new lookup)
+let _massingView = '3d';        // '3d' | '2d'
+let _lastCalcData = null;       // calc result data for 3D view / DXF export
+let _massingInitDone = false;   // true once massing has been initialised for current result
+let _geoSearchInFlight = false; // prevents concurrent submitGeoSearch calls
+let _lookupAbortCtrl = null;    // AbortController for the in-flight /api/calc fetch
+let _lookupSeq = 0;             // monotonically increasing; discard stale responses
+
+function _authHeaders() {
+  if (_session?.access_token) {
+    return { 'Authorization': `Bearer ${_session.access_token}` };
+  }
+  return {};
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Geocoder UI
+══════════════════════════════════════════════════════════════════════════ */
+// addr-input: submit on Enter
+document.getElementById('addr-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); submitGeoSearch(); }
+});
+
+async function submitGeoSearch() {
+  if (_geoSearchInFlight) return;
+  const q = document.getElementById('addr-input')?.value?.trim();
+  if (!q) return;
+
+  _geoSearchInFlight = true;
+  const btn = document.getElementById('geo-btn');
+  const origBtnText = btn?.textContent ?? '→';
+  const geoDiv = document.getElementById('geo-results');
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Buscando…'; }
+  if (geoDiv) geoDiv.style.display = 'none';
+  _confirmedCoords = null;
+
+  // Do NOT append ", Bogotá" here — geocode.py already scopes Catastro queries
+  // to Bogotá and appends "Bogotá, Colombia" to Nominatim internally.
+  // Appending city text corrupts the Catastro cross-street LIKE query, causing
+  // zero rows for addresses like "CL 90 # 11-73" (PDOTEXTO '11 73 BOGOTA%' ≠ '11 73').
+  const url = `/api/geocode?q=${encodeURIComponent(q)}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+
+    if (!json.ok) {
+      showGeoError(
+        json.message || 'El geocodificador no pudo procesar la dirección.',
+        q, 'server_error'
+      );
+    } else if (json.candidates.length === 0) {
+      showGeoError(null, q, 'no_results');
+    } else {
+      const hasNear = json.candidates.some(c => c.near_match);
+      if (json.candidates.length === 1 && !hasNear) {
+        _showGeoConfirm(json.candidates[0]);
+      } else {
+        _showGeoCandidates(json.candidates, hasNear);
+      }
+    }
+  } catch (err) {
+    console.error('[geocode] submitGeoSearch falló:', err);
+    showGeoError(null, q, 'network');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origBtnText; }
+    _geoSearchInFlight = false;
+  }
+}
+
+function _showGeoConfirm(candidate) {
+  _confirmedCoords = { lat: candidate.lat, lng: candidate.lng };
+  const src = candidate.source === 'catastro' ? 'Catastro Bogotá' : 'OpenStreetMap';
+  const div = document.getElementById('geo-results');
+  div.style.display = 'block';
+  div.innerHTML = `
+    <div class="geo-confirm">
+      <div class="geo-confirm-addr">✓ ${escHtml(candidate.label)}</div>
+      <div class="geo-confirm-meta">${candidate.lat.toFixed(5)}, ${candidate.lng.toFixed(5)} — ${src}</div>
+      <div class="geo-confirm-actions">
+        <button class="btn btn-primary" onclick="runWithConfirmed()">Consultar edificabilidad</button>
+        <button class="btn btn-ghost btn-sm" onclick="resetGeoResults()">Cambiar dirección</button>
+      </div>
+    </div>`;
+}
+
+function _showGeoCandidates(candidates, isNear) {
+  _geoCandidates = candidates;
+  _confirmedCoords = null;
+  const items = candidates.map((c, i) => {
+    const src = c.source === 'catastro' ? 'Catastro' : 'OSM';
+    return `<button class="candidate-item" type="button" onclick="_pickCandidate(${i})">
+      <span class="candidate-label">${escHtml(c.label)}</span>
+      <span class="candidate-meta">${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} — ${src}</span>
+    </button>`;
+  }).join('');
+  const nearNote = isNear
+    ? `<p class="geo-near-note">No encontramos ese número exacto. Estos son predios en el mismo bloque — seleccione el más cercano o ingrese las coordenadas manualmente.</p>`
+    : '';
+  const div = document.getElementById('geo-results');
+  div.style.display = 'block';
+  div.innerHTML = `
+    <div class="geo-disambiguation">
+      ${nearNote}
+      <p class="geo-disambig-title">${isNear ? 'Resultados aproximados' : `${candidates.length} resultado${candidates.length > 1 ? 's' : ''} — seleccione:`}:</p>
+      <div class="candidate-list">${items}</div>
+    </div>`;
+}
+
+function _pickCandidate(i) {
+  document.getElementById('geo-results').style.display = 'none';
+  _showGeoConfirm(_geoCandidates[i]);
+}
+
+function showGeoError(msg, query, kind) {
+  // Build a specific, actionable message for each failure mode.
+  let body = '';
+  if (kind === 'no_results') {
+    const hasHash = query && query.includes('#');
+    if (hasHash) {
+      // Likely the address doesn't exist in Catastro or OSM with that number.
+      body = `
+        <p>No encontramos <strong>${escHtml(query)}</strong> en el Catastro de Bogotá ni en OpenStreetMap.</p>
+        <p class="hint" style="margin-top:6px">Verifique que el número de puerta sea correcto, o pruebe con una dirección vecina.
+        Si el predio es nuevo o no está geocodificado, ingrese las coordenadas manualmente desde el mapa.</p>`;
+    } else {
+      body = `
+        <p>No encontramos resultados para <strong>${escHtml(query)}</strong>.</p>
+        <p class="hint" style="margin-top:6px">Use el formato estándar Bogotá: <code>Calle 90 # 11-73</code> o <code>Kr 15 # 93-60</code>.
+        También puede hacer clic directamente en el mapa para seleccionar el predio.</p>`;
+    }
+  } else if (kind === 'network') {
+    body = `
+      <p>No se pudo conectar al servidor de geocodificación.</p>
+      <p class="hint" style="margin-top:6px">Verifique su conexión o ingrese las coordenadas del predio manualmente.</p>`;
+  } else {
+    body = `
+      <p>${escHtml(msg || 'Error al buscar la dirección.')}</p>
+      <p class="hint" style="margin-top:6px">Puede ingresar las coordenadas directamente usando el enlace de abajo.</p>`;
+  }
+  const div = document.getElementById('geo-results');
+  div.style.display = 'block';
+  div.innerHTML = `<div class="geo-error">${body}</div>`;
+}
+
+function resetGeoResults() {
+  _confirmedCoords = null;
+  const div = document.getElementById('geo-results');
+  div.style.display = 'none';
+  div.innerHTML = '';
+  document.getElementById('addr-input').focus();
+  clearResults();
+}
+
+function toggleManualCoords() {
+  const el = document.getElementById('manual-coords-form');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function runWithConfirmed() {
+  if (!_confirmedCoords) return;
+  const { lat, lng } = _confirmedCoords;
+  const vis = document.getElementById('vis-check').checked;
+  _pendingAnu = null;
+  _pendingFrente = null;
+  await runLookup(lat, lng, vis, null, null, null);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Manual coordinates form
+══════════════════════════════════════════════════════════════════════════ */
+// Manual coords: handled by submitManualCoords()
+
+async function runLookup(lat, lng, vis, anu, frente, anchoVia) {
+  // Cancel any in-flight request and stamp this as the latest lookup.
+  if (_lookupAbortCtrl) { _lookupAbortCtrl.abort(); }
+  _lookupAbortCtrl = new AbortController();
+  const mySeq = ++_lookupSeq;
+  const signal = _lookupAbortCtrl.signal;
+
+  enterResult();
+  showLoading();
+  const address = document.getElementById('addr-input')?.value?.trim() || '';
+  const params = new URLSearchParams({ lat, lng, vis_en_sitio: vis });
+  if (anu       != null) params.set('anu_m2',      anu);
+  if (frente    != null) params.set('frente_m',    frente);
+  if (anchoVia  != null) params.set('ancho_via_m', anchoVia);
+  if (address)           params.set('address',     address);
+
+  let json;
+  try {
+    const resp = await fetch(`/api/calc?${params}`, { headers: _authHeaders(), signal });
+    if (!resp.ok) {
+      if (mySeq !== _lookupSeq) return;
+      showNetworkError(new Error(`HTTP ${resp.status}`));
+      return;
+    }
+    json = await resp.json();
+  } catch (err) {
+    if (err.name === 'AbortError') return; // superseded by a newer click — discard silently
+    showNetworkError(err);
+    return;
+  }
+
+  // Discard if a newer request started while this one was in flight.
+  if (mySeq !== _lookupSeq) return;
+
+  // From here the server answered — any exception is a render bug, not a network issue
+  try {
+    _lastRaw = json;
+    // Update usage state from meta
+    if (json.meta) {
+      _currentAnalysisId = json.meta.analysis_id || null;
+      if (_currentUser && json.meta.usage_this_month != null) {
+        _currentUser.usage_this_month = json.meta.usage_this_month;
+        _currentUser.usage_limit = json.meta.usage_limit;
+        updateUserChip();
+      }
+    }
+    // Handle usage_limit error before generic render
+    if (!json.ok && json.error === 'usage_limit') {
+      set(`<div class="state-card state-error">
+        <div class="state-icon">🔒</div>
+        <h3>Límite mensual alcanzado</h3>
+        <p>${escHtml(json.message)}</p>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="showUpgradeModal()">Ver Plan Pro</button>
+      </div>`);
+      return;
+    }
+    if (json.ok) {
+      _lastLookupCoords = { lat, lng, vis };
+      _lastCalcData = json.data;
+      if (!_hasAnalyzed) {
+        _hasAnalyzed = true;
+        const welcome = document.getElementById('sp-welcome-card');
+        if (welcome) welcome.style.display = 'none';
+      }
+      const d = json.data || {};
+      const address = d.direccion || document.getElementById('addr-input')?.value?.trim() || '';
+      saveToHistory({ lat, lng, vis, address, tratamiento: d.tratamiento, ts: Date.now() });
+    }
+    render(json, lat, lng, vis, anu, frente, anchoVia);
+  } catch (err) {
+    console.error('[edificabilidad] render error:', err);
+    showRenderError(err);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Layout state
+══════════════════════════════════════════════════════════════════════════ */
+function enterResult() {
+  document.getElementById('app').classList.add('has-result');
+  document.getElementById('result-col').classList.remove('hidden');
+  requestAnimationFrame(() => { if (_map) _map.invalidateSize(); });
+}
+
+function enterLanding() {
+  document.getElementById('app').classList.remove('has-result');
+  document.getElementById('result-col').classList.add('hidden');
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('geo-results').style.display = 'none';
+  document.getElementById('addr-input').value = '';
+  _confirmedCoords = null; _pendingAnu = null; _pendingFrente = null;
+  if (_lotLayer) { _map.removeLayer(_lotLayer); _lotLayer = null; }
+  if (_markerLayer) { _map.removeLayer(_markerLayer); _markerLayer = null; }
+  _map.setView([4.6534, -74.0831], 12);
+  requestAnimationFrame(() => { if (_map) _map.invalidateSize(); });
+  // restore welcome card and history
+  const welcome = document.getElementById('sp-welcome-card');
+  if (welcome) welcome.style.display = '';
+  renderHistory();
+}
+
+/* ejemplo: Consolidación lot in Chicó / Barrio El Refugio */
+async function loadEjemplo() {
+  const EJ_LAT = 4.6736, EJ_LNG = -74.0503;
+  _pendingAnu = null; _pendingFrente = null; _confirmedCoords = null;
+  document.getElementById('addr-input').value = 'Ej: Calle 90 # 11-73 (Chicó)';
+  document.getElementById('geo-results').style.display = 'none';
+  await runLookup(EJ_LAT, EJ_LNG, false, null, null, null);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Router
+══════════════════════════════════════════════════════════════════════════ */
+function render(json, lat, lng, vis, anu, frente, anchoVia) {
+  if (!json.ok) {
+    const retryCall = `runLookup(${lat},${lng},${vis},${anu??'null'},${frente??'null'},${anchoVia??'null'})`;
+    switch (json.error) {
+      case 'zero_features':   return showZeroFeatures(json.message);
+      case 'input_required':  return showInputRequired(json, lat, lng, vis, anu, frente, anchoVia);
+      case 'layer_timeout':
+      case 'layer_error': {
+        const name = json.layer_name || 'Capa GIS';
+        const action = json.error === 'layer_error' && json.layer_id === '22'
+          ? 'Puede ingresar el antejardín manualmente más abajo.'
+          : (json.message || '');
+        return showError(`${name} no devolvió información para este lote.`,
+          { action, retryFn: retryCall });
+      }
+      case 'layer_parse_error':
+        return showError(json.message || 'Error al procesar datos de la capa GIS.',
+          { retryFn: retryCall });
+      case 'internal':
+        return showError('Error interno del servidor. Intente de nuevo en unos momentos.',
+          { retryFn: retryCall });
+      default:
+        return showError(json.message || 'Error desconocido.',
+          { retryFn: retryCall });
+    }
+  }
+
+  const d = json.data;
+  const bc = d.binding_constraint;
+
+  try { updateMap(d, lat, lng); } catch (e) { console.warn('[edificabilidad] map error:', e); }
+
+  if (bc === 'tratamiento_no_implementado') {
+    return showTratamientoNotImpl(d);
+  }
+  if (bc === 'conservacion_no_soportado') {
+    return showConservacionNotSupported(d);
+  }
+  if (bc === 'restriccion_bloqueante') {
+    return showBlockingRestrictions(d);
+  }
+
+  showResult(d, lat, lng, vis, anu);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   States
+══════════════════════════════════════════════════════════════════════════ */
+function showLoading() {
+  set(`<div style="padding:0">
+    <div class="state-card state-loading" style="margin-bottom:0;border-bottom:none">
+      <div class="spinner" aria-hidden="true"></div>
+      <p style="font-weight:600;margin-bottom:var(--sp-2)">Consultando capas GIS…</p>
+      <div class="loading-steps" role="status" aria-live="polite" aria-label="Capas en consulta">
+        <div class="loading-step ls-active">Catastro Bogotá — predio catastral</div>
+        <div class="loading-step">BIC · Aerocivil — restricciones normativas</div>
+        <div class="loading-step">ArcGIS Capa 15 — edificabilidad POT</div>
+        <div class="loading-step">ArcGIS Capa 14 — área de actividad</div>
+        <div class="loading-step">ArcGIS Capa 38 — perfil vial (calzada)</div>
+        <div class="loading-step">ArcGIS Capa 22 — antejardín (si aplica)</div>
+      </div>
+    </div>
+    <div class="skeleton-card" aria-hidden="true">
+      <div class="skeleton-line sk-title"></div>
+      <div class="skeleton-line sk-wide"></div>
+      <div class="skeleton-line sk-mid"></div>
+    </div>
+    <div class="skeleton-card" aria-hidden="true">
+      <div class="skeleton-line sk-title" style="width:45%"></div>
+      <div class="skeleton-line sk-wide"></div>
+      <div class="skeleton-line sk-short"></div>
+      <div class="skeleton-line sk-mid"></div>
+    </div>
+    <div class="skeleton-card" aria-hidden="true">
+      <div class="skeleton-line sk-title" style="width:35%"></div>
+      <div class="skeleton-line sk-wide"></div>
+    </div>
+  </div>`);
+}
+
+function showNetworkError(_err) {
+  set(`<div class="state-card state-error" role="alert">
+    <div class="state-icon" aria-hidden="true">🔌</div>
+    <h3>Sin conexión con el servidor</h3>
+    <p>No se pudo contactar el servidor. Verifique su conexión a internet y vuelva a intentarlo.</p>
+    <div class="error-actions">
+      <button class="btn btn-primary" onclick="location.reload()">Recargar página</button>
+    </div>
+  </div>`);
+}
+
+function showRenderError(err) {
+  const msg = err instanceof Error ? escHtml(err.message) : 'Error desconocido';
+  set(`<div class="state-card state-error" role="alert">
+    <div class="state-icon" aria-hidden="true">⚠</div>
+    <h3>Error al mostrar el resultado</h3>
+    <p>El servidor respondió correctamente, pero ocurrió un error al renderizar los datos. Por favor reporte este problema.</p>
+    <details style="margin-top:12px;font-size:12px;color:var(--c-muted)">
+      <summary>Detalle técnico</summary>
+      <pre style="white-space:pre-wrap;word-break:break-all;margin-top:6px">${msg}</pre>
+    </details>
+    <div class="error-actions" style="margin-top:12px">
+      <button class="btn btn-primary" onclick="location.reload()">Recargar página</button>
+    </div>
+  </div>`);
+}
+
+function showError(msg, opts = {}) {
+  const action = opts.action || '';
+  const retryFn = opts.retryFn || '';
+  const retryBtn = retryFn
+    ? `<button class="btn btn-primary" onclick="${escHtml(retryFn)}">Reintentar</button>`
+    : '';
+  set(`<div class="state-card state-error" role="alert">
+    <div class="state-icon" aria-hidden="true">⚠</div>
+    <h3>No se pudo completar la consulta</h3>
+    <p>${escHtml(msg)}</p>
+    ${action ? `<p class="mt8 text-muted" style="font-size:13px">${escHtml(action)}</p>` : ''}
+    <div class="error-actions">
+      ${retryBtn}
+      <button class="btn btn-secondary btn-sm" onclick="enterLanding()">Nueva búsqueda</button>
+    </div>
+  </div>`);
+}
+
+function showZeroFeatures(msg) {
+  set(`<div class="state-card state-zero">
+    <div class="state-icon">📍</div>
+    <h3>Coordenada fuera de predio catastral</h3>
+    <p>La coordenada ingresada no cae sobre ningún lote en el Catastro de Bogotá. Posibles causas:</p>
+    <ul>
+      <li>La coordenada está sobre una vía, parque, cuerpo de agua o área rural.</li>
+      <li>El lote aún no ha sido incorporado al catastro digital.</li>
+      <li>Error de ingreso (recuerde: latitud positiva ~4.x, longitud negativa ~-74.x).</li>
+    </ul>
+  </div>`);
+}
+
+function showTratamientoNotImpl(d) {
+  const trat = d.tratamiento || 'DESCONOCIDO';
+  set(blockedBanner(`Tratamiento ${trat} aún no implementado`) + `<div class="state-card state-not-impl">
+    <div class="state-icon">🚧</div>
+    <h3>Tratamiento "${escHtml(trat)}" no implementado</h3>
+    <p>Esta herramienta cubre Desarrollo (Art. 281), Consolidación (Art. 310),
+       Renovación Urbana (Art. 301), Mejoramiento Integral (Art. 332) y
+       Conservación (Art. 343) del Decreto 555/2021.</p>
+    <p class="mt8">El tratamiento <strong>${escHtml(trat)}</strong> no está codificado en esta versión.
+       Consulte directamente la Secretaría Distrital de Planeación.</p>
+    ${lotIdFragment(d)}
+  </div>`);
+}
+
+function showBlockingRestrictions(d) {
+  const restrictions = d.blocking_restrictions || [];
+  const ICONS = {
+    bic:               '🏛️',
+    aerocivil:         '✈️',
+    cerros:            '🌲',
+    amenaza_mrm:       '⛰️',
+    amenaza_inundacion:'🌊',
+    ronda_hidrica:     '💧',
+  };
+  const items = restrictions.map(r => `
+    <div class="bri-item">
+      <div class="bri-header">
+        <span class="bri-icon" aria-hidden="true">${ICONS[r.tipo] || '⚠'}</span>
+        <strong>${escHtml(r.nombre)}</strong>
+      </div>
+      <p class="bri-desc">${escHtml(r.descripcion)}</p>
+      <div class="bri-cite">${escHtml(r.cita)} · <em>${escHtml(r.fuente)}</em></div>
+    </div>`).join('');
+
+  const plural = restrictions.length > 1 ? 'restricciones normativas' : 'restricción normativa';
+  set(blockedBanner(`${restrictions.length} ${plural} — edificabilidad POT no aplicable`) + `
+    <div class="state-card state-not-impl">
+      <div class="state-icon" aria-hidden="true">🚫</div>
+      <h3>Este lote tiene restricciones que impiden el cálculo ordinario de edificabilidad</h3>
+      <p>El predio intersecta una o más zonas con restricciones normativas superiores
+         al POT D.555/2021. La edificabilidad que calcularía esta herramienta sería
+         incorrecta o inaplicable. Consulte con un profesional antes de avanzar.</p>
+      <div class="blocking-restrictions-list">${items}</div>
+      ${lotIdFragment(d)}
+    </div>`);
+}
+
+function showConservacionNotSupported(d) {
+  const lote = d.lote || {};
+  set(blockedBanner('Conservación — restricción patrimonial') + `<div class="state-card state-not-impl">
+    <div class="state-icon">🏛️</div>
+    <h3>Tratamiento Conservación — cálculo no disponible</h3>
+    <p>Este predio está bajo <strong>Tratamiento de Conservación</strong> (Arts. 343–359 Decreto 555/2021),
+       que aplica a <strong>Bienes de Interés Cultural (BIC)</strong>.</p>
+    <p class="mt8">Los índices de edificabilidad (IC, IO, altura, aislamientos) son <strong>per-lote</strong>
+       y dependen de fuentes que esta herramienta no puede consultar automáticamente:</p>
+    <ul>
+      <li><strong>Ficha de valoración BIC individual</strong> — IDPC o SDCRD</li>
+      <li><strong>Nivel de intervención 1–4</strong> — DUR 1080/2015: Nivel 1 integral · 2 tipológica · 3 consolidación · 4 sin valor/lote SIU</li>
+      <li><strong>PEMP</strong> del sector (si existe) — Plan Especial de Manejo y Protección</li>
+      <li><strong>Notas de mapas CU-5.4.2 a CU-5.4.33</strong> para predios Nivel 4 (Art. 348 § 2)</li>
+    </ul>
+    <p class="mt8">Para conocer la edificabilidad real de este predio consulte el
+       <strong>Instituto Distrital de Patrimonio Cultural (IDPC)</strong> o la
+       <strong>Curaduría Urbana</strong> competente antes de cualquier gestión de licencia.</p>
+    ${lotIdFragment(d)}
+  </div>`);
+}
+
+function showInputRequired(json, lat, lng, vis, anu, frente, anchoVia) {
+  const field = json.field;
+  _pendingAnu    = { lat, lng, vis };
+  _pendingFrente = { lat, lng, vis, anu: anu ?? null, frente: frente ?? null, anchoVia: anchoVia ?? null };
+
+  if (field === 'anu_m2') {
+    set(`<div class="input-req-card" id="anu-req-card">
+      <div class="req-icon">📐</div>
+      <h3>Se requiere el ANU del predio</h3>
+      <div class="req-desc">
+        El <strong>Área Neta Urbanizable (ANU)</strong> es la superficie del predio descontando
+        las cesiones obligatorias: vías, espacio público, suelo de protección y zonas de riesgo.
+        Para este predio no es posible derivarla automáticamente porque:
+        <ul style="margin-top:8px;padding-left:20px;line-height:1.8">
+          <li>Es un Rango 1, 2 o 3 de Desarrollo (requiere Plan Parcial aprobado), o</li>
+          <li>El lote tiene más de 10.000 m² brutos y es probable que tenga cesiones significativas.</li>
+        </ul>
+      </div>
+      <div class="req-where">
+        <strong>¿Dónde encuentro el ANU?</strong><br>
+        • En el <em>Plan Parcial aprobado</em> para el sector — busque el cuadro de áreas en el acto administrativo de adopción.<br>
+        • Con un urbanista o arquitecto que haya revisado el título de matrícula y los planos de cesión.<br>
+        • En la SDP: Dirección de Planes Parciales y Gestión del Suelo — <a href="https://www.sdp.gov.co" target="_blank">sdp.gov.co</a>.
+      </div>
+      <div class="req-form-row">
+        <div>
+          <label>ANU en m²</label>
+          <input type="number" id="anu-input" min="1" step="0.1" placeholder="Ej: 8 500">
+        </div>
+        <button class="btn btn-primary" onclick="submitAnu()">Calcular con este ANU</button>
+        <button class="btn btn-secondary" onclick="clearResults()">Cancelar</button>
+      </div>
+    </div>`);
+
+  } else if (field === 'frente_m') {
+    set(`<div class="input-req-card" id="frente-req-card">
+      <div class="req-icon">📐</div>
+      <h3>Se requiere el frente del lote — bonus de altura Art. 310 Num. 2</h3>
+      <div class="req-desc">
+        El mapa de edificabilidad (mapa CU-5.4.x) asigna a este lote una <strong>altura en rango</strong>
+        (p. ej. "4–6 pisos"). La altura inferior aplica sin condiciones; la altura superior (bonus)
+        solo aplica si el predio cumple el <strong>frente mínimo sobre la vía principal</strong>
+        según el Art. 310 Num. 2:
+        <ul style="margin-top:8px;padding-left:20px;line-height:1.8">
+          <li><strong>Tipología continua:</strong> frente ≥ 14 m</li>
+          <li><strong>Tipología aislada:</strong> frente ≥ 24 m + área ≥ 1.200 m² + perfil vial ≥ 22 m + altura base ≥ 8 pisos</li>
+        </ul>
+      </div>
+      <div class="req-where">
+        <strong>¿Cómo mido el frente?</strong><br>
+        • Es la longitud del lindero frontal del predio sobre la vía de acceso principal.<br>
+        • Se puede medir en el plano catastral del predio (Catastro Bogotá) o en el título de matrícula.<br>
+        • También visible en la capa de lotes del Geoportal Bogotá.
+      </div>
+      <div class="req-form-row" style="flex-wrap:wrap;gap:14px">
+        <div>
+          <label>Frente del lote (m)</label>
+          <input type="number" id="frente-input" min="0.1" step="0.1" placeholder="Ej: 15">
+        </div>
+        <div id="ancho-via-group">
+          <label>Perfil vial frente al predio (m) <span style="color:var(--c-muted);font-weight:400">(solo tipología aislada)</span></label>
+          <input type="number" id="ancho-via-input" min="0.1" step="0.1" placeholder="Ej: 22">
+        </div>
+      </div>
+      <div class="req-form-row" style="margin-top:10px">
+        <button class="btn btn-primary" onclick="submitFrente()">Verificar y calcular</button>
+        <button class="btn btn-secondary" onclick="clearResults()">Cancelar</button>
+      </div>
+    </div>`);
+
+  } else if (field === 'ancho_via_m') {
+    const isMI = !(_pendingFrente && _pendingFrente.frente != null);
+    const title = isMI
+      ? 'Se requiere el perfil vial — tabla de altura Art. 338 (Mejoramiento Integral)'
+      : 'Se requiere el perfil vial — bonus tipología aislada Art. 310 Num. 2';
+    const desc = isMI
+      ? `La <strong>altura máxima permitida</strong> en Mejoramiento Integral se determina
+         con la tabla del Art. 338, que cruza el <strong>ancho de la vía frente al predio</strong>
+         con el área del lote. Sin este dato no es posible consultar la tabla.
+         Mida el ancho total del espacio público vial (calzadas + andenes + separadores) frente al lote.`
+      : `Para tipología aislada, el bonus de altura del Art. 310 Num. 2 requiere adicionalmente
+         que el <strong>perfil vial frente al predio sea ≥ 22 m</strong>. Mida el ancho total
+         del espacio público vial (calzadas + andenes + separadores) frente al lote.`;
+    set(`<div class="input-req-card" id="ancho-via-req-card">
+      <div class="req-icon">📐</div>
+      <h3>${title}</h3>
+      <div class="req-desc">${desc}</div>
+      <div class="req-form-row">
+        <div>
+          <label>Perfil vial (m)</label>
+          <input type="number" id="ancho-via-input2" min="0.1" step="0.1" placeholder="Ej: 12">
+        </div>
+        <button class="btn btn-primary" onclick="submitAnchoVia()">Verificar y calcular</button>
+        <button class="btn btn-secondary" onclick="clearResults()">Cancelar</button>
+      </div>
+    </div>`);
+
+  } else {
+    // Generic fallback
+    set(`<div class="input-req-card">
+      <div class="req-icon">⚠️</div>
+      <h3>Dato requerido</h3>
+      <div class="req-desc">${escHtml(json.message)}</div>
+    </div>`);
+  }
+}
+
+async function submitAnu() {
+  const v = parseFloat(document.getElementById('anu-input')?.value || '');
+  if (!v || v <= 0) { alert('Ingrese un valor válido de ANU en m².'); return; }
+  const { lat, lng, vis } = _pendingAnu;
+  await runLookup(lat, lng, vis, v, null, null);
+}
+
+async function submitFrente() {
+  const frente = parseFloat(document.getElementById('frente-input')?.value || '');
+  if (!frente || frente <= 0) { alert('Ingrese el frente del lote en metros.'); return; }
+  const anchoRaw = document.getElementById('ancho-via-input')?.value || '';
+  const anchoVia = anchoRaw ? (parseFloat(anchoRaw) || null) : null;
+  const { lat, lng, vis, anu } = _pendingFrente;
+  await runLookup(lat, lng, vis, anu, frente, anchoVia);
+}
+
+async function submitManualCoords() {
+  const lat = parseFloat(document.getElementById('lat').value);
+  const lng = parseFloat(document.getElementById('lng').value);
+  if (isNaN(lat) || isNaN(lng)) { return; }
+  const vis = document.getElementById('vis-check').checked;
+  _pendingAnu = null; _pendingFrente = null; _confirmedCoords = null;
+  await runLookup(lat, lng, vis, null, null, null);
+}
+
+async function submitAnchoVia() {
+  const anchoVia = parseFloat(document.getElementById('ancho-via-input2')?.value || '');
+  if (!anchoVia || anchoVia <= 0) { alert('Ingrese el perfil vial en metros.'); return; }
+  const { lat, lng, vis, anu, frente } = _pendingFrente;
+  await runLookup(lat, lng, vis, anu, frente, anchoVia);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Main result renderer
+══════════════════════════════════════════════════════════════════════════ */
+function showResult(d, lat, lng, vis, anu) {
+  const parts = [];
+  const isPro = _currentUser && _currentUser.plan === 'pro';
+  const _tratUpper = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
+  const _isRenov = _tratUpper.includes('RENOVACION');
+
+  // Verdict banner — first element, highest prominence
+  parts.push(verdictBanner(d));
+
+  // KPI strip — 6 key numbers immediately below verdict
+  parts.push(kpiStrip(d));
+
+  // Large-lot contextual note (> 5 000 m²)
+  const _lotArea = d.lote?.area_m2?.valor ?? null;
+  if (_lotArea && _lotArea > 5000) {
+    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-warn,#f59e0b)">
+      <strong>Lote de gran tamaño (${fmt(_lotArea)} m²).</strong>
+      Las cifras reflejan el potencial de redesarrollo de toda la manzana o supermanzana — no de una parcela de construcción típica.
+      Verifique si existe englobe, loteo aprobado o plan parcial vigente antes de tomar decisiones.
+    </div>`);
+  }
+
+  // Pro-forma — always rendered, directly under KPI strip
+  parts.push(proformaPanel(d));
+
+  // Export buttons — PDF is available to all users
+  const pdfBtn = `<button class="btn btn-primary btn-sm" onclick="downloadPdf(${lat},${lng},${vis})">⬇ Descargar PDF</button>`;
+  const shareBtn = `<button class="share-btn" onclick="showShareModal()" aria-label="Compartir análisis">⬗ Compartir</button>`;
+  const dxfBtn = `<button class="share-btn" onclick="downloadDxf(${lat},${lng},${vis})" aria-label="Exportar DXF">⬇ DXF</button>`;
+  parts.push(`<div class="export-row" style="flex-wrap:wrap;gap:var(--sp-2)">
+    <button class="btn btn-secondary btn-sm" onclick="exportJson()">⬇ JSON completo</button>
+    ${pdfBtn}
+    ${shareBtn}
+    ${dxfBtn}
+    <button class="share-btn" onclick="window.print()" aria-label="Imprimir">⎙ Imprimir</button>
+  </div>`);
+
+  // Normative detail — collapsible, collapsed by default
+  const normParts = [];
+
+  normParts.push(lotIdFull(d, lat, lng));
+  normParts.push(bindingBanner(d.binding_constraint, d));
+  normParts.push(buildingProfile(d));
+  // Inline frente input when bonus height is indeterminate (Art. 310 Num. 2)
+  const _bonusMeta = (d.metrics || {}).altura_con_bonus_pisos;
+  if (_bonusMeta?.confianza === 'requiere_input') {
+    normParts.push(_frenteInputCard(lat, lng, vis, anu ?? d.input?.anu_m2_supplied ?? null));
+  }
+
+  normParts.push(`<div class="massing-wrap" id="massing-wrap">
+    <div class="massing-toolbar">
+      <span class="mtb-label">Vista 3D — maqueta normativa</span>
+      <button class="massing-btn active" id="btn-view-3d" onclick="setMassingView('3d')" aria-pressed="true">3D</button>
+      <button class="massing-btn" id="btn-view-2d" onclick="setMassingView('2d')" aria-pressed="false">2D</button>
+    </div>
+    <div id="massing-container"><div class="massing-no-data">Cargando vista 3D…</div></div>
+    <div class="massing-info" id="massing-info"></div>
+  </div>`);
+
+  if (d.warnings?.length) {
+    const filteredWarnings = d.warnings.filter(w => {
+      const wl = w.toLowerCase();
+      return !wl.includes('antejardin') && !wl.includes('antejardín');
+    });
+    if (filteredWarnings.length) {
+      const whtml = filteredWarnings.map(w => `<div class="warn-item">${escHtml(w)}</div>`).join('');
+      normParts.push(`<div class="warnings-list">${whtml}</div>`);
+    }
+  }
+
+  if (!_isRenov) normParts.push(antejardínCard(d.antejardin));
+  normParts.push(metricsSection(d));
+  normParts.push(setbacksCard(d));
+  normParts.push(parkingCard(d));
+  normParts.push(unitsPanel(d));
+
+  if (d.formula_trace) {
+    normParts.push(formulaTrace(d.formula_trace));
+  } else if (_currentUser && !isPro) {
+    normParts.push(`<div class="card" style="opacity:.7;text-align:center;padding:20px">
+      <p style="color:var(--c-muted);font-size:14px">Traza de cálculo completa disponible en
+        <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick="showUpgradeModal()">Plan Pro</button>
+      </p>
+    </div>`);
+  }
+
+  if (isPro && _currentAnalysisId) {
+    normParts.push(`<div class="card">
+      <div class="notes-label">Notas personales (guardado automático)</div>
+      <textarea class="notes-area" id="notes-textarea" placeholder="Agrega comentarios, referencias o próximos pasos…"
+        onblur="autoSaveNotes('${_currentAnalysisId}', this.value)"></textarea>
+    </div>`);
+  }
+
+  _lastCalcData = d;
+  _massingInitDone = false;
+  parts.push(`<details class="normative-detail" id="normative-detail" open ontoggle="_onNormativeToggle(this)">
+    <summary>Detalle normativo y fuentes<span class="nd-decree">Decreto 555/2021</span></summary>
+    <div class="normative-body">${normParts.join('')}</div>
+  </details>`);
+
+  parts.push(`<div class="print-disclaimer">
+    <strong>ainmo · Estimación de prefactibilidad</strong> — Basada en datos públicos POT/catastro (Decreto 555/2021).
+    No constituye norma urbanística certificada ni licencia de construcción.
+    Verifique con Curaduría Urbana o Secretaría Distrital de Planeación antes de tomar decisiones
+    de transacción, permiso o actuación jurídica.
+  </div>`);
+
+  set(parts.join(''));
+  // Compute total = huella × pisos and trigger financial KPIs.
+  // Returns true if it handled _fetchKpiFinancials (always when pisos is known).
+  if (!_tryComputeFootprintArea(d)) {
+    _fetchKpiFinancials(d);
+  }
+  // Normative panel is open by default — init 3D massing immediately.
+  if (!_massingInitDone) {
+    _massingInitDone = true;
+    setTimeout(() => initMassing(_lastCalcData), 0);
+  }
+}
+
+/**
+ * Compute the inset lot footprint (m²) from calc result data.
+ * Uses the same geometry as massing3d.js but runs synchronously, no Three.js.
+ * Returns null when the lot polygon is absent or inset collapses.
+ */
+function _computeLotFootprint(d) {
+  const rings = d?.lote?.geojson_polygon;
+  if (!rings?.[0] || rings[0].length < 3) return null;
+  const raw = rings[0];
+  // GeoJSON polygon rings close on themselves (last coord = first coord).
+  // Including the duplicate closing vertex creates a zero-length edge in the
+  // miter-bisector inset, which corrupts the signed area by ~9× (e.g. 202→35).
+  const last = raw[raw.length - 1];
+  const open = (raw.length > 1 && last[0] === raw[0][0] && last[1] === raw[0][1])
+    ? raw.slice(0, -1) : raw;
+  const lon0 = open.reduce((s, p) => s + p[0], 0) / open.length;
+  const lat0 = open.reduce((s, p) => s + p[1], 0) / open.length;
+  const cosLat = Math.cos(lat0 * Math.PI / 180);
+  // Project WGS84 → local metric (x=East, y=North)
+  let pts = open.map(([lon, lat]) => [
+    (lon - lon0) * cosLat * 111_319,
+    (lat - lat0) * 111_319,
+  ]);
+  // Ensure CCW
+  let a = 0;
+  for (let i = 0, n = pts.length; i < n; i++) {
+    const j = (i + 1) % n;
+    a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
+  }
+  if (a / 2 < 0) pts = [...pts].reverse();
+  // Setbacks
+  const m = d.metrics || {};
+  const ant      = d.antejardin?.dimension_m ?? null;
+  const aislPost = m.aislamiento_posterior_m?.valor ?? null;
+  const aislLat  = m.aislamiento_lateral_m?.valor  ?? null;
+  const known = [ant, aislPost, aislLat].filter(v => v !== null && v >= 0);
+  const insetD = known.length ? Math.max(...known) : 0;
+  if (insetD <= 0.5) return Math.abs(a / 2);
+  // Miter-bisector inset
+  const n = pts.length;
+  const inset = [];
+  for (let i = 0; i < n; i++) {
+    const prev = pts[(i - 1 + n) % n], curr = pts[i], next = pts[(i + 1) % n];
+    const e1 = [curr[0] - prev[0], curr[1] - prev[1]];
+    const e2 = [next[0] - curr[0], next[1] - curr[1]];
+    const l1 = Math.hypot(e1[0], e1[1]) || 1e-9;
+    const l2 = Math.hypot(e2[0], e2[1]) || 1e-9;
+    // Inward normal for CCW polygon: rotate edge CCW by 90° → (-ey, ex)
+    const n1 = [-e1[1] / l1, e1[0] / l1];
+    const n2 = [-e2[1] / l2, e2[0] / l2];
+    const bx = n1[0] + n2[0], by = n1[1] + n2[1];
+    const bl = Math.hypot(bx, by);
+    if (bl < 1e-9) { inset.push([curr[0] + insetD * n1[0], curr[1] + insetD * n1[1]]); continue; }
+    const dot = (n1[0] * bx + n1[1] * by) / bl;
+    const scale = dot > 0.1 ? insetD / dot : insetD * 3;
+    inset.push([curr[0] + scale * bx / bl, curr[1] + scale * by / bl]);
+  }
+  let ai = 0;
+  for (let i = 0, ni = inset.length; i < ni; i++) {
+    const j = (i + 1) % ni;
+    ai += inset[i][0] * inset[j][1] - inset[j][0] * inset[i][1];
+  }
+  const result = Math.abs(ai / 2);
+  return result > 1 ? result : null; // discard degenerate inset
+}
+
+/**
+ * Pick the best (highest) floor count from whatever the server returned.
+ * Priority: confirmed bonus > rango upper bound > base/fijo > Desarrollo/MI max.
+ */
+function _bestPisos(m) {
+  const candidates = [
+    m.altura_con_bonus_pisos?.valor,
+    m.altura_maxima_rango_pisos?.valor,
+    m.altura_base_pisos?.valor,
+    m.altura_maxima_pisos?.valor,
+  ].filter(v => v != null && v > 0);
+  return candidates.length ? Math.max(...candidates) : null;
+}
+
+/**
+ * Shared pipeline: write huella × pisos into the ÁREA CONSTRUIBLE KPI cell,
+ * switch the financial cells to loading, and fire _fetchKpiFinancials.
+ * Called from _tryComputeFootprintArea (at showResult time) and from
+ * initMassing (as a second-chance when the lot polygon was available only
+ * after the 3D canvas computed its inset).
+ * Returns true on success, false if the strip isn't in the DOM yet.
+ */
+function _updateKpiFromFootprint(huella, pisos, nota, d) {
+  const total = Math.round(huella * pisos);
+  if (total <= 0) return false;
+
+  // Assertions — log visible errors; never silently hide wrong numbers.
+  const ref = d || _lastCalcData;
+  const lotArea = ref?.lote?.area_m2?.valor ?? null;
+  if (lotArea != null) {
+    const ratio = huella / lotArea;
+    if (ratio < 0.15 || ratio > 1.0) {
+      console.error(`[edificabilidad] ASSERT huella/lote fuera de rango: ${ratio.toFixed(3)} (huella=${Math.round(huella)} m², lote=${Math.round(lotArea)} m², nota="${nota}")`);
+    }
+  }
+  if (Math.abs(total - huella * pisos) >= 1) {
+    console.error(`[edificabilidad] ASSERT total ≠ huella×pisos: ${total} ≠ ${Math.round(huella * pisos)} (huella=${huella}, pisos=${pisos})`);
+  }
+
+  const strip = document.getElementById('kpi-strip');
+  if (!strip) return false;
+  const firstCell = strip.firstElementChild;
+  if (firstCell) {
+    firstCell.outerHTML = _kpiCell('ÁREA CONSTRUIBLE', fmt(total), `m² · ${nota}`);
+  }
+
+  // Pre-fill the manual proforma input (present when area_construible is null)
+  const pfManual = document.getElementById('pf-manual-area');
+  if (pfManual && !pfManual.value) pfManual.value = total;
+
+  // Use innerHTML (not outerHTML) to update loading cells so their wrapper ids survive
+  // and _fetchKpiFinancials can find them via getElementById.
+  const ucEl = document.getElementById('kpi-units-cell');
+  if (ucEl) {
+    ucEl.className = 'kpi-cell kpi-loading';
+    ucEl.innerHTML = '<div class="kpi-label">UNIDADES</div><div class="kpi-value">…</div>';
+  }
+  const finMap = { 'kpi-ingresos-cell': 'INGRESOS EST.', 'kpi-costos-cell': 'COSTO EST.', 'kpi-residual-cell': 'VALOR RESIDUAL' };
+  for (const [id, lbl] of Object.entries(finMap)) {
+    const el = document.getElementById(id);
+    if (el) {
+      el.className = 'kpi-cell kpi-loading kpi-fin';
+      el.innerHTML = `<div class="kpi-label">${lbl}</div><div class="kpi-value">…</div>`;
+    }
+  }
+
+  if (ref) {
+    const dEst = Object.assign({}, ref, {
+      metrics: Object.assign({}, ref.metrics || {}, {
+        area_construible_max_m2: { valor: total, confianza: 'media', nota },
+      }),
+    });
+    _fetchKpiFinancials(dEst);
+  }
+  return true;
+}
+
+/**
+ * Compute huella + pisos and call _updateKpiFromFootprint.
+ * Returns true if it handled the update (caller must NOT call _fetchKpiFinancials).
+ * Returns false if pisos are unknown or the footprint is unusable.
+ */
+function _tryComputeFootprintArea(d) {
+  const m = d.metrics || {};
+  const pisos = _bestPisos(m);
+  if (!pisos) return false;
+
+  const lotArea = d.lote?.area_m2?.valor ?? null;
+
+  // Primary: regulatory IO × ANU (trusted as-is, no sanity check needed)
+  let huella = m.planta_maxima_m2?.valor ?? null;
+  let nota = `IO × ANU × ${pisos} pisos`;
+
+  if (huella == null) {
+    // Fallback: geometric inset of the lot polygon.
+    // Only reject if the inset EXPANDED the polygon (guards against the old
+    // wrong-normal bug where the inset grew instead of shrinking).
+    // Do NOT apply a percentage floor — for tall Consolidación buildings the
+    // conservative uniform inset legitimately produces small footprints.
+    if (!d.lote?.geojson_polygon) return false;
+    huella = _computeLotFootprint(d);
+    nota = `Estimado geométrico × ${pisos} pisos`;
+    if (!huella || huella <= 0) return false;
+    if (lotArea !== null && huella > lotArea * 1.05) {
+      console.warn('[edificabilidad] geometric footprint > lot — suppressing');
+      return false;
+    }
+  }
+
+  return _updateKpiFromFootprint(huella, pisos, nota, d);
+}
+
+function _frenteInputCard(lat, lng, vis, anu) {
+  return `<div class="card input-req-card" id="frente-inline-card" style="border-left:3px solid var(--c-warn,#f59e0b)">
+    <h3 style="margin:0 0 8px;font-size:15px">Bonus de altura — Art. 310 Num. 2</h3>
+    <p style="margin:0 0 12px;font-size:13px;color:var(--c-muted)">
+      El mapa de edificabilidad muestra un <strong>rango de pisos</strong>. La altura superior
+      aplica sólo si el frente del lote supera el mínimo reglamentario.
+      Ingrese el frente para calcular si aplica el bonus.
+    </p>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div>
+        <label style="display:block;font-size:12px;margin-bottom:4px">Frente del lote (m)</label>
+        <input type="number" id="frente-inline-input" min="0.1" step="0.1" placeholder="Ej: 15"
+               style="width:100px;padding:6px 8px;border:1px solid var(--c-border,#ccc);border-radius:4px">
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="_submitFrenteInline(${lat},${lng},${vis},${anu ?? 'null'})">
+        Calcular bonus
+      </button>
+    </div>
+  </div>`;
+}
+
+async function _submitFrenteInline(lat, lng, vis, anu) {
+  const frente = parseFloat(document.getElementById('frente-inline-input')?.value || '');
+  if (!frente || frente <= 0) { alert('Ingrese el frente del lote en metros.'); return; }
+  await runLookup(lat, lng, vis, anu, frente, null);
+}
+
+/* ── Building profile SVG ────────────────────────────────────────────────── */
+function buildingProfile(d) {
+  const m = d.metrics || {};
+  const bc = d.binding_constraint;
+  const ant = d.antejardin || {};
+  const pisos = m.altura_base_pisos?.valor ?? m.altura_maxima_pisos?.valor ?? null;
+  const antM  = (ant.dimension_m != null && ant.dimension_m > 0) ? ant.dimension_m : 0;
+  const retM  = m.retroceso_fachada_A_m?.valor ?? null;
+  const postM = m.aislamiento_posterior_m?.valor ?? null;
+  const latM  = (m.aislamiento_lateral_m?.valor > 0) ? m.aislamiento_lateral_m.valor : null;
+  const isHBC = bc === 'height' || bc === 'footprint_and_height';
+  const dimColor = isHBC ? '#1B48D4' : '#8D929E';
+
+  // SVG canvas
+  const W = 540, H = 180, GY = 148;
+  const leftSB  = antM > 0 ? Math.max(36, antM * 8) : (retM != null ? Math.max(30, retM * 8) : 30);
+  const rightSB = postM != null ? Math.max(28, postM * 8) : 30;
+  const latSB   = latM != null ? Math.max(16, latM * 6) : 16;
+  const bldX    = leftSB + latSB;
+  const bldW    = Math.max(80, W - bldX - rightSB - latSB);
+  const floors  = pisos != null ? Math.min(pisos, 10) : 4;
+  const floorH  = Math.min(22, Math.floor((GY - 20) / floors));
+  const bldH    = floors * floorH;
+  const bldY    = GY - bldH;
+  const estim   = pisos == null;
+
+  let floorLines = '';
+  for (let i = 1; i < floors; i++) {
+    const fy = bldY + i * floorH;
+    floorLines += `<line x1="${bldX}" y1="${fy}" x2="${bldX + bldW}" y2="${fy}" stroke="#D5D8DE" stroke-width="0.5"/>`;
+  }
+
+  const hatchId = `h${Math.random().toString(36).slice(2,7)}`;
+  const sbZones = [];
+  if (leftSB > 0) sbZones.push(`<rect x="0" y="0" width="${leftSB + latSB - latSB}" height="${GY}" fill="url(#${hatchId})"/>`);
+  if (rightSB > 0) sbZones.push(`<rect x="${bldX + bldW}" y="0" width="${W - bldX - bldW}" height="${GY}" fill="url(#${hatchId})"/>`);
+
+  const dimY = bldY - 10;
+  const dimLine = `
+    <line x1="${bldX + bldW/2}" y1="${dimY}" x2="${bldX + bldW/2}" y2="${GY}" stroke="${dimColor}" stroke-width="1" stroke-dasharray="3,2"/>
+    <text x="${bldX + bldW/2 + 5}" y="${dimY + 4}" fill="${dimColor}" font-family="'JetBrains Mono',monospace" font-size="9" dominant-baseline="middle">
+      ${pisos != null ? pisos + ' pisos' : '? pisos'}${estim ? '*' : ''}
+    </text>`;
+
+  const groundLabel = `<text x="${bldX + bldW/2}" y="${GY + 12}" fill="#8D929E" font-family="'JetBrains Mono',monospace" font-size="8" text-anchor="middle">nivel ±0.00</text>`;
+
+  const antLabel = antM > 0
+    ? `<text x="${leftSB/2}" y="${GY + 12}" fill="#5E6370" font-family="'JetBrains Mono',monospace" font-size="8" text-anchor="middle">ant. ${antM}m</text>`
+    : (retM != null ? `<text x="${leftSB/2}" y="${GY + 12}" fill="#5E6370" font-family="'JetBrains Mono',monospace" font-size="8" text-anchor="middle">ret. ${retM}m</text>` : '');
+
+  return `<div class="profile-wrap" title="${estim ? 'Altura estimada (no disponible en norma)' : 'Perfil volumétrico indicativo — no a escala'}">
+    <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" aria-hidden="true">
+      <defs>
+        <pattern id="${hatchId}" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="6" stroke="#D5D8DE" stroke-width="1"/>
+        </pattern>
+      </defs>
+      ${sbZones.join('')}
+      <rect x="${bldX}" y="${bldY}" width="${bldW}" height="${bldH}" fill="#E8EAED" stroke="#3C404C" stroke-width="1.5"/>
+      ${floorLines}
+      <line x1="0" y1="${GY}" x2="${W}" y2="${GY}" stroke="#252830" stroke-width="1.5"/>
+      ${dimLine}
+      ${groundLabel}
+      ${antLabel}
+    </svg>
+  </div>`;
+}
+
+/* ── Lot identity ────────────────────────────────────────────────────────── */
+function lotIdFull(d, lat, lng) {
+  const lote = d.lote || {};
+  const area = lote.area_m2?.valor;
+  const trat = d.tratamiento || '—';
+  const tipp = d.tipologia?.valor || null;
+  const rango = d.rango || null;
+  const anu = d.anu?.valor_m2;
+
+  let items = [
+    { label: 'LOTE (LOTCODIGO)', val: lote.lotcodigo || '—' },
+    { label: 'Área del lote', val: area ? `${fmt(area)} m²` : '—' },
+    { label: 'Tratamiento', val: trat },
+  ];
+  if (rango) items.push({ label: 'Rango', val: `Rango ${rango}` });
+  if (tipp)  items.push({ label: 'Tipología', val: tipp });
+  if (anu)   items.push({ label: 'ANU utilizada', val: `${fmt(anu)} m²` });
+  items.push({ label: 'Coordenadas', val: `${lat.toFixed(5)}, ${lng.toFixed(5)}` });
+
+  const html = items.map(i =>
+    `<div class="id-group">
+       <div class="id-label">${i.label}</div>
+       <div class="id-value">${escHtml(String(i.val))}</div>
+     </div>`
+  ).join('');
+  return `<div class="lot-id">${html}</div>`;
+}
+
+function lotIdFragment(d) {
+  const lote = d.lote || {};
+  return lote.lotcodigo
+    ? `<p class="mt8 text-muted">Lote: <strong>${escHtml(lote.lotcodigo)}</strong> — ${fmt(lote.area_m2?.valor)} m²</p>`
+    : '';
+}
+
+/* ── KPI strip ───────────────────────────────────────────────────────────── */
+function fmtCopM(v) {
+  if (v == null) return null;
+  if (Math.abs(v) >= 1e9) {
+    return '$' + (v / 1e9).toLocaleString('es-CO', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' mil mill.';
+  }
+  return '$' + Math.round(v / 1e6).toLocaleString('es-CO') + ' mill.';
+}
+
+function _kpiCell(label, value, unit, fin = false) {
+  return `<div class="kpi-cell${fin ? ' kpi-fin' : ''}">
+    <div class="kpi-label">${label}</div>
+    <div class="kpi-value">${value}</div>
+    ${unit ? `<div class="kpi-unit">${unit}</div>` : ''}
+  </div>`;
+}
+
+function _kpiNull(label, reason, fin = false) {
+  return `<div class="kpi-cell kpi-null${fin ? ' kpi-fin' : ''}">
+    <div class="kpi-label">${label}</div>
+    <div class="kpi-value">—</div>
+    <div class="kpi-reason">${reason}</div>
+  </div>`;
+}
+
+function _kpiLoading(label, fin = false) {
+  return `<div class="kpi-cell kpi-loading${fin ? ' kpi-fin' : ''}">
+    <div class="kpi-label">${label}</div>
+    <div class="kpi-value">…</div>
+  </div>`;
+}
+
+function kpiStrip(d) {
+  const m = d.metrics || {};
+  const trat = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
+  const isRenov = trat.includes('RENOVACION');
+
+  const area = isRenov
+    ? (m.area_construible_max_sin_manzana_completa_m2?.valor ?? m.area_construible_max_m2?.valor)
+    : m.area_construible_max_m2?.valor;
+  const pisos = m.altura_base_pisos?.valor ?? m.altura_maxima_pisos?.valor;
+
+  const areaLabel = isRenov ? 'ICe 5.0 BASE' : 'ÁREA CONSTRUIBLE';
+  const areaCell = area != null
+    ? _kpiCell(areaLabel, fmt(area), 'm²')
+    : _kpiNull(areaLabel, 'requiere modelado');
+
+  const pisosCell = pisos != null
+    ? _kpiCell('PISOS', pisos, pisos === 1 ? 'piso' : 'pisos')
+    : _kpiNull('PISOS', 'sin datos');
+
+  const hasArea = area != null;
+
+  return `<div class="kpi-strip" id="kpi-strip">
+    ${areaCell}
+    <div id="kpi-units-cell">${area != null ? _kpiLoading('UNIDADES') : _kpiNull('UNIDADES', 'sin área')}</div>
+    ${pisosCell}
+    <div id="kpi-ingresos-cell">${hasArea ? _kpiLoading('INGRESOS EST.', true) : _kpiNull('INGRESOS EST.', 'sin área', true)}</div>
+    <div id="kpi-costos-cell">${hasArea ? _kpiLoading('COSTO EST.', true) : _kpiNull('COSTO EST.', 'sin área', true)}</div>
+    <div id="kpi-residual-cell">${hasArea ? _kpiLoading('VALOR RESIDUAL', true) : _kpiNull('VALOR RESIDUAL', 'sin área', true)}</div>
+  </div>`;
+}
+
+async function _fetchKpiFinancials(d) {
+  // Capture sequence at call time; discard stale responses if a newer lookup started.
+  const seqAtStart = _lookupSeq;
+
+  const m = d.metrics || {};
+  const trat = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
+  const isRenov = trat.includes('RENOVACION');
+  const area = isRenov
+    ? (m.area_construible_max_sin_manzana_completa_m2?.valor ?? m.area_construible_max_m2?.valor)
+    : m.area_construible_max_m2?.valor;
+  if (!area) return;
+
+  const inp = d.input || {};
+
+  // Fetch proforma and units in parallel with defaults
+  const [pfResp, unResp] = await Promise.allSettled([
+    fetch(`/api/proforma?area_m2=${area}${inp.lng != null ? `&lng=${inp.lng}&lat=${inp.lat}` : ''}`).then(r => r.json()),
+    fetch(`/api/units?area_m2=${area}&circulacion_pct=18&pct_studio=20&pct_1br=30&pct_2br=35&pct_3br=15&m2_studio=40&m2_1br=55&m2_2br=75&m2_3br=95`).then(r => r.json()),
+  ]);
+
+  // If a newer lookup started while these fetches were in-flight, discard silently.
+  if (_lookupSeq !== seqAtStart) return;
+
+  // Update financial cells
+  const pfVal = pfResp.status === 'fulfilled' ? pfResp.value : null;
+  const pf = pfVal?.ok ? pfVal.data : null;
+  const pfBlocked = pfVal && !pfVal.ok && pfVal.error === 'blocked';
+  const setCell = (id, html) => { const el = document.getElementById(id); if (el) el.outerHTML = html; };
+
+  if (pf) {
+    setCell('kpi-ingresos-cell', _kpiCell('INGRESOS EST.', fmtCopM(pf.ingresos_totales_cop), 'supuestos predeterminados', true));
+    setCell('kpi-costos-cell',   _kpiCell('COSTO EST.',    fmtCopM(pf.costos_totales_cop),    'supuestos predeterminados', true));
+    setCell('kpi-residual-cell', pf.valor_residual_lote_cop != null
+      ? _kpiCell('VALOR RESIDUAL', fmtCopM(pf.valor_residual_lote_cop), 'supuestos predeterminados', true)
+      : _kpiNull('VALOR RESIDUAL', 'sin datos', true));
+
+    // Pre-fill proforma inputs with market defaults and render result
+    const dm = pfResp.value.data.defaults_meta;
+    if (dm) {
+      const _setIfBlank = (id, val) => { const el = document.getElementById(id); if (el && !el.dataset.userEdited) el.value = val; };
+      if (dm.precio_venta_cop_m2?.valor)       _setIfBlank('pf-pv', dm.precio_venta_cop_m2.valor);
+      if (dm.costo_construccion_cop_m2?.valor)  _setIfBlank('pf-cc', dm.costo_construccion_cop_m2.valor);
+      if (dm.eficiencia_vendible_pct?.valor)    _setIfBlank('pf-ef', Math.round(dm.eficiencia_vendible_pct.valor * 100));
+      if (dm.costos_blandos_pct?.valor)         _setIfBlank('pf-cb', Math.round(dm.costos_blandos_pct.valor * 100));
+      if (dm.margen_objetivo_pct?.valor)        _setIfBlank('pf-mg', Math.round(dm.margen_objetivo_pct.valor * 100));
+      if (!_proformaDefaults) { _proformaDefaults = dm; _applyProformaSources(dm); }
+    }
+    const pfResDiv = document.getElementById('pf-result');
+    if (pfResDiv) pfResDiv.innerHTML = renderProformaResult(pf);
+  } else {
+    const finReason = pfBlocked ? 'ingrese precio de venta' : 'sin datos';
+    ['kpi-ingresos-cell','kpi-costos-cell','kpi-residual-cell'].forEach(id =>
+      setCell(id, _kpiNull(id.includes('residual') ? 'VALOR RESIDUAL' : id.includes('ingresos') ? 'INGRESOS EST.' : 'COSTO EST.', finReason, true))
+    );
+    const pfResDiv = document.getElementById('pf-result');
+    if (pfResDiv && pfResDiv.textContent.includes('Cargando'))
+      pfResDiv.innerHTML = pfBlocked
+        ? '<div class="warn-item">Sin precio de venta de referencia para esta localidad — ingrese el precio manualmente en el panel de análisis financiero.</div>'
+        : '<div class="warn-item">No se pudo cargar el análisis financiero</div>';
+  }
+
+  // Update units cell
+  const un = unResp.status === 'fulfilled' && unResp.value.ok ? unResp.value.data : null;
+  if (un?.total_unidades) {
+    setCell('kpi-units-cell', _kpiCell('UNIDADES', un.total_unidades, 'aprox.'));
+  } else {
+    setCell('kpi-units-cell', _kpiNull('UNIDADES', 'sin datos'));
+  }
+}
+
+/* ── Verdict banner ──────────────────────────────────────────────────────── */
+function _verdictBlockers(d) {
+  const blockers = [];
+  const bc = d.binding_constraint;
+  if (bc === 'indeterminado') blockers.push('Edificabilidad requiere modelado volumétrico específico');
+  for (const w of (d.warnings || [])) {
+    const wl = w.toLowerCase();
+    if (wl.includes('antejardín') || wl.includes('antejardin')) continue;
+    if ((wl.includes('ancho_via') || wl.includes('perfil vial')) && !blockers.some(b => b.includes('vía')))
+      blockers.push('Faltan datos: ancho de vía');
+    else if ((wl.includes('anu') || wl.includes('plan parcial')) && !blockers.some(b => b.includes('ANU')))
+      blockers.push('ANU del Plan Parcial por verificar');
+  }
+  const nonAntWarnings = (d.warnings || []).filter(w => !w.toLowerCase().includes('antejardin') && !w.toLowerCase().includes('antejardín'));
+  if (nonAntWarnings.length && !blockers.length) blockers.push('Hay datos por confirmar');
+  return blockers;
+}
+
+function verdictBanner(d) {
+  const m = d.metrics || {};
+  const bc = d.binding_constraint;
+  const trat = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
+  const isRenov = trat.includes('RENOVACION');
+
+  const blockers = _verdictBlockers(d);
+  const isBlocked = bc === 'indeterminado' || blockers.length > 0;
+
+  if (isBlocked) {
+    const sub = blockers.length ? blockers.join('. ') + '.' : 'Verifique los datos del lote con un profesional.';
+    return `<div class="verdict-banner vb-condiciones" role="status">
+      <div class="vb-icon" aria-hidden="true">⚠</div>
+      <div class="vb-content">
+        <div class="vb-headline">Puedes construir, con verificaciones</div>
+        <div class="vb-sub">${escHtml(sub)}</div>
+      </div>
+    </div>`;
+  }
+
+  // VIABLE — assemble sub-line from available data
+  const area = isRenov
+    ? (m.area_construible_max_sin_manzana_completa_m2?.valor ?? m.area_construible_max_m2?.valor)
+    : m.area_construible_max_m2?.valor;
+  const pisos = m.altura_base_pisos?.valor ?? m.altura_maxima_pisos?.valor;
+  const unidades = d.unit_estimate?.total_unidades;
+
+  const subParts = [];
+  if (area != null)    subParts.push(isRenov ? `Hasta ${fmt(area)} m² (ICe 5.0)` : `Hasta ${fmt(area)} m²`);
+  if (unidades)        subParts.push(`aprox. ${unidades} unidades`);
+  if (pisos != null)   subParts.push(`${pisos} piso${pisos !== 1 ? 's' : ''}`);
+
+  const sub = subParts.length ? subParts.join(' · ') : 'Revisa los detalles abajo.';
+  return `<div class="verdict-banner vb-viable" role="status">
+    <div class="vb-icon" aria-hidden="true">✓</div>
+    <div class="vb-content">
+      <div class="vb-headline">Puedes construir aquí</div>
+      <div class="vb-sub">${sub}</div>
+    </div>
+  </div>`;
+}
+
+function blockedBanner(sub) {
+  return `<div class="verdict-banner vb-bloqueado" role="status">
+    <div class="vb-icon" aria-hidden="true">✕</div>
+    <div class="vb-content">
+      <div class="vb-headline">No podemos calcular este lote todavía</div>
+      <div class="vb-sub">${escHtml(sub)}</div>
+    </div>
+  </div>`;
+}
+
+/* ── Binding constraint ──────────────────────────────────────────────────── */
+const BC_CONFIG = {
+  height: {
+    cls: 'bc-height',
+    headline: 'El limitante es la ALTURA',
+    sub: 'El número de pisos está fijado directamente por los mapas de edificabilidad (mapa CU-5.4.x). El área construible (IC) y la huella (IO) no tienen un techo numérico en el decreto — emergen de la geometría de aislamientos.',
+  },
+  footprint_and_height: {
+    cls: 'bc-fp',
+    headline: 'Los limitantes son la HUELLA y la ALTURA',
+    sub: 'IO y pisos fijan el área construible efectiva. El IC no es la restricción activa — la combinación huella × pisos queda por debajo del techo IC.',
+  },
+  total_area: {
+    cls: 'bc-area',
+    headline: 'El limitante es el ÁREA CONSTRUIBLE TOTAL',
+    sub: 'El IC fija el techo de metros construibles sobre el ANU. La huella y la altura son resultantes — emergen de las normas volumétricas de aislamientos y retrocesos.',
+  },
+  total_area_and_footprint: {
+    cls: 'bc-both',
+    headline: 'Los limitantes son el ÁREA TOTAL y la HUELLA',
+    sub: 'IC e IO están fijados numéricamente. La altura no está en el decreto para este rango — es resultante de la geometría. Los dos índices fijos (área total y planta) son los controles activos.',
+  },
+  indeterminado: {
+    cls: 'bc-unk',
+    headline: 'Limitante indeterminado',
+    sub: 'Los parámetros clave (IC, IO, altura) son todos "resultantes" en el decreto. Se requiere modelado volumétrico con las dimensiones exactas del lote para determinar la edificabilidad real.',
+  },
+};
+
+function bindingBanner(bc, d) {
+  const cfg = BC_CONFIG[bc] || BC_CONFIG.indeterminado;
+  let headline = cfg.headline;
+  const m = d.metrics || {};
+  const trat = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
+  const isRenovacion = trat.includes('RENOVACION');
+  const isMejora     = trat.includes('MEJORAMIENTO');
+
+  if (bc === 'footprint_and_height') {
+    const p   = m.altura_base_pisos?.valor ?? m.altura_maxima_pisos?.valor;
+    const ef  = m.area_construible_max_m2?.valor;   // effective area (binding)
+    const ic  = m.area_techo_ic_m2?.valor;           // IC ceiling (reference only)
+    if (ef != null && ic != null && p != null) {
+      headline = `Alcanzable: ${fmt(ef)} m² · Techo IC: ${fmt(ic)} m² · ${p} piso${p !== 1 ? 's' : ''}`;
+    } else if (p != null) {
+      headline = `El limitante es la ALTURA — ${p} piso${p !== 1 ? 's' : ''}`;
+    }
+  } else if (bc === 'height') {
+    const p = m.altura_base_pisos?.valor ?? m.altura_maxima_pisos?.valor;
+    if (p != null) headline = `El limitante es la ALTURA — ${p} piso${p !== 1 ? 's' : ''}`;
+  } else if (bc === 'total_area') {
+    if (isRenovacion) {
+      // Show ICe range instead of a single area
+      const v1 = m.area_construible_max_sin_manzana_completa_m2?.valor;
+      const v3 = m.area_construible_max_manzana_completa_m2?.valor;
+      if (v1 != null && v3 != null)
+        headline = `El limitante es el ICe — ${fmt(v1)} m² (ICe 5.0) a ${fmt(v3)} m² (ICe 7.0)`;
+    } else {
+      const a = m.area_construible_max_m2?.valor;
+      if (a != null) headline = `El limitante es el ÁREA CONSTRUIBLE — ${fmt(a)} m²`;
+    }
+  } else if (bc === 'total_area_and_footprint') {
+    const a = m.area_construible_max_m2?.valor;
+    const f = m.planta_maxima_m2?.valor;
+    if (a != null && f != null)
+      headline = `Limitantes: ÁREA TOTAL ${fmt(a)} m² · HUELLA ${fmt(f)} m²`;
+  }
+
+  let sub = cfg.sub;
+  if (bc === 'total_area' && isRenovacion) {
+    sub = 'El ICe efectivo (Índice de Construcción Efectivo) fija el techo de metros construibles sobre el área de terreno. IO y altura no están fijados numéricamente — son resultantes de los aislamientos y el retroceso de fachada (A = 2.5 × D).';
+  }
+  if (bc === 'height' && isMejora) {
+    sub = 'La altura máxima en pisos (tabla Art. 338 cruzando ancho de vía × área de lote) es el control fijo. IC e IO no están fijados en el decreto — son resultantes de la altura y los aislamientos.';
+  }
+
+  return `<div class="binding-banner ${cfg.cls}">
+    <div class="bc-label">Restricción principal del decreto</div>
+    <div class="bc-headline">${headline}</div>
+    <div class="bc-sub">${sub}</div>
+  </div>`;
+}
+
+/* ── Antejardín ──────────────────────────────────────────────────────────── */
+function antejardínCard(ant) {
+  if (!ant) return '';
+  if (ant.confianza === 'requiere_input') {
+    return `<div class="ant-card ant-req">
+      <div class="ant-icon">⚠️</div>
+      <div class="ant-text">
+        <div class="ant-title">Antejardín — dato no disponible</div>
+        <div class="ant-sub">${escHtml(ant.error || 'Consulte el mapa CU-5.5 (Layer 22) manualmente para determinar si existe antejardín.')}</div>
+      </div>
+    </div>`;
+  }
+  if (ant.dimension_m === 0) {
+    return `<div class="ant-card ant-0">
+      <div class="ant-icon">✅</div>
+      <div class="ant-text">
+        <div class="ant-title">Sin antejardín obligatorio</div>
+        <div class="ant-sub">El mapa CU-5.5 confirma dimensión = 0. El predio es edificable hasta la línea de propiedad frontal.</div>
+      </div>
+    </div>`;
+  }
+  return `<div class="ant-card ant-ok">
+    <div class="ant-icon">📏</div>
+    <div class="ant-text">
+      <div class="ant-title">Antejardín mínimo: ${ant.dimension_m} m</div>
+      <div class="ant-sub">Fuente: ${escHtml(ant.fuente || 'Mapa CU-5.5 Layer 22')}. Retroceso de la línea de propiedad frontal. ${escHtml(ant.articulo || '')}</div>
+    </div>
+  </div>`;
+}
+
+/* ── Metrics grid ────────────────────────────────────────────────────────── */
+function metricsSection(d) {
+  const m = d.metrics || {};
+  const bc = d.binding_constraint;
+  const cards = [];
+  const trat = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
+  const isConsol     = trat.includes('CONSOLIDACION');
+  const isDesarr     = trat.includes('DESARROLLO');
+  const isRenovacion = trat.includes('RENOVACION');
+  const isMejora     = trat.includes('MEJORAMIENTO');
+
+  // ── Height ────────────────────────────────────────────────────────────────
+  if (isConsol) {
+    const pBase  = m.altura_base_pisos;
+    const pBonus = m.altura_con_bonus_pisos;
+    const pVis   = m.altura_con_vis_bonus_pisos;
+    const pBmVis = m.altura_bonus_manzana_con_vis_bonus_pisos;
+    const pBsVis = m.altura_base_con_vis_bonus_pisos;
+
+    if (pBase?.valor != null) {
+      cards.push(metricCard('Altura base (mapa)', pBase.valor, 'pisos', pBase.confianza, null));
+    }
+    // Range case: show bonus height separately
+    if (pBonus?.valor != null) {
+      cards.push(metricCard('Altura con bonus manzana', pBonus.valor, 'pisos', pBonus.confianza,
+        pBonus.condicion || 'Art. 310 § 2: manzana completa + área receptora'));
+    }
+    if (pVis?.valor != null) {
+      cards.push(metricCard('Altura con bonus VIS', pVis.valor, 'pisos', pVis.confianza,
+        `Condición: ≥${d.edificabilidad?.bonus_altura_vis?.condicion_pct_vis ?? 70}% VIS o ≥${d.edificabilidad?.bonus_altura_vis?.condicion_pct_vip ?? 50}% VIP`));
+    }
+    if (pBsVis?.valor != null) {
+      cards.push(metricCard('Altura base + VIS×2', pBsVis.valor, 'pisos', 'alta',
+        'Base del mapa × 2, con condición VIS'));
+    }
+    if (pBmVis?.valor != null) {
+      cards.push(metricCard('Altura bonus manzana + VIS×2', pBmVis.valor, 'pisos', 'alta',
+        'Bonus manzana × 2, con condición VIS'));
+    }
+
+    // Setback posterior
+    if (m.aislamiento_posterior_m?.valor != null) {
+      cards.push(metricCard('Aislamiento posterior', m.aislamiento_posterior_m.valor, 'm',
+        m.aislamiento_posterior_m.confianza, 'Anexo 5 Cap. 2.4.2.A.2'));
+    }
+    // Lateral
+    if (m.aislamiento_lateral_m != null) {
+      const lat_m = m.aislamiento_lateral_m;
+      if (lat_m.valor === 0) {
+        cards.push(metricCard('Aislamiento lateral', '—', '', 'alta', 'Tipología continua: no exigido'));
+      } else if (lat_m.valor != null) {
+        cards.push(metricCard('Aislamiento lateral', lat_m.valor, 'm', lat_m.confianza, lat_m.nota));
+      } else {
+        cards.push(metricNullCard('Aislamiento lateral', lat_m.nota || 'Requiere altura del proyecto', lat_m.confianza));
+      }
+    }
+  }
+
+  if (isDesarr) {
+    const altPisos = m.altura_maxima_pisos;
+    if (altPisos?.valor != null) {
+      cards.push(metricCard('Altura máxima', altPisos.valor, 'pisos', altPisos.confianza,
+        `Rango ${d.rango}, ${d.input?.vis_en_sitio ? 'con' : 'sin'} VIS`));
+    } else if (altPisos) {
+      // Resultante — show null card with reason, but NOT pisos_implicitos_IC_IO
+      cards.push(metricNullCard('Altura máxima', altPisos.razon_nulo || 'Altura resultante — el decreto no fija pisos para este rango.', 'media'));
+    }
+
+    const icArea = m.area_construible_max_m2;
+    const icTecho = m.area_techo_ic_m2;
+    if (icTecho?.valor != null) {
+      // footprint_and_height: effective area < IC ceiling — show both, labeled
+      cards.push(metricCard('Área alcanzable (IO × pisos)', icArea.valor, 'm²', 'alta',
+        icArea.nota));
+      cards.push(metricCard('Techo IC (no activo)', icTecho.valor, 'm²', 'alta',
+        icTecho.nota));
+    } else if (icArea?.valor != null) {
+      cards.push(metricCard('Área construible máx. (IC)', icArea.valor, 'm²', icArea.confianza,
+        icArea.nota));
+    } else if (icArea) {
+      cards.push(metricNullCard('Área construible (IC)', icArea.nota, icArea.confianza));
+    }
+
+    const icVis75 = m.area_construible_max_vis75_m2;
+    if (icVis75?.valor != null) {
+      cards.push(metricCard('Área construible >75% VIS', icVis75.valor, 'm²', icVis75.confianza,
+        'IC especial si >75% VIS/VIP — Art. 281'));
+    }
+
+    const fpMax = m.planta_maxima_m2;
+    if (fpMax?.valor != null) {
+      cards.push(metricCard('Huella máxima (IO)', fpMax.valor, 'm²', fpMax.confianza, fpMax.nota));
+    } else if (fpMax) {
+      cards.push(metricNullCard('Huella máxima (IO)', fpMax.nota, fpMax.confianza));
+    }
+
+    // area_efectiva_m2 is only shown when there is no area_techo_ic_m2
+    // (in that case area_construible_max_m2 already holds the effective value)
+    const aef = m.area_efectiva_m2;
+    if (aef?.valor != null && !icTecho) {
+      cards.push(metricCard('Área efectiva (IO × pisos)', aef.valor, 'm²', aef.confianza,
+        'Huella máxima ocupada en todos los pisos'));
+    }
+    // pisos_implicitos_IC_IO intentionally excluded from UI
+  }
+
+  if (isRenovacion) {
+    // Three ICe tiers — Art. 304
+    const tierKeys = [
+      ['area_construible_max_sin_manzana_completa_m2', 'Área máx. ICe 5.0', 'Sin manzana completa (Art. 304 Num. 1)'],
+      ['area_construible_max_esquina_manzana_m2',      'Área máx. ICe 6.0', 'Esquina de manzana + EP > 400 m² (Art. 304 Num. 2)'],
+      ['area_construible_max_manzana_completa_m2',     'Área máx. ICe 7.0', 'Manzana completa (Art. 304 Num. 3)'],
+    ];
+    for (const [key, label, note] of tierKeys) {
+      const v = m[key];
+      if (v?.valor != null) {
+        cards.push(metricCard(label, v.valor, 'm²', v.confianza, note));
+      }
+    }
+    const pp = m.area_construible_plan_parcial_m2;
+    if (pp) {
+      cards.push(metricNullCard('Área (Plan Parcial, ICe > 7.0)', pp.nota || 'Sin límite fijo — requiere Plan Parcial ≥ 3 ha.', 'alta'));
+    }
+    const io = m.planta_maxima_m2;
+    if (io) cards.push(metricNullCard('Huella máxima (IO)', io.nota || 'IO resultante — no fijado en decreto.', io.confianza));
+    const alt = m.altura_maxima_pisos;
+    if (alt) cards.push(metricNullCard('Altura máxima', alt.nota || 'Altura resultante — no fijada en decreto.', alt.confianza));
+  }
+
+  if (isMejora) {
+    const alt = m.altura_maxima_pisos;
+    if (alt?.valor != null) {
+      const retroceso = alt.condicion_retroceso
+        ? `⚠ Retroceso requerido: ${alt.condicion_retroceso}`
+        : null;
+      cards.push(metricCard(
+        'Altura máxima (tabla Art. 338)', alt.valor, 'pisos', alt.confianza,
+        retroceso || alt.nota
+      ));
+    } else if (alt) {
+      cards.push(metricNullCard('Altura máxima', alt.nota || 'Resultante.', alt.confianza));
+    }
+
+    const englobe = m.condicion_englobe_manzana;
+    if (englobe?.requerido) {
+      cards.push(`<div class="metric-card" style="border-color:var(--c-warn-border);background:var(--c-warn-bg)">
+        <div class="m-label" style="color:var(--c-warn)">Condición englobe</div>
+        <div class="m-value" style="font-size:16px;color:var(--c-warn)">Requerido</div>
+        <div class="m-note">${escHtml(englobe.nota || 'Englobe total del frente de manzana — Art. 338.')}</div>
+      </div>`);
+    }
+
+    const vip = m.obligacion_vip;
+    if (vip?.aplica) {
+      cards.push(metricCard(
+        'Obligación VIP (Art. 338)', '20 %', 'área vendible', 'alta',
+        vip.nota || '20% destinado a VIP. Exento si vincula ≥70% de moradores.'
+      ));
+    }
+
+    const io = m.planta_maxima_m2;
+    if (io) cards.push(metricNullCard('Huella máxima (IO)', io.nota || 'IO resultante.', io.confianza));
+    const ic = m.area_construible_max_m2;
+    if (ic) cards.push(metricNullCard('Área construible (IC)', ic.nota || 'IC resultante.', ic.confianza));
+  }
+
+  if (!cards.length) return '';
+  return `<div class="metrics-grid">${cards.join('')}</div>`;
+}
+
+function metricCard(label, val, unit, confianza, note) {
+  const valStr = typeof val === 'number' ? (unit === 'm²' ? fmt(val) : val) : escHtml(String(val));
+  const badge = confianzaBadge(confianza);
+  const noteHtml = note ? `<div class="m-note">${escHtml(note)}</div>` : '';
+  return `<div class="metric-card">
+    <div class="m-label">${escHtml(label)}</div>
+    <div class="m-value">${valStr}</div>
+    ${unit ? `<div class="m-unit">${escHtml(unit)}</div>` : ''}
+    ${badge}
+    ${noteHtml}
+  </div>`;
+}
+
+function metricNullCard(label, reason, confianza) {
+  return `<div class="metric-card m-null">
+    <div class="m-label">${escHtml(label)}</div>
+    <div class="m-value">Resultante</div>
+    ${confianzaBadge(confianza)}
+    <div class="m-note">${escHtml(reason || '')}</div>
+  </div>`;
+}
+
+/* ── Retroceso de fachada row — computed A when GIS / user data available ── */
+function retrocesoCellHtml(rf, factor, fuenteDecreto) {
+  if (!rf) {
+    return setbackRow('Retroceso de fachada', `A = ${factor} × D`,
+      'D = perfil vial frente al predio (no disponible automáticamente).', fuenteDecreto);
+  }
+  const A = rf.valor;
+  const fuente = rf.fuente_D || '';
+  const fuenteLabel =
+    fuente === 'usuario'            ? 'Fuente: dato ingresado por el usuario' :
+    fuente.startsWith('Layer 38')  ? 'Fuente GIS: Layer 38 Calzada POT (calzada sin andenes/separadores)' :
+    fuente === 'sin_dato'          ? 'Dato no disponible — proporcione ancho_via_m' :
+    fuente ? `Fuente: ${fuente}` : '';
+
+  const valStr = A != null ? `A = ${A} m` : `A = ${factor} × D`;
+  const sub = A != null
+    ? `D = ${rf.D_m} m · ${fuenteLabel}`
+    : `D = perfil vial frente al predio · ${fuenteLabel || 'proporcione ancho_via_m'}`;
+
+  return `<div class="setback-row">
+    <div>
+      <div class="sb-name">Retroceso de fachada</div>
+      <div class="sb-sub">${escHtml(sub)} ${confianzaBadge(rf.confianza)}</div>
+      ${fuenteDecreto ? `<div class="sb-sub" style="color:var(--c-link)">${escHtml(fuenteDecreto)}</div>` : ''}
+    </div>
+    <div class="sb-val">${escHtml(valStr)}</div>
+  </div>`;
+}
+
+/* ── Setbacks card ───────────────────────────────────────────────────────── */
+function setbacksCard(d) {
+  const ed = d.edificabilidad || {};
+  const m  = d.metrics || {};
+  const rows = [];
+  const trat = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
+  const isConsol     = trat.includes('CONSOLIDACION');
+  const isRenovacion = trat.includes('RENOVACION');
+  const isMejora     = trat.includes('MEJORAMIENTO');
+
+  if (isRenovacion) {
+    rows.push(retrocesoCellHtml(
+      m.retroceso_fachada_A_m,
+      '2.5',
+      'Anexo 5 Cap. 1.2.2.E.1.1 · Art. 307 Decreto 555/2021'
+    ));
+    rows.push(setbackRow(
+      'IC base para obligaciones urbanísticas',
+      '1.3',
+      'IC de referencia para calcular cargas urbanísticas (Art. 317 Decreto 555/2021). No es el IC edificatorio.',
+      'Art. 317 Decreto 555/2021'
+    ));
+    rows.push(setbackRow(
+      'Antejardín',
+      'No requerido',
+      'Renovación Urbana no exige antejardín obligatorio (Art. 307 Decreto 555/2021).',
+      'Art. 307 Decreto 555/2021'
+    ));
+  } else if (isMejora) {
+    rows.push(setbackRow(
+      'Aislamiento lateral mínimo',
+      '3 m',
+      'Exigido para toda edificación en Mejoramiento Integral.',
+      'Art. 338 Decreto 555/2021'
+    ));
+    rows.push(setbackRow(
+      'Relación altura : ancho de vía',
+      '≤ 2 : 1',
+      'Altura_edificio_m ≤ 2 × ancho_vía_m. Si supera, la fachada debe retroceder desde el 3er piso.',
+      'Art. 338 Decreto 555/2021'
+    ));
+    rows.push(setbackRow(
+      'Antejardín',
+      'No requerido',
+      'Mejoramiento Integral no exige antejardín obligatorio (Art. 338 Decreto 555/2021).',
+      'Art. 338 Decreto 555/2021'
+    ));
+  } else if (isConsol) {
+    rows.push(retrocesoCellHtml(
+      m.retroceso_fachada_A_m,
+      '2.5',
+      ed.retroceso_fachada?.articulo || 'Anexo 5 Cap. 1.2.2.E.1.1 Decreto 555/2021'
+    ));
+    const sub = ed.subdivision_permitida;
+    if (sub) {
+      rows.push(setbackRow(
+        'Subdivisión predial',
+        sub.valor ? `Permitida${sub.condiciones ? ` (${sub.condiciones})` : ''}` : 'No permitida',
+        null, sub.articulo
+      ));
+    }
+  } else {
+    // Desarrollo
+    rows.push(retrocesoCellHtml(
+      m.retroceso_fachada_A_m,
+      '2.0',
+      ed.retroceso_fachada?.articulo || 'Art. 281 / Anexo 5 Cap. 1.2.2.E.1 Decreto 555/2021'
+    ));
+
+    const aisl_v = ed.aislamientos_contra_predios_vecinos;
+    if (aisl_v) rows.push(setbackRow('Aislamiento contra predios vecinos', aisl_v.formula, aisl_v.nota, aisl_v.articulo));
+
+    const aisl_e = ed.aislamientos_entre_edificaciones;
+    if (aisl_e) rows.push(setbackRow('Aislamiento entre edificaciones', aisl_e.formula, aisl_e.nota, aisl_e.articulo));
+
+    const loteo = ed.loteo_minimo;
+    if (loteo) rows.push(setbackRow('Loteo mínimo', loteo.unifamiliar_area ? `Unifamiliar ≥${loteo.unifamiliar_area} m², frente ≥${loteo.unifamiliar_frente} m` : '—', null, loteo.articulo));
+  }
+
+  if (!rows.length) return '';
+  return `<div class="card">
+    <div class="section-head">Normas volumétricas adicionales</div>
+    ${rows.join('')}
+  </div>`;
+}
+
+function setbackRow(name, val, sub, art) {
+  return `<div class="setback-row">
+    <div>
+      <div class="sb-name">${escHtml(name)}</div>
+      ${sub ? `<div class="sb-sub">${escHtml(sub)}</div>` : ''}
+      ${art ? `<div class="sb-sub" style="color:var(--c-link)">${escHtml(art)}</div>` : ''}
+    </div>
+    <div class="sb-val">${escHtml(String(val || '—'))}</div>
+  </div>`;
+}
+
+/* ── Parking card (Art. 389) ─────────────────────────────────────────────── */
+function parkingCard(d) {
+  const pk = d.parking;
+  if (!pk) return '';
+
+  const badgeClass = pk.confianza === 'alta' ? 'badge-alta' :
+                     pk.confianza === 'media' ? 'badge-media' : 'badge-req';
+  const badgeLabel = pk.confianza === 'alta' ? 'Alta' :
+                     pk.confianza === 'media' ? 'Media' : 'Sin dato';
+
+  let body = '';
+  if (pk.min_pct !== null && pk.max_pct !== null) {
+    const fmtPct = v => v === 0 ? '0%' : `${v}%`;
+    const fmtArea = v => v !== undefined && v !== null ? `${v.toLocaleString('es-CO')} m²` : '—';
+    const minArea = pk.min_area_m2 !== undefined ? ` (≈ ${fmtArea(pk.min_area_m2)})` : '';
+    const maxArea = pk.max_area_m2 !== undefined ? ` (≈ ${fmtArea(pk.max_area_m2)})` : '';
+    const addArea = pk.adicional_area_m2 !== undefined ? ` (≈ ${fmtArea(pk.adicional_area_m2)})` : '';
+
+    body = `
+      <div class="setback-row">
+        <div><div class="sb-name">Área de actividad</div>
+          <div class="sb-sub">${escHtml(pk.area_actividad_label || pk.area_actividad_codigo || '—')}</div>
+        </div>
+        <div class="sb-val"><span class="badge ${badgeClass}">${escHtml(badgeLabel)}</span></div>
+      </div>
+      <div class="setback-row">
+        <div>
+          <div class="sb-name">Mínimo estacionamientos</div>
+          <div class="sb-sub">Sobre base Art. 390${pk.vis_en_sitio ? ' · VIS/VIP' : ' · no VIS'}</div>
+        </div>
+        <div class="sb-val">${fmtPct(pk.min_pct)}${minArea}</div>
+      </div>
+      <div class="setback-row">
+        <div>
+          <div class="sb-name">Máximo estacionamientos</div>
+          <div class="sb-sub">Sin pago compensatorio</div>
+        </div>
+        <div class="sb-val">${fmtPct(pk.max_pct)}${maxArea}</div>
+      </div>
+      <div class="setback-row">
+        <div>
+          <div class="sb-name">Área adicional permitida</div>
+          <div class="sb-sub">Con pago compensatorio Art. 390A</div>
+        </div>
+        <div class="sb-val">${fmtPct(pk.adicional_pct)}${addArea}</div>
+      </div>
+      ${pk.nota ? `<div class="ts-note" style="margin-top:8px">${escHtml(pk.nota)}</div>` : ''}
+    `;
+  } else {
+    body = `<div class="ts-note">${escHtml(pk.nota || 'No disponible.')}</div>`;
+  }
+
+  return `<div class="card">
+    <div class="section-head">Estacionamientos — Art. 389 Decreto 555/2021</div>
+    ${body}
+  </div>`;
+}
+
+/* ── Unit estimator panel ────────────────────────────────────────────────── */
+let _lastAreaM2 = null;
+
+function unitsPanel(d) {
+  const areaObj = (d.metrics || {}).area_construible_max_m2;
+  const area = areaObj?.valor;
+  if (!area) return '';
+  _lastAreaM2 = area;
+
+  return `<details class="units-panel" id="units-panel">
+    <summary>
+      <span>Estimador de unidades (apartamentos)</span>
+      <span class="badge badge-est" style="margin-left:8px">ESTIMACIÓN</span>
+    </summary>
+    <div class="units-body">
+      <p class="units-disclaimer">
+        Los valores a continuación son estimaciones basadas en supuestos de mezcla ingresados por el usuario.
+        No son valores del decreto ni del diseño arquitectónico.
+      </p>
+      <div class="units-grid">
+        <label>Circulación / zonas comunes
+          <input id="u-circ" type="number" value="18" min="1" max="50" step="1"> %
+        </label>
+        <div class="units-mix-head">Mezcla de unidades</div>
+        <label>Estudios — % mezcla
+          <input id="u-pct-studio" type="number" value="20" min="0" max="100" step="1"> %
+        </label>
+        <label>Estudios — m² neta
+          <input id="u-m2-studio" type="number" value="40" min="10" max="200" step="1"> m²
+        </label>
+        <label>1 Alcoba — % mezcla
+          <input id="u-pct-1br" type="number" value="30" min="0" max="100" step="1"> %
+        </label>
+        <label>1 Alcoba — m² neta
+          <input id="u-m2-1br" type="number" value="55" min="10" max="200" step="1"> m²
+        </label>
+        <label>2 Alcobas — % mezcla
+          <input id="u-pct-2br" type="number" value="35" min="0" max="100" step="1"> %
+        </label>
+        <label>2 Alcobas — m² neta
+          <input id="u-m2-2br" type="number" value="75" min="10" max="200" step="1"> m²
+        </label>
+        <label>3 Alcobas — % mezcla
+          <input id="u-pct-3br" type="number" value="15" min="0" max="100" step="1"> %
+        </label>
+        <label>3 Alcobas — m² neta
+          <input id="u-m2-3br" type="number" value="95" min="10" max="200" step="1"> m²
+        </label>
+      </div>
+      <div id="u-pct-warning" style="display:none;color:var(--c-err);font-size:13px;margin-top:4px"></div>
+      <button onclick="calcUnits()" style="margin-top:12px;padding:8px 20px;background:var(--c-accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">Calcular unidades</button>
+      <div id="units-result" style="margin-top:16px"></div>
+    </div>
+  </details>`;
+}
+
+async function calcUnits() {
+  if (!_lastAreaM2) return;
+  const g = id => parseFloat(document.getElementById(id)?.value || '0');
+  const pcts = [g('u-pct-studio'), g('u-pct-1br'), g('u-pct-2br'), g('u-pct-3br')];
+  const total = pcts.reduce((a, b) => a + b, 0);
+  const warn = document.getElementById('u-pct-warning');
+  if (Math.abs(total - 100) > 0.5) {
+    warn.textContent = `Los porcentajes suman ${total.toFixed(1)}% — deben sumar 100%.`;
+    warn.style.display = 'block';
+    return;
+  }
+  warn.style.display = 'none';
+
+  const params = new URLSearchParams({
+    area_m2: _lastAreaM2,
+    circulacion_pct: g('u-circ'),
+    pct_studio: pcts[0], pct_1br: pcts[1], pct_2br: pcts[2], pct_3br: pcts[3],
+    m2_studio: g('u-m2-studio'), m2_1br: g('u-m2-1br'), m2_2br: g('u-m2-2br'), m2_3br: g('u-m2-3br'),
+  });
+
+  const resDiv = document.getElementById('units-result');
+  resDiv.innerHTML = '<em style="color:var(--c-muted)">Calculando…</em>';
+
+  try {
+    const resp = await fetch(`/api/units?${params}`);
+    const json = await resp.json();
+    if (!json.ok) {
+      resDiv.innerHTML = `<div class="warn-item">${escHtml(json.message || 'Error')}</div>`;
+      return;
+    }
+    resDiv.innerHTML = renderUnitsResult(json.data);
+  } catch (e) {
+    resDiv.innerHTML = `<div class="warn-item">Error de red: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderUnitsResult(data) {
+  const fmt = n => n?.toLocaleString('es-CO') ?? '—';
+  const rows = Object.entries(data.unidades_por_tipo || {}).map(([tipo, u]) =>
+    `<div class="setback-row">
+      <div><div class="sb-name">${escHtml(u.label)}</div>
+        <div class="sb-sub">${u.pct_mezcla}% · ${u.m2_neta_por_unidad} m²/und · ${fmt(u.area_asignada_m2)} m² asignados</div>
+      </div>
+      <div class="sb-val">${u.unidades} unds</div>
+    </div>`
+  ).join('');
+
+  return `
+    <div class="setback-row" style="background:var(--c-accent-soft,#e8f0fe);border-radius:6px;padding:8px 12px">
+      <div><div class="sb-name">Área construible (bruta)</div></div>
+      <div class="sb-val">${fmt(data.area_construible_m2)} m²</div>
+    </div>
+    <div class="setback-row">
+      <div><div class="sb-name">Circulación deducida (${data.circulacion_pct}%)</div></div>
+      <div class="sb-val">− ${fmt(data.circ_area_m2)} m²</div>
+    </div>
+    <div class="setback-row" style="border-top:2px solid var(--c-border)">
+      <div><div class="sb-name" style="font-weight:700">Área vendible neta estimada</div></div>
+      <div class="sb-val" style="font-weight:700">${fmt(data.area_vendible_neta_m2)} m²</div>
+    </div>
+    ${rows}
+    <div class="setback-row" style="background:var(--c-green-soft,#e6f4ea);border-radius:6px;padding:8px 12px;margin-top:4px">
+      <div><div class="sb-name" style="font-weight:700">Total unidades estimadas</div></div>
+      <div class="sb-val" style="font-weight:700;font-size:18px">${data.total_unidades}</div>
+    </div>
+    <div class="ts-note" style="margin-top:8px">${escHtml(data.disclaimer)}</div>
+    ${formulaTrace(data.formula_trace || [])}
+  `;
+}
+
+/* ── Pro-forma (land residual) panel ─────────────────────────────────────── */
+let _lastProformaArea = null;
+let _lastProformaLng  = null;
+let _lastProformaLat  = null;
+let _proformaDefaults = null;
+
+function _pfHeader() {
+  return `<div class="section-head" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-3)">
+    <span>Pro-forma de viabilidad</span>
+    <span class="badge badge-est">ESTIMACIÓN</span>
+  </div>
+  <p class="units-disclaimer" style="margin-bottom:var(--sp-4)">
+    Modelo de residuo de tierra. Referencia de mercado — no sustituye estudio de mercado profesional ni avalúo.
+  </p>`;
+}
+
+function proformaPanel(d) {
+  const m = d.metrics || {};
+  const trat = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
+  const isRenov = trat.includes('RENOVACION');
+  const area = isRenov
+    ? (m.area_construible_max_sin_manzana_completa_m2?.valor ?? m.area_construible_max_m2?.valor)
+    : m.area_construible_max_m2?.valor;
+
+  const inp = d.input || {};
+  _lastProformaArea = area ?? null;
+  _lastProformaLng  = inp.lng ?? null;
+  _lastProformaLat  = inp.lat ?? null;
+  _proformaDefaults = null;
+
+  if (!area) {
+    return `<div class="card" id="proforma-panel" style="opacity:.65">
+      ${_pfHeader()}
+      <div class="pf-blocked-form">
+        <p style="font-size:var(--ts-base);font-weight:var(--fw-5);color:var(--ink-2);margin-bottom:var(--sp-3)">
+          Ingresa el área construible modelada para calcular el retorno
+        </p>
+        <div class="req-form-row">
+          <div>
+            <label style="font-size:var(--ts-sm);color:var(--ink-3);display:block;margin-bottom:3px">Área construible estimada</label>
+            <input type="number" id="pf-manual-area" min="1" step="10" placeholder="Ej: 1 500"
+              style="width:140px;padding:6px 10px;border:var(--rule);font-family:var(--ff-mono);font-size:var(--ts-base)">
+            <span style="font-size:var(--ts-sm);color:var(--ink-4);margin-left:4px">m²</span>
+          </div>
+          <button class="btn btn-primary" onclick="calcProformaManual()">Calcular con esta área</button>
+        </div>
+        <div id="pf-result" style="margin-top:var(--sp-4)"></div>
+      </div>
+    </div>`;
+  }
+
+  return `<div class="card" id="proforma-panel">
+    ${_pfHeader()}
+    <div class="proforma-grid" style="margin-bottom:var(--sp-3)">
+      <label>Precio del lote (COP, opcional)
+        <input id="pf-lote" type="number" min="0" step="1000000" placeholder="ej. 800 000 000">
+      </label>
+      <div></div>
+      <label>Precio de venta (COP/m²)
+        <input id="pf-pv" type="number" min="100000" step="100000" value="7500000">
+        <span class="proforma-source" id="pf-pv-src">Promedio Bogotá · cargando fuente…</span>
+      </label>
+      <label>Costo de construcción (COP/m²)
+        <input id="pf-cc" type="number" min="100000" step="100000" value="2800000">
+        <span class="proforma-source" id="pf-cc-src">No-VIS estándar · cargando fuente…</span>
+      </label>
+    </div>
+    <div class="proforma-constants-head">Supuestos del modelo</div>
+    <div class="proforma-grid-3" style="margin-bottom:var(--sp-3)">
+      <label>Eficiencia vendible
+        <div class="pf-const-row">
+          <input id="pf-ef" type="number" min="50" max="100" step="1" value="82">
+          <span class="pf-const-unit">%</span>
+          <button class="pf-reset" onclick="pfReset('pf-ef',82)">↺ Restablecer</button>
+        </div>
+        <span class="proforma-source" id="pf-ef-src">% área bruta → vendible · cargando…</span>
+      </label>
+      <label>Costos blandos
+        <div class="pf-const-row">
+          <input id="pf-cb" type="number" min="1" max="50" step="1" value="18">
+          <span class="pf-const-unit">%</span>
+          <button class="pf-reset" onclick="pfReset('pf-cb',18)">↺ Restablecer</button>
+        </div>
+        <span class="proforma-source" id="pf-cb-src">% sobre costos duros · cargando…</span>
+      </label>
+      <label>Margen objetivo
+        <div class="pf-const-row">
+          <input id="pf-mg" type="number" min="1" max="60" step="1" value="20">
+          <span class="pf-const-unit">%</span>
+          <button class="pf-reset" onclick="pfReset('pf-mg',20)">↺ Restablecer</button>
+        </div>
+        <span class="proforma-source" id="pf-mg-src">% sobre ingresos · cargando…</span>
+      </label>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="calcProforma()" style="margin-bottom:var(--sp-4)">Recalcular</button>
+    <div id="pf-result">
+      <div style="text-align:center;padding:var(--sp-3) 0;color:var(--ink-4);font-size:var(--ts-sm)">Cargando análisis financiero…</div>
+    </div>
+  </div>`;
+}
+
+function pfReset(id, defaultVal) {
+  const el = document.getElementById(id);
+  if (el) { el.value = defaultVal; calcProforma(); }
+}
+
+function _pfParams() {
+  const pv   = parseFloat(document.getElementById('pf-pv')?.value  || '7500000');
+  const cc   = parseFloat(document.getElementById('pf-cc')?.value  || '2800000');
+  const ef   = parseFloat(document.getElementById('pf-ef')?.value  || '82') / 100;
+  const cb   = parseFloat(document.getElementById('pf-cb')?.value  || '18') / 100;
+  const mg   = parseFloat(document.getElementById('pf-mg')?.value  || '20') / 100;
+  const lote = parseFloat(document.getElementById('pf-lote')?.value || '') || null;
+  return { pv, cc, ef, cb, mg, lote };
+}
+
+async function calcProforma() {
+  if (!_lastProformaArea) return;
+  const { pv, cc, ef, cb, mg, lote } = _pfParams();
+  const resDiv = document.getElementById('pf-result');
+  if (resDiv) resDiv.innerHTML = '<em style="color:var(--ink-4)">Calculando…</em>';
+
+  const params = new URLSearchParams({
+    area_m2: _lastProformaArea,
+    precio_venta_cop_m2: pv,
+    costo_construccion_cop_m2: cc,
+    eficiencia_vendible_pct: ef,
+    costos_blandos_pct: cb,
+    margen_objetivo_pct: mg,
+  });
+  if (lote)                     params.set('precio_lote_cop', lote);
+  if (_lastProformaLng != null) { params.set('lng', _lastProformaLng); params.set('lat', _lastProformaLat); }
+
+  try {
+    const resp = await fetch(`/api/proforma?${params}`);
+    const json = await resp.json();
+    if (!json.ok) { if (resDiv) resDiv.innerHTML = `<div class="warn-item">${escHtml(json.message || 'Error')}</div>`; return; }
+    if (!_proformaDefaults && json.data.defaults_meta) { _proformaDefaults = json.data.defaults_meta; _applyProformaSources(_proformaDefaults); }
+    if (resDiv) resDiv.innerHTML = renderProformaResult(json.data);
+  } catch (e) {
+    if (resDiv) resDiv.innerHTML = `<div class="warn-item">Error de red: ${escHtml(e.message)}</div>`;
+  }
+}
+
+async function calcProformaManual() {
+  const area = parseFloat(document.getElementById('pf-manual-area')?.value || '');
+  if (!area || area <= 0) { return; }
+  _lastProformaArea = area;
+  await calcProforma();
+}
+
+function _applyProformaSources(meta) {
+  const _pct = v => `${Math.round(v * 100)}%`;
+  const _rng = (r) => r ? `${_pct(r[0])}–${_pct(r[1])}` : '';
+
+  const pvEl = document.getElementById('pf-pv-src');
+  if (pvEl && meta.precio_venta_cop_m2) {
+    const m = meta.precio_venta_cop_m2;
+    pvEl.textContent = `Promedio Bogotá ${m.fecha} · rango $${_fmtK(m.rango[0])}–$${_fmtK(m.rango[1])}/m²`;
+    pvEl.title = m.fuente;
+  }
+  const ccEl = document.getElementById('pf-cc-src');
+  if (ccEl && meta.costo_construccion_cop_m2) {
+    const m = meta.costo_construccion_cop_m2;
+    ccEl.textContent = `No-VIS estándar ${m.fecha} · rango $${_fmtK(m.rango[0])}–$${_fmtK(m.rango[1])}/m²`;
+    ccEl.title = m.fuente;
+  }
+  const efEl = document.getElementById('pf-ef-src');
+  if (efEl && meta.eficiencia_vendible_pct) {
+    const m = meta.eficiencia_vendible_pct;
+    efEl.textContent = `Supuesto del producto · rango ${_rng(m.rango)} torres Bogotá`;
+    efEl.title = m.fuente + (m.nota ? '\n\n' + m.nota : '');
+  }
+  const cbEl = document.getElementById('pf-cb-src');
+  if (cbEl && meta.costos_blandos_pct) {
+    const m = meta.costos_blandos_pct;
+    cbEl.textContent = `Camacol ${m.fecha} · rango ${_rng(m.rango)} sobre obra`;
+    cbEl.title = m.fuente + (m.nota ? '\n\n' + m.nota : '');
+  }
+  const mgEl = document.getElementById('pf-mg-src');
+  if (mgEl && meta.margen_objetivo_pct) {
+    const m = meta.margen_objetivo_pct;
+    mgEl.textContent = `Industria ${m.fecha} · rango ${_rng(m.rango)} sobre ingresos`;
+    mgEl.title = m.fuente + (m.nota ? '\n\n' + m.nota : '');
+  }
+}
+
+function _fmtK(v) {
+  return v >= 1_000_000 ? (v / 1_000_000).toFixed(1) + 'M' : (v / 1_000).toFixed(0) + 'k';
+}
+
+function renderProformaResult(d) {
+  const fmtCOP = v => {
+    if (v == null) return '—';
+    const abs = Math.abs(v);
+    return (v < 0 ? '−' : '') + '$ ' + abs.toLocaleString('es-CO');
+  };
+  const green   = v => `<span class="pf-num-green">${fmtCOP(v)}</span>`;
+  const red     = v => `<span class="pf-num-red">${fmtCOP(v)}</span>`;
+  const colRlv  = v => (v != null && v >= 0) ? green(v) : red(v);
+  const neutral = v => fmtCOP(v);
+
+  const _verdIcons  = { sobrepago: '⬆ Sobrepago — ', margen: '↕ Margen — ', en_linea: '✓ Alineado — ' };
+  const _verdLabels = { sobrepago: 'Sobrepago', margen: 'Margen positivo', en_linea: 'Alineado' };
+  const veredictoHtml = d.veredicto_frase
+    ? `<div class="veredicto-banner v-${d.veredicto}" role="status">
+        <span class="sr-only">${_verdLabels[d.veredicto] || d.veredicto}: </span>
+        <span aria-hidden="true">${_verdIcons[d.veredicto] || ''}</span>${escHtml(d.veredicto_frase)}
+       </div>`
+    : '';
+
+  const echo     = d.inputs_echo;
+  const _orig    = (key) => echo?.[key]?.origen === 'usuario' ? ' <em style="font-size:11px">(usuario)</em>' : '';
+  const pvOrigen = _orig('precio_venta_cop_m2');
+  const ccOrigen = _orig('costo_construccion_cop_m2');
+  const efOrigen = _orig('eficiencia_vendible_pct');
+  const cbOrigen = _orig('costos_blandos_pct');
+  const mgOrigen = _orig('margen_objetivo_pct');
+
+  const loteRow = d.diferencia_cop != null ? `
+    <tr class="pf-section"><td colspan="2">Comparación con precio del lote</td></tr>
+    <tr><td>Precio del lote ingresado</td><td>${fmtCOP(echo?.precio_lote_cop)}</td></tr>
+    <tr><td>Diferencia vs VRL</td><td>${d.diferencia_cop >= 0 ? red(d.diferencia_cop) : green(Math.abs(d.diferencia_cop))}</td></tr>
+  ` : '';
+
+  const efVal  = echo?.eficiencia_vendible_pct?.valor ?? 0.82;
+  const efPct  = Math.round(efVal * 100);
+  const aVend  = d.area_vendible_m2 ?? (d.area_construible_m2 * efVal);
+
+  return `
+    ${veredictoHtml}
+    <table class="proforma-table">
+      <tbody>
+        <tr class="pf-section"><td colspan="2">Ingresos</td></tr>
+        <tr><td>Área vendible (${efPct}% de bruta)${efOrigen}</td><td>${neutral(aVend)} m²</td></tr>
+        <tr><td>Ingresos totales de ventas</td><td>${green(d.ingresos_totales_cop)}${pvOrigen}</td></tr>
+        <tr class="pf-section"><td colspan="2">Costos de construcción (sin terreno)</td></tr>
+        <tr><td>Costos duros (área bruta)${ccOrigen}</td><td>${red(d.costos_duros_cop)}</td></tr>
+        <tr><td>Costos blandos del promotor${cbOrigen}</td><td>${red(d.costos_blandos_cop)}</td></tr>
+        <tr class="pf-total"><td>Total costos</td><td>${red(d.costos_totales_cop)}</td></tr>
+        <tr class="pf-section"><td colspan="2">Utilidad</td></tr>
+        <tr><td>Utilidad objetivo del promotor${mgOrigen}</td><td>${neutral(d.utilidad_objetivo_cop)}</td></tr>
+        <tr class="pf-rlv"><td>Valor residual del lote (VRL)</td><td>${colRlv(d.valor_residual_lote_cop)}</td></tr>
+        ${loteRow}
+      </tbody>
+    </table>
+    <p class="units-disclaimer" style="margin-top:8px">
+      Área bruta: ${(d.area_construible_m2 || 0).toLocaleString('es-CO')} m² · Área vendible: ${(aVend || 0).toLocaleString('es-CO')} m² (${efPct}% eficiencia).
+      Precio de venta y costo de construcción: referencias de mercado — verifique antes de tomar decisiones.
+    </p>
+  `;
+}
+
+/* ── Formula trace ───────────────────────────────────────────────────────── */
+function formulaTrace(steps) {
+  if (!steps?.length) return '';
+  const stepsHtml = steps.map(s => {
+    const isErr = !!s.error;
+    const valStr = s.valores && Object.keys(s.valores).length
+      ? JSON.stringify(s.valores, null, 2) : '';
+    const resStr = s.resultado !== null && s.resultado !== undefined
+      ? `<div class="ts-res">= ${s.resultado} ${escHtml(s.unidad || '')}</div>` : '';
+    return `<div class="trace-step${isErr ? ' step-error' : ''}">
+      <div class="ts-n">Paso ${s.paso}</div>
+      <div class="ts-desc">${escHtml(s.descripcion || '')}</div>
+      ${s.expresion ? `<div class="ts-expr">${escHtml(s.expresion)}</div>` : ''}
+      ${valStr ? `<div class="ts-vals">${escHtml(valStr)}</div>` : ''}
+      ${resStr}
+      ${s.nota   ? `<div class="ts-note">${escHtml(s.nota)}</div>` : ''}
+      ${s.fuente ? `<div class="ts-src">Fuente: ${escHtml(s.fuente)}</div>` : ''}
+      ${isErr    ? `<div class="ts-note" style="color:var(--c-err)">${escHtml(s.error)}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  return `<details class="trace-block">
+    <summary>Pasos del cálculo (${steps.length} pasos) — verificación manual</summary>
+    <div class="trace-inner">${stepsHtml}</div>
+  </details>`;
+}
+
+/* ── Export ──────────────────────────────────────────────────────────────── */
+function exportJson() {
+  if (!_lastRaw) return;
+  const blob = new Blob([JSON.stringify(_lastRaw, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'edificabilidad.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function downloadPdf(lat, lng, vis) {
+  if (!_lastRaw) return;
+  const d = (_lastRaw.data || _lastRaw);
+  const inp = d.input || {};
+
+  const params = new URLSearchParams({ lat, lng, vis_en_sitio: vis });
+  if (inp.anu_m2_supplied)    params.set('anu_m2',      inp.anu_m2_supplied);
+  if (inp.frente_m_supplied)  params.set('frente_m',    inp.frente_m_supplied);
+  if (inp.ancho_via_m_supplied) params.set('ancho_via_m', inp.ancho_via_m_supplied);
+
+  const address = document.getElementById('addr-input')?.value?.trim() || 'Dirección no especificada';
+  params.set('address', address);
+
+  const btn = document.activeElement;
+  const origText = btn.textContent;
+  btn.textContent = 'Generando…';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch(`/api/report?${params}`, { headers: _authHeaders() });
+    if (!resp.ok) { alert('Error al generar el PDF'); return; }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `prefactibilidad_${lat.toFixed(4)}_${lng.toFixed(4)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Error de red al generar el PDF: ' + e.message);
+  } finally {
+    btn.textContent = origText;
+    btn.disabled = false;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   3D Massing + DXF
+══════════════════════════════════════════════════════════════════════════ */
+function _onNormativeToggle(details) {
+  if (!details.open) return;
+  if (_massingInitDone) return;
+  _massingInitDone = true;
+  setTimeout(() => initMassing(_lastCalcData), 0);
+}
+
+async function initMassing(calcData) {
+  // Dispose previous instance if any
+  if (_massingInst) { _massingInst.dispose(); _massingInst = null; }
+
+  const container = document.getElementById('massing-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  // Dynamically import the module (it was already pre-parsed by the browser)
+  let buildFn;
+  try {
+    const mod = await import('/static/massing3d.js');
+    buildFn = mod.buildMassing;
+  } catch (e) {
+    container.innerHTML = `<div class="massing-no-data">Vista 3D no disponible</div>`;
+    return;
+  }
+
+  if (!calcData?.lote?.geojson_polygon) {
+    container.innerHTML = `<div class="massing-no-data">Sin polígono de lote — vista 3D no disponible</div>`;
+    return;
+  }
+
+  try {
+    _massingInst = buildFn(calcData, container);
+  } catch (e) {
+    container.innerHTML = `<div class="massing-no-data">Error al cargar vista 3D</div>`;
+    return;
+  }
+
+  if (!_massingInst) {
+    container.innerHTML = `<div class="massing-no-data">Sin datos de polígono para renderizar</div>`;
+    return;
+  }
+
+  // Caption: use regulatory IO × ANU if available, else the footprint the
+  // massing already computed (areaFootprint = signedArea of inset polygon).
+  const _fp = _lastCalcData?.metrics?.planta_maxima_m2?.valor ?? _massingInst.meta.areaFootprint;
+  _renderMassingInfo(_massingInst.meta, _fp);
+
+  // Second-chance KPI update: if showResult's _tryComputeFootprintArea couldn't
+  // compute a footprint, use the footprint the 3D canvas already computed.
+  // Use _bestPisos (reads altura_maxima_rango_pisos) not meta.pisos (base only).
+  const mFp  = _massingInst.meta.areaFootprint;
+  const mPis = _bestPisos(_lastCalcData?.metrics || {}) || _massingInst.meta.pisos;
+  const kpiFirst = document.getElementById('kpi-strip')?.firstElementChild;
+  if (mFp && mFp > 0 && mPis && kpiFirst?.classList.contains('kpi-null')) {
+    _updateKpiFromFootprint(mFp, mPis, 'Estimado modelado 3D', _lastCalcData);
+  }
+}
+
+function _renderMassingInfo(m, footprintM2 = null) {
+  const el = document.getElementById('massing-info');
+  if (!el || !m) return;
+  const parts = [];
+  if (m.pisos)          parts.push(`<span>${m.pisos} pisos × 3 m = ${(m.pisos * 3).toFixed(0)} m</span>`);
+  if (m.uniformInset > 0) parts.push(`<span>Aislamientos (conservador): ${m.uniformInset.toFixed(1)} m</span>`);
+  // Use the corrected _computeLotFootprint result (same source as KPI strip).
+  // footprintM2 is passed in by the caller; fall back to 3D geometry only when absent.
+  const fp = footprintM2 ?? m.areaFootprint;
+  if (fp && fp > 0) parts.push(`<span>Huella libre aprox.: ${Math.round(fp).toLocaleString('es-CO')} m²</span>`);
+  if (m.facadeAm)       parts.push(`<span>Fachada máx A: ${m.facadeAm.toFixed(1)} m</span>`);
+  if (m.anyMissing)     parts.push(`<span class="mi-warn">⚠ Algunos aislamientos sin datos — zona de retroceso estimada</span>`);
+  el.innerHTML = parts.join('') || '<span>Sin datos de altura</span>';
+}
+
+function setMassingView(view) {
+  _massingView = view;
+  document.getElementById('btn-view-3d')?.classList.toggle('active', view === '3d');
+  document.getElementById('btn-view-2d')?.classList.toggle('active', view === '2d');
+  document.getElementById('btn-view-3d')?.setAttribute('aria-pressed', String(view === '3d'));
+  document.getElementById('btn-view-2d')?.setAttribute('aria-pressed', String(view === '2d'));
+  const mapWrap = document.getElementById('map-wrap');
+  const massingWrap = document.getElementById('massing-wrap');
+  if (view === '2d') {
+    if (mapWrap) mapWrap.style.display = '';
+    if (massingWrap) massingWrap.style.display = 'none';
+  } else {
+    if (massingWrap) massingWrap.style.display = '';
+    // 3D: keep map visible in sidebar on large screens
+  }
+}
+
+async function downloadDxf(lat, lng, vis) {
+  if (!_lastCalcData) return;
+  const d = _lastCalcData;
+  const inp = d.input || {};
+  const params = new URLSearchParams({ lat, lng, vis_en_sitio: vis });
+  if (inp.anu_m2_supplied)     params.set('anu_m2', inp.anu_m2_supplied);
+  if (inp.frente_m_supplied)   params.set('frente_m', inp.frente_m_supplied);
+  if (inp.ancho_via_m_supplied) params.set('ancho_via_m', inp.ancho_via_m_supplied);
+
+  const btn = event?.target || document.activeElement;
+  const origText = btn?.textContent;
+  if (btn) { btn.textContent = 'Generando…'; btn.disabled = true; }
+  try {
+    const resp = await fetch(`/api/dxf?${params}`, { headers: _authHeaders() });
+    if (resp.status === 401) { showAuthModal(); return; }
+    if (!resp.ok) { alert('Error al generar el DXF'); return; }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `edificabilidad_${lat.toFixed(4)}_${lng.toFixed(4)}.dxf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Error de red: ' + e.message);
+  } finally {
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Auth
+══════════════════════════════════════════════════════════════════════════ */
+async function initSupabase() {
+  try {
+    const cfg = await fetch('/api/config').then(r => r.json());
+    if (!cfg.supabase_url || !cfg.supabase_anon_key) {
+      return; // Dev mode — leave existing auth button in place
+    }
+    _supabase = supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
+
+    _supabase.auth.onAuthStateChange(async (event, session) => {
+      _session = session;
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        hideAuthModal();
+        await _refreshUser();
+      } else if (event === 'SIGNED_OUT') {
+        _currentUser = null;
+        _currentAnalysisId = null;
+        updateUserChip();
+      }
+    });
+
+    const { data: { session } } = await _supabase.auth.getSession();
+    _session = session;
+    if (session) await _refreshUser();
+    else updateUserChip();
+  } catch (e) {
+    console.error('Supabase init failed:', e);
+    updateUserChip();
+  }
+}
+
+async function _refreshUser() {
+  try {
+    const res = await fetch('/api/me', { headers: _authHeaders() });
+    const json = await res.json();
+    if (json.ok && json.authenticated) {
+      _currentUser = {
+        email: json.email,
+        plan: json.plan,
+        usage_this_month: json.usage_this_month,
+        usage_limit: json.usage_limit,
+      };
+      updateUserChip();
+      if (json.plan === 'pro') renderAnalysesPanel();
+    }
+  } catch {}
+}
+
+function updateUserChip() {
+  const area = document.getElementById('auth-area');
+  if (!_currentUser) {
+    area.innerHTML = `<button class="btn-auth" id="login-btn" onclick="showAuthModal()">Iniciar sesión</button>`;
+    return;
+  }
+  const u = _currentUser;
+  const planClass = u.plan === 'pro' ? 'pro' : '';
+  const planLabel = u.plan === 'pro' ? 'Pro' : 'Free';
+  const usageStr = u.plan === 'pro'
+    ? '∞'
+    : `${u.usage_this_month}/${u.usage_limit} usos`;
+  area.innerHTML = `
+    <div class="user-chip">
+      <span class="chip-tier ${planClass}">${planLabel}</span>
+      <span>${escHtml(u.email)}</span>
+      <span class="chip-usage">${usageStr}</span>
+    </div>
+    ${u.plan !== 'pro' ? `<button class="btn-auth" onclick="showUpgradeModal()">Actualizar a Pro</button>` : ''}
+    <button class="btn-auth" onclick="signOut()">Salir</button>`;
+}
+
+function showAuthModal() {
+  document.getElementById('auth-modal').classList.remove('hidden');
+  document.getElementById('auth-email').focus();
+}
+function hideAuthModal() {
+  document.getElementById('auth-modal').classList.add('hidden');
+  document.getElementById('auth-form-wrap').classList.remove('hidden');
+  document.getElementById('auth-sent-wrap').classList.add('hidden');
+  document.getElementById('auth-email').value = '';
+}
+
+async function signInWithGoogle() {
+  if (!_supabase) return;
+  await _supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin },
+  });
+}
+
+async function submitMagicLink() {
+  if (!_supabase) return;
+  const email = document.getElementById('auth-email').value.trim();
+  if (!email || !email.includes('@')) { showToast('Email inválido', 'err'); return; }
+  const btn = document.getElementById('auth-send-btn');
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  const { error } = await _supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: window.location.origin },
+  });
+  if (error) {
+    showToast(error.message || 'Error al enviar', 'err');
+    btn.disabled = false; btn.textContent = 'Enviar enlace';
+  } else {
+    document.getElementById('auth-form-wrap').classList.add('hidden');
+    document.getElementById('auth-sent-wrap').classList.remove('hidden');
+  }
+}
+
+async function signOut() {
+  if (_supabase) await _supabase.auth.signOut();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Upgrade modal
+══════════════════════════════════════════════════════════════════════════ */
+function showUpgradeModal() {
+  // Pre-fill email if logged in
+  if (_currentUser) document.getElementById('upgrade-email').value = _currentUser.email;
+  document.getElementById('upgrade-modal').classList.remove('hidden');
+}
+function hideUpgradeModal() {
+  document.getElementById('upgrade-modal').classList.add('hidden');
+  document.getElementById('upgrade-interest-wrap').classList.remove('hidden');
+  document.getElementById('upgrade-sent-wrap').classList.add('hidden');
+}
+
+async function submitBillingInterest() {
+  const email = document.getElementById('upgrade-email').value.trim();
+  if (!email || !email.includes('@')) { showToast('Email inválido', 'err'); return; }
+  const btn = document.getElementById('upgrade-send-btn');
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    const res = await fetch('/api/billing/interest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const json = await res.json();
+    if (json.ok) {
+      document.getElementById('upgrade-interest-wrap').classList.add('hidden');
+      document.getElementById('upgrade-sent-wrap').classList.remove('hidden');
+    } else {
+      showToast(json.message || 'Error', 'err');
+      btn.disabled = false; btn.textContent = 'Avisar';
+    }
+  } catch {
+    showToast('Error de red', 'err');
+    btn.disabled = false; btn.textContent = 'Avisar';
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Saved lookups (Pro)
+══════════════════════════════════════════════════════════════════════════ */
+async function renderAnalysesPanel() {
+  try {
+    const res = await fetch('/api/analyses', { headers: _authHeaders() });
+    if (!res.ok) return;
+    const json = await res.json();
+    if (!json.ok || !json.data.length) return;
+    const rows = json.data.map(r => {
+      const date = new Date(r.created_at).toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' });
+      const addr = r.direccion || r.lote_codigo || `${r.lat.toFixed(4)}, ${r.lng.toFixed(4)}`;
+      return `<div class="lookup-item">
+        <div>
+          <div class="li-addr">${escHtml(addr)}</div>
+          <div class="li-meta">${date}${r.notas ? ' · ' + escHtml(r.notas.slice(0,60)) : ''}</div>
+        </div>
+        <div class="li-actions">
+          <button class="btn btn-ghost btn-sm" onclick="loadAnalysis('${r.id}')">Cargar</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--c-err)" onclick="deleteAnalysis('${r.id}',this)">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+    document.getElementById('lookups-container').innerHTML = `
+      <details class="lookups-panel">
+        <summary>
+          Análisis guardados
+          <span class="badge badge-alta" style="margin-left:4px">${json.data.length}</span>
+        </summary>
+        <div class="lookups-body">${rows}</div>
+      </details>`;
+  } catch {}
+}
+
+async function loadAnalysis(id) {
+  enterResult();
+  showLoading();
+  try {
+    const res = await fetch(`/api/analyses/${id}`, { headers: _authHeaders() });
+    const json = await res.json();
+    if (!json.ok) { showError('No se pudo cargar el análisis.'); return; }
+    const stored = json.data.result_json;
+    _lastRaw = { ok: true, data: stored.calc_result };
+    _currentAnalysisId = id;
+    const d = stored.calc_result;
+    const lat = json.data.lat;
+    const lng = json.data.lng;
+    const vis = stored.vis_en_sitio || false;
+    if (json.data.direccion) document.getElementById('addr-input').value = json.data.direccion;
+    updateMap(d, lat, lng);
+    showResult(d, lat, lng, vis, d.input?.anu_m2_supplied ?? null);
+    if (json.data.notas && document.getElementById('notes-textarea')) {
+      document.getElementById('notes-textarea').value = json.data.notas;
+    }
+  } catch (e) {
+    showError('Error al cargar: ' + e.message);
+  }
+}
+
+async function deleteAnalysis(id, btn) {
+  btn.disabled = true;
+  try {
+    await fetch(`/api/analyses/${id}`, { method: 'DELETE', headers: _authHeaders() });
+    btn.closest('.lookup-item').remove();
+  } catch {
+    btn.disabled = false;
+  }
+}
+
+async function autoSaveNotes(analysisId, notes) {
+  try {
+    await fetch(`/api/analyses/${analysisId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ..._authHeaders() },
+      body: JSON.stringify({ notas: notes }),
+    });
+  } catch {}
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Toast
+══════════════════════════════════════════════════════════════════════════ */
+function showToast(msg, type = 'ok') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// Close modals on overlay click
+document.addEventListener('click', (e) => {
+  if (e.target.id === 'auth-modal') hideAuthModal();
+  if (e.target.id === 'upgrade-modal') hideUpgradeModal();
+  if (e.target.id === 'share-modal') hideShareModal();
+});
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { hideAuthModal(); hideUpgradeModal(); hideShareModal(); }
+  // / → focus search (when not already in an input/textarea)
+  if (e.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) {
+    e.preventDefault();
+    const inp = document.getElementById('addr-input');
+    inp?.focus(); inp?.select();
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   History (localStorage)
+══════════════════════════════════════════════════════════════════════════ */
+const _HIST_KEY = 'edif_history_v1';
+const _HIST_MAX = 6;
+
+function saveToHistory(item) {
+  if (!item.lat || !item.lng) return;
+  let hist = _loadHistory();
+  hist = hist.filter(h => !(Math.abs(h.lat - item.lat) < 0.0002 && Math.abs(h.lng - item.lng) < 0.0002));
+  hist.unshift(item);
+  if (hist.length > _HIST_MAX) hist = hist.slice(0, _HIST_MAX);
+  try { localStorage.setItem(_HIST_KEY, JSON.stringify(hist)); } catch {}
+}
+
+function _loadHistory() {
+  try { return JSON.parse(localStorage.getItem(_HIST_KEY) || '[]'); } catch { return []; }
+}
+
+function _runHistItem(i) {
+  const hist = _loadHistory();
+  const h = hist[i];
+  if (!h) return;
+  const inp = document.getElementById('addr-input');
+  if (inp) inp.value = h.address || '';
+  runLookup(h.lat, h.lng, !!h.vis, null, null, null);
+}
+
+function renderHistory() {
+  const hist = _loadHistory();
+  const el = document.getElementById('sp-history');
+  if (!el) return;
+  if (!hist.length) { el.style.display = 'none'; return; }
+  const items = hist.map((h, i) => {
+    const label = h.address || `${h.lat.toFixed(4)}, ${h.lng.toFixed(4)}`;
+    const trat = h.tratamiento ? ` · ${h.tratamiento}` : '';
+    const date = h.ts ? new Date(h.ts).toLocaleDateString('es-CO', { day:'2-digit', month:'short' }) : '';
+    return `<div class="hist-item" role="button" tabindex="0"
+        onclick="_runHistItem(${i})"
+        onkeydown="if(event.key==='Enter'||event.key===' ')_runHistItem(${i})"
+        title="${escHtml(label)}">
+      <div>
+        <div class="hist-addr">${escHtml(label)}</div>
+        <div class="hist-meta">${escHtml(trat)}${date ? ' · ' + date : ''}</div>
+      </div>
+      <div class="hist-meta" aria-hidden="true">→</div>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div class="sp-history-title">Recientes</div>${items}`;
+  el.style.display = 'block';
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Share
+══════════════════════════════════════════════════════════════════════════ */
+let _shareTokenCache = null;   // token once created for current analysis
+
+function _getShareUrl() {
+  if (_shareTokenCache) {
+    return window.location.origin + '/s/' + _shareTokenCache;
+  }
+  // Build URL with exact coordinates so recipient's browser skips geocoding entirely
+  const addr = document.getElementById('addr-input')?.value?.trim();
+  const coords = _lastLookupCoords;
+  const base = window.location.origin + '/app';
+  if (coords) {
+    const p = new URLSearchParams({
+      lat: coords.lat,
+      lng: coords.lng,
+      vis_en_sitio: coords.vis ? '1' : '0',
+    });
+    if (addr) p.set('q', addr);
+    return base + '?' + p.toString();
+  }
+  return addr ? base + '?q=' + encodeURIComponent(addr) : base;
+}
+
+function _shareVia(dest) {
+  const url = _getShareUrl();
+  const addr = document.getElementById('addr-input')?.value?.trim() || 'predio';
+  const subject = encodeURIComponent('Análisis de edificabilidad — ' + addr);
+  const body = encodeURIComponent(
+    'Te comparto el análisis de edificabilidad de ' + addr +
+    ' (Ainmo · Decreto 555/2021):\n\n' + url
+  );
+  const text = encodeURIComponent('Análisis edificabilidad — ' + addr + ' (Ainmo)');
+  const eu = encodeURIComponent(url);
+
+  const targets = {
+    gmail:    `https://mail.google.com/mail/?view=cm&fs=1&su=${subject}&body=${body}`,
+    whatsapp: `https://wa.me/?text=${text}%20${eu}`,
+    telegram: `https://t.me/share/url?url=${eu}&text=${text}`,
+    twitter:  `https://twitter.com/intent/tweet?text=${text}&url=${eu}`,
+    linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${eu}`,
+  };
+
+  if (dest === 'copy') {
+    navigator.clipboard?.writeText(url).then(() => {
+      const btn = document.getElementById('share-copy-dest');
+      if (btn) {
+        const lbl = btn.querySelector('.sd-label');
+        btn.classList.add('sd-copy-ok');
+        if (lbl) lbl.textContent = '¡Copiado!';
+        setTimeout(() => {
+          btn.classList.remove('sd-copy-ok');
+          if (lbl) lbl.textContent = 'Copiar enlace';
+        }, 2200);
+      }
+    }).catch(() => showToast('No se pudo copiar', 'err'));
+    return;
+  }
+  if (targets[dest]) window.open(targets[dest], '_blank', 'noopener,noreferrer');
+}
+
+async function showShareModal() {
+  _shareTokenCache = null;
+  const area = document.getElementById('share-link-area');
+  if (area) area.innerHTML = `<span style="font-size:var(--ts-sm);color:var(--ink-4)">Preparando enlace…</span>`;
+  document.getElementById('share-modal')?.classList.remove('hidden');
+
+  if (_currentAnalysisId) {
+    await createShareLink();
+  } else {
+    const url = _getShareUrl();
+    if (area) area.innerHTML = `
+      <div class="share-link-box">${escHtml(url)}</div>
+      <p style="font-size:10px;color:var(--ink-4);margin:0">Enlace directo al mismo predio — abre el análisis automáticamente.</p>
+    `;
+  }
+}
+
+function hideShareModal() {
+  document.getElementById('share-modal')?.classList.add('hidden');
+}
+
+async function createShareLink() {
+  if (!_currentAnalysisId) return;
+  const incPf = document.getElementById('share-include-pf')?.checked || false;
+  try {
+    const resp = await fetch(
+      `/api/analyses/${_currentAnalysisId}/share?include_proforma=${incPf}`,
+      { method: 'POST', headers: _authHeaders() }
+    );
+    const json = await resp.json();
+    if (!json.ok) { showToast(json.message || 'Error al crear enlace', 'err'); return; }
+    _shareTokenCache = json.token;
+    const url = json.url.startsWith('/') ? window.location.origin + json.url : json.url;
+    const area = document.getElementById('share-link-area');
+    if (area) area.innerHTML = `
+      <div class="share-link-box">${escHtml(url)}</div>
+      <p style="font-size:10px;color:var(--ink-4);margin:0">Solo lectura · sin datos de sesión</p>
+    `;
+  } catch {
+    showToast('Error de red al crear enlace', 'err');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Debounce utility
+══════════════════════════════════════════════════════════════════════════ */
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Share page init (window._SHARE_TOKEN set by /s/{token} route)
+══════════════════════════════════════════════════════════════════════════ */
+async function _initSharePage() {
+  if (!window._SHARE_TOKEN) return;
+  try {
+    const resp = await fetch(`/api/share/${window._SHARE_TOKEN}`);
+    const json = await resp.json();
+    if (!json.ok) {
+      set(`<div class="state-card state-error" role="alert">
+        <div class="state-icon" aria-hidden="true">🔗</div>
+        <h3>Enlace inválido o expirado</h3>
+        <p>Este enlace de compartir no existe o fue eliminado.</p>
+        <div class="error-actions">
+          <a class="btn btn-primary" href="/app">Ir al inicio</a>
+        </div>
+      </div>`);
+      enterResult();
+      return;
+    }
+    const d2 = json.data;
+    const calcResult = d2.calc_result;
+    _lastRaw = { ok: true, data: calcResult };
+    if (d2.direccion) document.getElementById('addr-input').value = d2.direccion;
+    // Show share banner
+    const banner = `<div class="state-card" style="background:var(--paper-1);border:var(--rule);margin-bottom:var(--sp-3);display:flex;align-items:center;gap:var(--sp-3)">
+      <span style="font-size:13px;color:var(--ink-3)">Vista compartida (solo lectura)</span>
+      <a href="/app" class="btn btn-ghost btn-sm">Analizar mi lote</a>
+    </div>`;
+    enterResult();
+    updateMap(calcResult, d2.lat, d2.lng);
+    showResult(calcResult, d2.lat, d2.lng, d2.vis_en_sitio, calcResult.input?.anu_m2_supplied ?? null);
+    // Prepend share banner
+    const results = document.getElementById('results');
+    results.insertAdjacentHTML('afterbegin', banner);
+    // Hide proforma if not included
+    if (!d2.include_proforma) {
+      const pfPanel = document.getElementById('proforma-panel');
+      if (pfPanel) pfPanel.style.display = 'none';
+    }
+  } catch {
+    set(`<div class="state-card state-error"><p>Error al cargar el análisis compartido.</p></div>`);
+    enterResult();
+  }
+}
+
+// Initialize Supabase auth on page load (map init happens after Leaflet loads)
+initSupabase();
+renderHistory();
+_initSharePage();
+
+// Auto-trigger lookup when landing page hero search redirects with ?lat=&lng= or ?q=
+// _autoSearchFired ensures exactly one geocode is triggered regardless of how many
+// times the surrounding code might re-execute (e.g. Supabase auth state changes).
+let _autoSearchFired = false;
+(function _autoLaunchFromUrl() {
+  const p = new URLSearchParams(window.location.search);
+  const lat = parseFloat(p.get('lat'));
+  const lng = parseFloat(p.get('lng'));
+  if (!isNaN(lat) && !isNaN(lng)) {
+    const q = p.get('q');
+    if (q) { const inp = document.getElementById('addr-input'); if (inp) inp.value = q; }
+    const vis = p.get('vis_en_sitio') === '1';
+    if (!_autoSearchFired) {
+      _autoSearchFired = true;
+      setTimeout(() => runLookup(lat, lng, vis, null, null, null), 900);
+    }
+    return;
+  }
+  // Landing hero sends ?q=<address> — pre-fill and reuse submitGeoSearch so
+  // disambiguation, confirmation and error handling are identical to manual search.
+  const q = p.get('q');
+  if (q && !_autoSearchFired) {
+    _autoSearchFired = true;
+    const inp = document.getElementById('addr-input');
+    if (inp) inp.value = q;
+    setTimeout(() => submitGeoSearch(), 1000);
+  }
+})();
+
+/* ── Helpers ─────────────────────────────────────────────────────────────── */
+function set(html) { document.getElementById('results').innerHTML = html; }
+function clearResults() { document.getElementById('results').innerHTML = ''; _pendingAnu = null; _pendingFrente = null; }
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmt(n) {
+  if (n == null) return '—';
+  return Number(n).toLocaleString('es-CO', { maximumFractionDigits: 1 });
+}
+function confianzaBadge(c) {
+  if (!c) return '';
+  const map = { alta: ['conf-alta','Alta'], media: ['conf-media','Media'], requiere_input: ['conf-input','Requiere dato'] };
+  const [cls, lbl] = map[c] || ['conf-media', c];
+  return `<span class="confianza-badge ${cls}">${lbl}</span>`;
+}
+</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet-src.js"></script>
+<script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   Leaflet map
+══════════════════════════════════════════════════════════════════════════ */
+let _map = null;
+let _lotLayer = null;
+let _markerLayer = null;
+let _tratLayer = null;
+
+const TRAT_COLORS = {
+  // Values match the TRATAMIENTO field exactly (no accents in ArcGIS data)
+  'DESARROLLO':           { color: '#4B7BEC', label: 'Desarrollo' },
+  'CONSOLIDACION':        { color: '#2ECC71', label: 'Consolidación' },
+  'MEJORAMIENTO INTEGRAL':{ color: '#F39C12', label: 'Mejoramiento Integral' },
+  'RENOVACION':           { color: '#E74C3C', label: 'Renovación Urbana' },
+  'CONSERVACION':         { color: '#9B59B6', label: 'Conservación' },
+  'REDESARROLLO':         { color: '#E67E22', label: 'Redesarrollo' },
+  // Accented aliases for display/lookup from calc results
+  'CONSOLIDACIÓN':        { color: '#2ECC71', label: 'Consolidación' },
+  'RENOVACIÓN URBANA':    { color: '#E74C3C', label: 'Renovación Urbana' },
+  'CONSERVACIÓN':         { color: '#9B59B6', label: 'Conservación' },
+};
+
+// Minimum zoom at which the tratamiento featureLayer is active.
+// Layer 15 has 5 630 features city-wide; at zoom 14 a typical viewport
+// contains ~490 features — within the service's maxRecordCount of 2 000.
+// Below this zoom the layer is invisible and the legend says so.
+const _TRAT_MIN_ZOOM = 14;
+
+function _buildLegend(state) {
+  // state: 'colors' | 'zoomout' | 'error' | 'loading'
+  const el = document.getElementById('trat-legend-items');
+  if (!el) return;
+
+  if (state === 'zoomout') {
+    el.innerHTML = '<div class="trat-legend-notice">Acerque el mapa (nivel ≥ 14) para ver la capa de tratamientos.</div>';
+    return;
+  }
+  if (state === 'error') {
+    el.innerHTML = '<div class="trat-legend-notice trat-legend-error">Capa POT no disponible — servicio SDP sin respuesta.</div>';
+    return;
+  }
+  if (state === 'loading') {
+    el.innerHTML = '<div class="trat-legend-notice">Cargando tratamientos…</div>';
+    return;
+  }
+
+  const seen = new Set();
+  let html = '';
+  for (const [k, v] of Object.entries(TRAT_COLORS)) {
+    if (seen.has(v.label)) continue;
+    seen.add(v.label);
+    html += `<div class="trat-legend-item"><div class="trat-swatch" style="background:${v.color}"></div>${v.label}</div>`;
+  }
+  el.innerHTML = html;
+}
+
+function _initMap() {
+  if (_map) return;
+  _map = L.map('map', { zoomControl: false });
+  L.control.zoom({ position: 'bottomright' }).addTo(_map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> | SDP Bogotá D.555/2021',
+    maxZoom: 21,
+  }).addTo(_map);
+
+  // Tratamiento overlay — FeatureServer only (no tile cache on this service).
+  // maxRecordCount=2000; at zoom<14 the viewport exceeds that limit and the
+  // layer returns a truncated result. minZoom:14 keeps every request under ~500 features.
+  _tratLayer = L.esri.featureLayer({
+    url: 'https://services7.arcgis.com/lsxbLWF2l19Rmhqj/arcgis/rest/services/POT_Bogota_Decreto_555_2021/FeatureServer/15',
+    style: function(feature) {
+      const trat = (feature.properties.TRATAMIENTO || '').toUpperCase().trim();
+      const entry = TRAT_COLORS[trat];
+      const c = entry ? entry.color : '#888888';
+      return { color: c, weight: 0.8, fillColor: c, fillOpacity: 0.35, opacity: 0.7 };
+    },
+    simplifyFactor: 0.35,
+    precision: 5,
+    minZoom: _TRAT_MIN_ZOOM,
+  }).addTo(_map);
+
+  _tratLayer.on('loading', () => {
+    if (_map.getZoom() >= _TRAT_MIN_ZOOM) _buildLegend('loading');
+  });
+  _tratLayer.on('load', () => {
+    if (_map.getZoom() >= _TRAT_MIN_ZOOM) _buildLegend('colors');
+  });
+  _tratLayer.on('requesterror', () => _buildLegend('error'));
+
+  _buildLegend(_map.getZoom() >= _TRAT_MIN_ZOOM ? 'colors' : 'zoomout');
+
+  _map.on('zoomend', () => {
+    if (_map.getZoom() >= _TRAT_MIN_ZOOM) {
+      _buildLegend('colors');
+    } else {
+      _buildLegend('zoomout');
+    }
+  });
+
+  // Initial view: Bogotá — invalidate after layout settles
+  _map.setView([4.6534, -74.0831], 12);
+  setTimeout(() => _map.invalidateSize(), 100);
+
+  _map.on('click', async (e) => {
+    const vis = document.getElementById('vis-check').checked;
+    _pendingAnu = null;
+    _pendingFrente = null;
+    _confirmedCoords = null;
+    document.getElementById('geo-results').style.display = 'none';
+    await runLookup(e.latlng.lat, e.latlng.lng, vis, null, null, null);
+  });
+}
+
+function updateMap(d, lat, lng) {
+  _initMap();
+  if (_map) _map.invalidateSize();
+
+  // Remove previous layers
+  if (_lotLayer)   { _map.removeLayer(_lotLayer);   _lotLayer   = null; }
+  if (_markerLayer){ _map.removeLayer(_markerLayer); _markerLayer = null; }
+
+  // Draw lot polygon (ArcGIS rings: [[x, y]] = [[lng, lat]])
+  const rings = d?.lote?.geojson_polygon;
+  let fitBounds = false;
+  if (rings?.length) {
+    // Convert to Leaflet [[lat, lng]] — swap x/y
+    const latlngs = rings.map(ring => ring.map(([x, y]) => [y, x]));
+    _lotLayer = L.polygon(latlngs, {
+      color: '#1B48D4',
+      weight: 2.5,
+      fillColor: '#1B48D4',
+      fillOpacity: 0.18,
+      interactive: false,
+    }).addTo(_map);
+
+    // Overlay label inside the polygon
+    const area = d?.lote?.area_m2?.valor;
+    const code = d?.lote?.lotcodigo;
+    const lines = [];
+    if (code) lines.push(`<b>${code}</b>`);
+    if (area != null) {
+      const areaFmt = Number(area).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+      lines.push(`${areaFmt} m²`);
+    }
+    if (lines.length) {
+      _lotLayer.bindTooltip(lines.join('<br>'), {
+        permanent: true,
+        direction: 'center',
+        className: 'lot-tooltip',
+      }).openTooltip();
+    }
+
+    _map.fitBounds(_lotLayer.getBounds(), { padding: [36, 36], maxZoom: 20 });
+    fitBounds = true;
+  }
+
+  // Red dot at the queried point
+  _markerLayer = L.marker([lat, lng], {
+    icon: L.divIcon({
+      html: '<div class="map-pin"></div>',
+      className: '',
+      iconSize: [12, 12],
+      iconAnchor: [6, 6],
+    }),
+    interactive: false,
+  }).addTo(_map);
+
+  if (!fitBounds) _map.setView([lat, lng], 18);
+}
+
+// Initialize map now that Leaflet is loaded
+_initMap();
+</script>
+</body>
+</html>
