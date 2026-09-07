@@ -57,6 +57,11 @@ INVALID_INPUTS = [
     "CL - # -",
     "not an address",
 ]
+KNOWN_REGRESSION_INPUTS = [
+    "Cl. 85 # 11-53",
+    "Cl. 127 # 15-30",
+    "Av. Cra. 68 # 40-15",
+]
 USER_AGENT = "AinmoAddressAudit/1.0 (owner-operated QA; https://ainmo.uk)"
 SSL_CONTEXT = ssl.create_default_context()
 SSL_CONTEXT.check_hostname = False
@@ -507,6 +512,10 @@ def add_anomaly(row: dict, anomaly: str) -> None:
     row["anomalies"] = ";".join(current)
 
 
+def as_bool(value: Any) -> bool:
+    return value is True or str(value).strip().lower() in {"1", "true", "yes"}
+
+
 def apply_cross_case_anomalies(rows: list[dict]) -> None:
     """Flag population-level inconsistencies and statistically slow requests."""
     geocode_times = [float(r["geocode_ms"]) for r in rows if r["geocode_ms"] != ""]
@@ -537,7 +546,12 @@ def apply_cross_case_anomalies(rows: list[dict]) -> None:
                 add_anomaly(row, "same_block_index_inconsistent")
 
 
-def write_summary(rows: list[dict], output: Path, base_url: str) -> None:
+def write_summary(
+    rows: list[dict],
+    output: Path,
+    base_url: str,
+    regression_rows: list[dict] | None = None,
+) -> None:
     real = [r for r in rows if r["format_variant"] != "invalid"]
     anomaly_counts = Counter(a for r in rows for a in str(r["anomalies"]).split(";") if a)
     resolution_counts = Counter(str(r["resolution"]) for r in real)
@@ -554,12 +568,12 @@ def write_summary(rows: list[dict], output: Path, base_url: str) -> None:
         f"- Cases: **{len(rows)}** ({len(real)} real Catastro addresses; {len(rows)-len(real)} invalid/negative controls)",
         f"- Exact-address rate: **{resolution_counts['exact_address']}/{len(real)} ({resolution_counts['exact_address']/max(len(real),1):.1%})**",
         f"- Same-block fallback rate: **{resolution_counts['same_block']}/{len(real)} ({resolution_counts['same_block']/max(len(real),1):.1%})**",
-        f"- Unresolved real-address rate: **{sum(1 for r in real if not r['geocode_ok'])}/{len(real)} ({sum(1 for r in real if not r['geocode_ok'])/max(len(real),1):.1%})**",
-        f"- Degraded city/region geocodes: **{sum(bool(r['degraded_geocode']) for r in rows)}**",
+        f"- Unresolved real-address rate: **{sum(1 for r in real if not as_bool(r['geocode_ok']))}/{len(real)} ({sum(1 for r in real if not as_bool(r['geocode_ok']))/max(len(real),1):.1%})**",
+        f"- Degraded city/region geocodes: **{sum(as_bool(r['degraded_geocode']) for r in rows)}**",
         f"- Invalid controls incorrectly resolved: **{anomaly_counts['invalid_input_resolved']}**",
         f"- Full calculation reports: **{calc_states['full_report']}/{len(real)}**",
         f"- Address-point/parcel mismatches: **{anomaly_counts['address_point_polygon_mismatch']}**",
-        f"- Official address points safely re-anchored to their linked lot: **{sum(bool(r['coordinate_adjusted_to_lot']) for r in rows)}**",
+        f"- Official address points safely re-anchored to their linked lot: **{sum(as_bool(r['coordinate_adjusted_to_lot']) for r in rows)}**",
         f"- Geocodes over 250 m from their source point: **{anomaly_counts['geocode_coordinate_drift']}**",
         f"- NaN/Infinity payloads: **{sum(int(r['nan_count'] or 0) for r in rows)}**",
         f"- Explicit calculation math failures: **{sum(r['math_check'] == 'fail' for r in rows)}**",
@@ -580,16 +594,27 @@ def write_summary(rows: list[dict], output: Path, base_url: str) -> None:
     for variant, group in sorted(by_format.items()):
         lines.append(
             f"| {variant} | {len(group)} | {sum(r['resolution']=='exact_address' for r in group)} | "
-            f"{sum(r['resolution']=='same_block' for r in group)} | {sum(not r['geocode_ok'] for r in group)} |"
+            f"{sum(r['resolution']=='same_block' for r in group)} | {sum(not as_bool(r['geocode_ok']) for r in group)} |"
         )
     lines += ["", "## Calculation states", ""]
     for state, count in calc_states.most_common():
         lines.append(f"- `{state or 'not_run'}`: {count}")
+    if regression_rows:
+        lines += [
+            "", "## Known fallback regressions", "",
+            "| Input | Resolution | Candidates | First candidate |",
+            "|---|---|---:|---|",
+        ]
+        for row in regression_rows:
+            lines.append(
+                f"| `{row['input_address']}` | `{row['resolution'] or row['geocode_error']}` | "
+                f"{row['candidate_count'] or 0} | {row['candidate_label'] or '—'} |"
+            )
     lines += ["", "## Coverage by expected treatment", "", "| Treatment | Cases | Resolved | Full reports | Anomalies |", "|---|---:|---:|---:|---:|"]
     for treatment in TREATMENTS:
         group = [row for row in real if row["expected_treatment"] == treatment]
         lines.append(
-            f"| {treatment} | {len(group)} | {sum(bool(row['geocode_ok']) for row in group)} | "
+            f"| {treatment} | {len(group)} | {sum(as_bool(row['geocode_ok']) for row in group)} | "
             f"{sum(row['calc_state'] == 'full_report' for row in group)} | {sum(bool(row['anomalies']) for row in group)} |"
         )
     lines += [
@@ -636,7 +661,22 @@ def main() -> int:
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=OUTPUT_FIELDS)
         writer.writeheader(); writer.writerows(rows)
-    write_summary(rows, args.output_dir / "SUMMARY.md", args.base_url.rstrip("/"))
+    regression_samples = [{
+        "case_id": f"regression-{index:02d}",
+        "input_address": address,
+        "source_address": "",
+        "format_variant": "known_regression",
+        "expected_treatment": "",
+        "expected_lotcodigo": "",
+    } for index, address in enumerate(KNOWN_REGRESSION_INPUTS, start=1)]
+    regression_rows = [audit_case(sample, args.base_url.rstrip("/")) for sample in regression_samples]
+    regression_path = args.output_dir / "known_regressions.csv"
+    with regression_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=OUTPUT_FIELDS)
+        writer.writeheader(); writer.writerows(regression_rows)
+    write_summary(
+        rows, args.output_dir / "SUMMARY.md", args.base_url.rstrip("/"), regression_rows,
+    )
     print(csv_path)
     return 0
 
