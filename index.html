@@ -788,12 +788,13 @@ function _showGeoConfirm(candidate) {
   _confirmedCoords = { lat: candidate.lat, lng: candidate.lng, lotcodigo: candidate.lotcodigo || null };
   _expectedLotCodigo = candidate.lotcodigo || null;
   const src = candidate.source === 'catastro' ? 'Catastro Bogotá' : 'OpenStreetMap';
+  const quality = _geoQualityLabel(candidate);
   const div = document.getElementById('geo-results');
   div.style.display = 'block';
   div.innerHTML = `
     <div class="geo-confirm">
       <div class="geo-confirm-addr">✓ ${escHtml(candidate.label)}</div>
-      <div class="geo-confirm-meta">${candidate.lat.toFixed(5)}, ${candidate.lng.toFixed(5)} — ${src}</div>
+      <div class="geo-confirm-meta">${candidate.lat.toFixed(5)}, ${candidate.lng.toFixed(5)} — ${src} · ${quality}</div>
       <div class="geo-confirm-actions">
         <button class="btn btn-primary" onclick="runWithConfirmed()">Consultar edificabilidad</button>
         <button class="btn btn-ghost btn-sm" onclick="resetGeoResults()">Cambiar dirección</button>
@@ -806,9 +807,10 @@ function _showGeoCandidates(candidates, isNear) {
   _confirmedCoords = null;
   const items = candidates.map((c, i) => {
     const src = c.source === 'catastro' ? 'Catastro' : 'OSM';
+    const quality = _geoQualityLabel(c);
     return `<button class="candidate-item" type="button" onclick="_pickCandidate(${i})">
       <span class="candidate-label">${escHtml(c.label)}</span>
-      <span class="candidate-meta">${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} — ${src}</span>
+      <span class="candidate-meta">${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} — ${src} · ${quality}</span>
     </button>`;
   }).join('');
   const nearNote = isNear
@@ -822,6 +824,15 @@ function _showGeoCandidates(candidates, isNear) {
       <p class="geo-disambig-title">${isNear ? 'Resultados aproximados' : `${candidates.length} resultado${candidates.length > 1 ? 's' : ''} — seleccione:`}:</p>
       <div class="candidate-list">${items}</div>
     </div>`;
+}
+
+function _geoQualityLabel(candidate) {
+  switch (candidate?.match_type) {
+    case 'exact_address': return 'coincidencia exacta';
+    case 'same_block': return 'misma cuadra, número distinto';
+    case 'osm_address': return 'dirección OSM, confirmar';
+    default: return 'coincidencia por verificar';
+  }
 }
 
 function _pickCandidate(i) {

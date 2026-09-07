@@ -142,13 +142,22 @@ async def me(request: Request):
 @app.get("/api/geocode")
 async def geocode_endpoint(q: str = Query(..., description="Dirección en Bogotá")):
     try:
-        candidates = geocode.geocode(q)
+        result = geocode.geocode_detailed(q)
+        candidates = result["candidates"]
         if not candidates:
+            resolution = result.get("resolution")
+            if resolution == "street_recognized":
+                message = "Catastro reconoce la vía, pero no encontró ese número de puerta. Verifique la placa o seleccione el lote en el mapa."
+            elif resolution == "intersection":
+                message = "Una intersección no identifica un lote único. Ingrese una placa completa o seleccione el lote en el mapa."
+            else:
+                message = "No se encontró una dirección predial confiable. Verifique el formato o seleccione el lote en el mapa."
             return JSONResponse(status_code=200, content={
                 "ok": False, "error": "no_results",
-                "message": "No se encontró la dirección. Verifique el formato o ingrese coordenadas manualmente.",
+                "resolution": resolution,
+                "message": message,
             })
-        return {"ok": True, "candidates": candidates}
+        return {"ok": True, "candidates": candidates, "resolution": result.get("resolution")}
     except Exception as exc:
         return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": str(exc)})
 

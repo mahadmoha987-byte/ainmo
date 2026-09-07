@@ -37,16 +37,31 @@
     [/^(AVENIDA|AVDA|AVE|AV)\b/,                    "AV"]
   ];
 
+  var VIAS_NOMBRADAS = [
+    [/^(?:AVENIDA|AV)\s+BOYACA\b/, "AK 72"],
+    [/^(?:AVENIDA|AV)\s+CARACAS\b/, "AK 14"],
+    [/^(?:AVENIDA|AV)\s+(?:CIUDAD\s+DE\s+QUITO|NQS)\b|^NQS\b/, "AK 30"],
+    [/^(?:AVENIDA|AV)\s+(?:EL\s+DORADO|CALLE\s+26)\b/, "AC 26"],
+    [/^AUTOPISTA\s+NORTE\b/, "AK 45"]
+  ];
+
   function normalizarDireccion(raw) {
     if (!raw) return "";
     var s = String(raw).trim().toUpperCase()
       .normalize("NFD").replace(/[̀-ͯ]/g, "")
       .replace(/[.,]/g, " ")
       .replace(/\s+/g, " ");
+    s = s.replace(/\bSUR\b/g, "S").replace(/\bESTE\b/g, "E");
     // Nº / N° / No. / Nro → "#"
     s = s.replace(/\bN[º°]\s*/g, "# ").replace(/\b(NO|NRO|NUM|NUMERO)\b\s*/g, "# ");
     // Canonicalise spaces around "#"
     s = s.replace(/\s*#\s*/g, " # ");
+    for (var n = 0; n < VIAS_NOMBRADAS.length; n++) {
+      if (VIAS_NOMBRADAS[n][0].test(s)) {
+        s = s.replace(VIAS_NOMBRADAS[n][0], VIAS_NOMBRADAS[n][1]);
+        break;
+      }
+    }
     // Expand via type
     for (var i = 0; i < VIAS.length; i++) {
       if (VIAS[i][0].test(s)) { s = s.replace(VIAS[i][0], VIAS[i][1]); break; }
@@ -55,6 +70,13 @@
     s = s.replace(/(#\s*\d+\s*[A-Z]?(?:\s+BIS)?)\s*[-–—]\s*(\d+\s*[A-Z]?)/, "$1-$2");
     // Collapse remaining space-padded hyphens, tidy "#" and whitespace
     s = s.replace(/\s*-\s*/g, "-").replace(/#\s*/, "# ").replace(/\s+/g, " ").trim();
+    // Accept the common Bogotá form without #, e.g. "CL 90 11 73".
+    if (s.indexOf("#") === -1) {
+      s = s.replace(
+        /^(AC|AK|CL|KR|DG|TV|AV)\s+(\d+[A-Z]?(?:\s+BIS)?(?:\s+[SE])?)\s+(\d+[A-Z]?)\s+(\d+[A-Z]?)(.*)/,
+        "$1 $2 # $3-$4$5"
+      ).replace(/\s*#\s*/, " # ").replace(/\s+/g, " ").trim();
+    }
     return s;
   }
 

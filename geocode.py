@@ -53,7 +53,7 @@ def _is_intersection_query(raw: str) -> bool:
 # -----------------------------------------------------------------------
 # Simple LRU-style cache (avoids repeated network hits)
 # -----------------------------------------------------------------------
-_cache: dict[str, list[dict]] = {}
+_cache: dict[str, dict] = {}
 _MAX_CACHE = 256
 
 
@@ -61,7 +61,7 @@ def _cache_get(key: str):
     return _cache.get(key)
 
 
-def _cache_set(key: str, value: list[dict]):
+def _cache_set(key: str, value: dict):
     if len(_cache) >= _MAX_CACHE:
         # evict oldest
         oldest = next(iter(_cache))
@@ -82,6 +82,16 @@ _VIA_MAP = [
     (re.compile(r"^(CARRERA|CRA|CARR|KRA|KR|CR)\b"),              "KR"),
     (re.compile(r"^(CALLE|CLLE|CLL|CL)\b"),                       "CL"),
     (re.compile(r"^(AVENIDA|AVDA|AVE|AV)\b"),                     "AV"),
+]
+
+# Common named avenues as used conversationally. Catastro stores their
+# canonical Bogotá nomenclature, not the name printed on a map.
+_NAMED_VIA_ALIASES = [
+    (re.compile(r"^(?:AVENIDA|AV)\s+BOYACA\b"), "AK 72"),
+    (re.compile(r"^(?:AVENIDA|AV)\s+CARACAS\b"), "AK 14"),
+    (re.compile(r"^(?:AVENIDA|AV)\s+(?:CIUDAD\s+DE\s+QUITO|NQS)\b|^NQS\b"), "AK 30"),
+    (re.compile(r"^(?:AVENIDA|AV)\s+(?:EL\s+DORADO|CALLE\s+26)\b"), "AC 26"),
+    (re.compile(r"^(?:AUTOPISTA\s+NORTE)\b"), "AK 45"),
 ]
 
 
@@ -116,6 +126,11 @@ def normalize_address(raw: str) -> str:
     s = re.sub(r"\b(NO|NRO|NUM|NUMERO)\b\s*", "# ", s)
     # Canonical spaces around "#"
     s = re.sub(r"\s*#\s*", " # ", s)
+    for pat, canonical in _NAMED_VIA_ALIASES:
+        m = pat.match(s)
+        if m:
+            s = canonical + s[m.end():]
+            break
     # Expand via type prefix
     for pat, abbr in _VIA_MAP:
         m = pat.match(s)
@@ -158,6 +173,9 @@ def _fuzzy_score(query: str, label: str) -> float:
 
 # Ordered: longest/most-specific patterns first
 _PREFIX_MAP = [
+    # Already-canonical Bogotá avenue codes (normalizer outputs these).
+    (re.compile(r"^AK\b", re.I), "AK"),
+    (re.compile(r"^AC\b", re.I), "AC"),
     # Avenida Calle (before plain "Avenida")
     (re.compile(r"^av(?:enida)?\.?\s+c(?:alle|l\.?)\b", re.I), "AC"),
     # Avenida Carrera
@@ -291,21 +309,45 @@ def _catastro_query(
             # Preserve the lot explicitly linked to the official address plate.
             # A small number of plate points fall inside an adjacent polygon.
             "lotcodigo": str(a.get("PDOCLOTE") or "").strip() or None,
+            "address_text": str(a.get("PDOTEXTO") or "").strip(),
         })
 
     return candidates
 
 
-def _catastro_near(pdonvial: str, cross_num: str) -> list[dict]:
+def _catastro_near(pdonvial: str, requested_text: str) -> list[dict]:
     """
     Block-level fallback: find any address on `pdonvial` whose PDOTEXTO
     starts with the cross-street number, e.g. PDOTEXTO LIKE '11 %'.
     Returns up to 5 results tagged near_match=True.
     """
-    results = _catastro_query(pdonvial, f"{cross_num} ", limit=5, exact=False)
+    requested_parts = requested_text.split()
+    if not requested_parts:
+        return []
+    cross_num = requested_parts[0]
+    requested_directions = {p for p in requested_parts[2:] if p in {"S", "E"}}
+    requested_house = requested_parts[1] if len(requested_parts) > 1 else ""
+    results = _catastro_query(pdonvial, f"{cross_num} ", limit=100, exact=False)
+    filtered: list[dict] = []
     for r in results:
+        parts = r.get("address_text", "").split()
+        if not parts or parts[0] != cross_num:
+            continue
+        candidate_directions = {p for p in parts[2:] if p in {"S", "E"}}
+        if candidate_directions != requested_directions:
+            continue
         r["near_match"] = True
-    return results
+        r["match_type"] = "same_block"
+        r["match_confidence"] = "media"
+        house = parts[1] if len(parts) > 1 else ""
+        requested_num = int(re.match(r"\d+", requested_house).group()) if re.match(r"\d+", requested_house) else 9999
+        house_num = int(re.match(r"\d+", house).group()) if re.match(r"\d+", house) else 9999
+        r["house_number_distance"] = abs(house_num - requested_num)
+        filtered.append(r)
+    filtered.sort(key=lambda r: (r["house_number_distance"], r["label"]))
+    for r in filtered:
+        r.pop("house_number_distance", None)
+    return filtered[:5]
 
 
 # -----------------------------------------------------------------------
@@ -319,7 +361,7 @@ def _nominatim_query(q: str) -> list[dict]:
         "limit": 5,
         "viewbox": _BOGOTA_VIEWBOX,
         "bounded": 1,
-        "addressdetails": 0,
+        "addressdetails": 1,
     })
     url = f"{_NOMINATIM}?{params}"
     req = urllib.request.Request(
@@ -330,6 +372,19 @@ def _nominatim_query(q: str) -> list[dict]:
 
     candidates: list[dict] = []
     for r in results:
+        address = r.get("address") or {}
+        category = str(r.get("class") or r.get("category") or "").lower()
+        result_type = str(r.get("type") or "").lower()
+        addresstype = str(r.get("addresstype") or "").lower()
+        # Never surface a city, district, state, boundary or generic road as if
+        # it were the requested property. OSM is accepted only at address or
+        # building granularity.
+        is_property_level = bool(address.get("house_number")) or (
+            category == "building" or result_type in {"house", "building"}
+            or addresstype in {"house", "building"}
+        )
+        if not is_property_level:
+            continue
         lat = float(r["lat"])
         lng = float(r["lon"])
         label = r.get("display_name", q)
@@ -339,6 +394,8 @@ def _nominatim_query(q: str) -> list[dict]:
         candidates.append({
             "lat": lat, "lng": lng, "label": short_label,
             "source": "nominatim", "near_match": True,
+            "match_type": "osm_address",
+            "match_confidence": "baja",
         })
 
     return candidates
@@ -348,7 +405,7 @@ def _nominatim_query(q: str) -> list[dict]:
 # Public API
 # -----------------------------------------------------------------------
 
-def geocode(address: str) -> list[dict]:
+def geocode_detailed(address: str) -> dict:
     """
     Geocode a Bogotá address.
 
@@ -361,7 +418,7 @@ def geocode(address: str) -> list[dict]:
     # Intersection queries ("Calle 60 Carrera 7") cannot resolve to a unique lot.
     # Return empty so the frontend asks the user to click on the map instead.
     if _is_intersection_query(address):
-        return []
+        return {"candidates": [], "resolution": "intersection"}
 
     # Normalise for structured queries; keep original for Nominatim (OSM
     # handles "Calle 90" better than the abbreviated form "CL 90").
@@ -372,6 +429,7 @@ def geocode(address: str) -> list[dict]:
         return cached
 
     candidates: list[dict] = []
+    resolution = "unrecognized_street"
 
     # --- Priority 1: Catastro placadomiciliaria (uses normalised form) ---
     parsed = _parse_address(normalised)
@@ -386,25 +444,45 @@ def geocode(address: str) -> list[dict]:
                 if alt:
                     alt_via = pdonvial.replace(code + " ", alt + " ", 1)
                     candidates = _catastro_query(alt_via, pdotexto)
+            if candidates:
+                resolution = "exact_address"
+                for candidate in candidates:
+                    candidate["match_type"] = "exact_address"
+                    candidate["match_confidence"] = "alta"
             # Block-level near-match: same street, same cross-street, any house #.
             # Only attempted when exact match fails and we have a cross number.
             if not candidates and pdotexto:
                 cross_num = pdotexto.split()[0]  # e.g. "11 73" → "11"
                 if cross_num.isdigit():
-                    candidates = _catastro_near(pdonvial, cross_num)
+                    candidates = _catastro_near(pdonvial, pdotexto)
                     if not candidates:
                         code = pdonvial.split()[0]
                         alt = _ALT_CODE.get(code)
                         if alt:
                             alt_via = pdonvial.replace(code + " ", alt + " ", 1)
-                            candidates = _catastro_near(alt_via, cross_num)
+                            candidates = _catastro_near(alt_via, pdotexto)
+                if candidates:
+                    resolution = "same_block"
+            if not candidates:
+                # Distinguish a valid Catastro street with an unresolved door
+                # number from a street token absent from the address registry.
+                recognized = bool(_catastro_query(pdonvial, "", limit=1, exact=False))
+                if not recognized:
+                    code = pdonvial.split()[0]
+                    alt = _ALT_CODE.get(code)
+                    if alt:
+                        alt_via = pdonvial.replace(code + " ", alt + " ", 1)
+                        recognized = bool(_catastro_query(alt_via, "", limit=1, exact=False))
+                resolution = "street_recognized" if recognized else "unrecognized_street"
         except Exception:
-            pass  # network/parse error → fall through to Nominatim
+            resolution = "catastro_unavailable"
 
     # --- Priority 2: Nominatim (uses original text, not abbreviated form) ---
     if not candidates:
         try:
             candidates = _nominatim_query(address)
+            if candidates:
+                resolution = "osm_address"
         except Exception:
             pass
 
@@ -414,11 +492,18 @@ def geocode(address: str) -> list[dict]:
 
     # Score each candidate for fuzzy relevance, then sort descending.
     for c in candidates:
-        c["score"] = _fuzzy_score(address, c.get("label", ""))
+        c.pop("address_text", None)
+        c["score"] = _fuzzy_score(normalised, normalize_address(c.get("label", "")))
     candidates.sort(key=lambda c: c["score"], reverse=True)
 
-    _cache_set(key, candidates)
-    return candidates
+    result = {"candidates": candidates, "resolution": resolution}
+    _cache_set(key, result)
+    return result
+
+
+def geocode(address: str) -> list[dict]:
+    """Backward-compatible candidate-only API used by tests and scripts."""
+    return geocode_detailed(address)["candidates"]
 
 
 # -----------------------------------------------------------------------

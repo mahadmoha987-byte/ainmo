@@ -35,8 +35,20 @@ check("'No.' separator with spaced hyphen",
 check("'Avenida Carrera' long form with 'Nº'",
   normalizarDireccion("Avenida Carrera 11 Nº 90-73"), "AK 11 # 90-73");
 
-check("'Cll' abbreviation — no # separator, passes through",
-  normalizarDireccion("Cll 85 12 34"), "CL 85 12 34");
+check("'Cll' abbreviation — inserts missing separator",
+  normalizarDireccion("Cll 85 12 34"), "CL 85 # 12-34");
+
+check("'Av. Cra.' canonicalizes to AK",
+  normalizarDireccion("Av. Cra. 68 # 40-15"), "AK 68 # 40-15");
+
+check("Sur and Este modifiers are canonicalized",
+  normalizarDireccion("Cl. 11 Sur # 1-60 Este"), "CL 11 S # 1-60 E");
+
+check("named Avenida Boyacá becomes cadastral AK 72",
+  normalizarDireccion("Avenida Boyacá # 63-20"), "AK 72 # 63-20");
+
+check("named Avenida El Dorado becomes cadastral AC 26",
+  normalizarDireccion("Av. El Dorado # 69-76"), "AC 26 # 69-76");
 
 // Extra robustness cases
 check("'Avenida Calle' -> AC",
