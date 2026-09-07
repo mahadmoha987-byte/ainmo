@@ -150,6 +150,8 @@ async def geocode_endpoint(q: str = Query(..., description="Dirección en Bogot�
                 message = "Catastro reconoce la vía, pero no encontró ese número de puerta. Verifique la placa o seleccione el lote en el mapa."
             elif resolution == "intersection":
                 message = "Una intersección no identifica un lote único. Ingrese una placa completa o seleccione el lote en el mapa."
+            elif resolution == "incomplete_address":
+                message = "Ingrese una placa completa con vía, cruce y número de puerta (por ejemplo: Calle 85 # 11-53), o seleccione el lote en el mapa."
             else:
                 message = "No se encontró una dirección predial confiable. Verifique el formato o seleccione el lote en el mapa."
             return JSONResponse(status_code=200, content={

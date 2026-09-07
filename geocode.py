@@ -247,6 +247,26 @@ def _parse_address(raw: str) -> tuple[str, str] | None:
     return pdonvial, cross
 
 
+def _is_complete_street_plate(normalised: str) -> bool:
+    """Require a numbered road plus cross-street and door number.
+
+    Nominatim can map vague input such as ``Carrera`` to an unrelated named
+    building. Ainmo is a parcel tool, so incomplete searches must ask for a
+    full plate or a map click instead of presenting that building as a match.
+    """
+    parsed = _parse_address(normalised)
+    if not parsed:
+        return False
+    pdonvial, pdotexto = parsed
+    text_parts = pdotexto.split()
+    return (
+        bool(re.search(r"\d", pdonvial))
+        and len(text_parts) >= 2
+        and bool(re.match(r"^\d", text_parts[0]))
+        and bool(re.match(r"^\d", text_parts[1]))
+    )
+
+
 # -----------------------------------------------------------------------
 # Catastro placadomiciliaria query
 # -----------------------------------------------------------------------
@@ -427,6 +447,10 @@ def geocode_detailed(address: str) -> dict:
     cached = _cache_get(key)
     if cached is not None:
         return cached
+    if not _is_complete_street_plate(normalised):
+        result = {"candidates": [], "resolution": "incomplete_address"}
+        _cache_set(key, result)
+        return result
 
     candidates: list[dict] = []
     resolution = "unrecognized_street"

@@ -33,6 +33,24 @@ def test_named_bogota_avenues_normalize_to_catastro_codes():
     assert geocode.normalize_address("Autopista Norte # 100-20") == "AK 45 # 100-20"
 
 
+def test_incomplete_street_input_is_rejected_before_external_lookup(monkeypatch):
+    geocode._cache.clear()
+
+    def unexpected_request(*_args, **_kwargs):
+        raise AssertionError("an incomplete address must not call Catastro or Nominatim")
+
+    monkeypatch.setattr(geocode.urllib.request, "urlopen", unexpected_request)
+    result = geocode.geocode_detailed("Carrera")
+    assert result == {"candidates": [], "resolution": "incomplete_address"}
+
+
+def test_complete_plate_validation_accepts_directional_and_bis_addresses():
+    assert geocode._is_complete_street_plate("CL 85 # 11-53")
+    assert geocode._is_complete_street_plate("KR 13BIS E # 75B-16 S")
+    assert not geocode._is_complete_street_plate("CL 85")
+    assert not geocode._is_complete_street_plate("BOGOTA")
+
+
 def test_catastro_candidate_preserves_linked_lot_code(monkeypatch):
     class Response:
         def __enter__(self):
