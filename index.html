@@ -746,6 +746,17 @@ async function submitGeoSearch() {
 
   if (btn) { btn.disabled = true; btn.textContent = 'Buscando…'; }
   if (geoDiv) geoDiv.style.display = 'none';
+  // A new query invalidates the previous report immediately. Keeping stale
+  // numbers visible beside a new error/candidate can misattribute one lot's
+  // regulation to another address.
+  clearResults();
+  document.getElementById('app').classList.remove('has-result');
+  document.getElementById('result-col').classList.add('hidden');
+  _lastRaw = null;
+  _lastCalcData = null;
+  _lastLookupCoords = null;
+  if (_lotLayer) { _map.removeLayer(_lotLayer); _lotLayer = null; }
+  if (_markerLayer) { _map.removeLayer(_markerLayer); _markerLayer = null; }
   _confirmedCoords = null;
   _expectedLotCodigo = null;
 
