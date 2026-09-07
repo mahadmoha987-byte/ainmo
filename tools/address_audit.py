@@ -414,7 +414,7 @@ def audit_case(sample: dict, base_url: str) -> dict:
     row["degraded_geocode"] = candidate.get("source") == "nominatim" and candidate.get("match_type") != "osm_address"
     row["lot_mismatch"] = bool(expected_lot and not expected_ranks)
     if len(candidates) > 1 and len({str(item.get("label") or "") for item in candidates}) == 1:
-        anomalies.append("indistinguishable_duplicate_candidates")
+        anomalies.append("duplicate_address_across_lots")
     if row["degraded_geocode"]:
         anomalies.append("degraded_geocode")
     if row["lot_mismatch"]:
@@ -443,6 +443,8 @@ def audit_case(sample: dict, base_url: str) -> dict:
             anomalies.append("address_point_polygon_mismatch")
         if calc.get("error") == "ambiguous_regulation":
             anomalies.append("conflicting_official_regulation")
+        if calc.get("error") == "zero_features":
+            anomalies.append("official_regulation_missing_at_linked_lot")
         if calc.get("error") in {"internal", "layer_error", "layer_timeout", "layer_parse_error"}:
             anomalies.append("calc_failure")
         row["anomalies"] = ";".join(anomalies)
@@ -466,7 +468,10 @@ def audit_case(sample: dict, base_url: str) -> dict:
         and data.get("tratamiento") != sample.get("expected_treatment")
     )
     if row["treatment_mismatch"]:
-        anomalies.append("treatment_mismatch")
+        anomalies.append(
+            "source_point_treatment_differs_from_linked_lot"
+            if row["coordinate_adjusted_to_lot"] else "treatment_mismatch"
+        )
     # Check every explicit ICE × lot-area metric exposed by the result.
     math_deltas = []
     area = row["lot_area_m2"]
@@ -551,10 +556,14 @@ def write_summary(rows: list[dict], output: Path, base_url: str) -> None:
         f"- Same-block fallback rate: **{resolution_counts['same_block']}/{len(real)} ({resolution_counts['same_block']/max(len(real),1):.1%})**",
         f"- Unresolved real-address rate: **{sum(1 for r in real if not r['geocode_ok'])}/{len(real)} ({sum(1 for r in real if not r['geocode_ok'])/max(len(real),1):.1%})**",
         f"- Degraded city/region geocodes: **{sum(bool(r['degraded_geocode']) for r in rows)}**",
+        f"- Invalid controls incorrectly resolved: **{anomaly_counts['invalid_input_resolved']}**",
         f"- Full calculation reports: **{calc_states['full_report']}/{len(real)}**",
         f"- Address-point/parcel mismatches: **{anomaly_counts['address_point_polygon_mismatch']}**",
         f"- Official address points safely re-anchored to their linked lot: **{sum(bool(r['coordinate_adjusted_to_lot']) for r in rows)}**",
         f"- Geocodes over 250 m from their source point: **{anomaly_counts['geocode_coordinate_drift']}**",
+        f"- NaN/Infinity payloads: **{sum(int(r['nan_count'] or 0) for r in rows)}**",
+        f"- Explicit calculation math failures: **{sum(r['math_check'] == 'fail' for r in rows)}**",
+        f"- Unrecovered HTTP/JSON errors: **{sum(bool(r['http_or_json_error']) for r in rows)}**",
         f"- Geocode latency: median **{statistics.median(geocode_times):.0f} ms**, p95 **{percentile(geocode_times,.95):.0f} ms**",
         f"- Calculation latency: median **{statistics.median(calc_times):.0f} ms**, p95 **{percentile(calc_times,.95):.0f} ms**",
         "",
