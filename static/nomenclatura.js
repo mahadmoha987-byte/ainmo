@@ -11,10 +11,9 @@
  *   "cl 90 #11-73"                  -> "CL 90 # 11-73"
  *   "KR 11 No. 90 - 73"             -> "KR 11 # 90-73"
  *   "Avenida Carrera 11 Nº 90-73"   -> "AK 11 # 90-73"
- *   "Cll 85 12 34"                  -> "CL 85 12 34"   (no separator, passes through)
+ *   "Cll 85 12 34"                  -> "CL 85 # 12-34"
  *
  * Limitations:
- *   - Does not resolve addresses without a # separator ("CL 85 12 34").
  *   - The abbreviated output (CL/KR/...) may confuse Nominatim; pass the
  *     original user text to OSM queries, not this normalised form.
  *
@@ -73,7 +72,7 @@
     // Accept the common Bogotá form without #, e.g. "CL 90 11 73".
     if (s.indexOf("#") === -1) {
       s = s.replace(
-        /^(AC|AK|CL|KR|DG|TV|AV)\s+(\d+[A-Z]?(?:\s+BIS)?(?:\s+[SE])?)\s+(\d+[A-Z]?)\s+(\d+[A-Z]?)(.*)/,
+        /^(AC|AK|CL|KR|DG|TV|AV)\s+(\d+[A-Z]*(?:\s+BIS[A-Z]*)?(?:\s+[SE])?)\s+(\d+[A-Z]*)\s+(\d+[A-Z]*)(.*)/,
         "$1 $2 # $3-$4$5"
       ).replace(/\s*#\s*/, " # ").replace(/\s+/g, " ").trim();
     }

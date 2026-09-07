@@ -224,6 +224,17 @@ class ZeroFeaturesError(BuildabilityLookupError):
 class ParseError(BuildabilityLookupError):
     """A field value did not match any known format."""
 
+class AmbiguousRegulationError(BuildabilityLookupError):
+    """A POT layer returned conflicting regulations for the same point."""
+
+    def __init__(self, options: list[dict]):
+        self.options = options
+        labels = [
+            f"{item.get('TRATAMIENTO') or 'SIN_DATO'} / {item.get('ALTURA_MAXIMA') or 'SIN_DATO'}"
+            for item in options
+        ]
+        super().__init__("Layer 15 returned conflicting overlapping regulations: " + "; ".join(labels))
+
 class ProjectionError(BuildabilityLookupError):
     """Geometry was absent or produced an implausible area (projection may have failed)."""
 
@@ -362,6 +373,28 @@ def query_fs(layer_id: int, lng: float, lat: float,
         raise BuildabilityLookupError(f"Layer {layer_id}: {exc}") from exc
 
 
+def _select_edificabilidad_feature(features: list[dict]) -> dict:
+    """Select Layer 15 data only when every overlap has the same core rule."""
+    options: list[dict] = []
+    signatures: set[tuple[str, str, str]] = set()
+    for feature in features:
+        attrs = feature.get("attributes") or {}
+        option = {
+            "TRATAMIENTO": str(attrs.get("TRATAMIENTO") or "").strip(),
+            "TIPOLOGIA": str(attrs.get("TIPOLOGIA") or "").strip(),
+            "ALTURA_MAXIMA": str(attrs.get("ALTURA_MAXIMA") or "").strip(),
+            "OBSERVACION": str(attrs.get("OBSERVACION") or "").strip() or None,
+            "ACTO_ADMINISTRATIVO": str(attrs.get("ACTO_ADMINISTRATIVO") or "").strip() or None,
+        }
+        signature = tuple(str(option[key] or "").upper() for key in ("TRATAMIENTO", "TIPOLOGIA", "ALTURA_MAXIMA"))
+        if signature not in signatures:
+            signatures.add(signature)
+            options.append(option)
+    if len(signatures) > 1:
+        raise AmbiguousRegulationError(options)
+    return features[0]["attributes"]
+
+
 def _distance_point_to_segment_m(
     px: float, py: float, ax: float, ay: float, bx: float, by: float,
 ) -> float:
@@ -427,7 +460,11 @@ def _query_nearest_catastro_lote(lng: float, lat: float) -> tuple[dict, float]:
     return features[0], distance_m
 
 
-def query_catastro_lote(lng: float, lat: float) -> tuple[dict, float | None]:
+def query_catastro_lote(
+    lng: float,
+    lat: float,
+    expected_lotcodigo: str | None = None,
+) -> tuple[dict, float | None]:
     """
     Fetch physical lot polygon from Catastro MapServer Layer 0.
     Returns outSR=9377 (MAGNA-SIRGAS Colombia West / Bogotá, metres) so that
@@ -448,7 +485,12 @@ def query_catastro_lote(lng: float, lat: float) -> tuple[dict, float | None]:
     }
     try:
         features = _query_catastro(params)
-        feat, snap_distance_m = features[0], None
+        expected = str(expected_lotcodigo or "").strip()
+        linked = [
+            feature for feature in features
+            if str((feature.get("attributes") or {}).get("LOTCODIGO") or "").strip() == expected
+        ]
+        feat, snap_distance_m = (linked[0] if linked else features[0]), None
     except ZeroFeaturesError:
         feat, snap_distance_m = _query_nearest_catastro_lote(lng, lat)
     if not feat.get("geometry"):
@@ -1097,7 +1139,12 @@ def check_blocking_restrictions(lng: float, lat: float) -> list[dict]:
 
 # ── Main lookup ──────────────────────────────────────────────────────────────
 
-def lookup(lng: float, lat: float, vis_en_sitio: bool = False) -> dict:
+def lookup(
+    lng: float,
+    lat: float,
+    vis_en_sitio: bool = False,
+    expected_lotcodigo: str | None = None,
+) -> dict:
     """
     Full buildability lookup for a WGS84 point in Bogotá.
 
@@ -1106,6 +1153,8 @@ def lookup(lng: float, lat: float, vis_en_sitio: bool = False) -> dict:
     lng, lat      : WGS84 decimal degrees
     vis_en_sitio  : True if the project carries a VIS/VIP on-site obligation
                     (raises IC for Rangos 1-3 and height for Rango 4B)
+    expected_lotcodigo : optional official address-to-lot link used to disambiguate
+                    overlapping Catastro polygons; never snaps to a non-intersecting lot
 
     Returns
     -------
@@ -1125,7 +1174,7 @@ def lookup(lng: float, lat: float, vis_en_sitio: bool = False) -> dict:
     }
 
     # ── Step 1: Physical lot (Catastro) ──────────────────────────────────────
-    lote_feat, lote_snap_distance_m = query_catastro_lote(lng, lat)
+    lote_feat, lote_snap_distance_m = query_catastro_lote(lng, lat, expected_lotcodigo)
     lote_attrs = lote_feat.get("attributes", {})
     area_m2 = compute_lot_area_m2(lote_feat)
 
@@ -1205,7 +1254,7 @@ def lookup(lng: float, lat: float, vis_en_sitio: bool = False) -> dict:
         L_EDIFICABILIDAD, lng, lat,
         out_fields=["TRATAMIENTO", "TIPOLOGIA", "ALTURA_MAXIMA", "OBSERVACION", "ACTO_ADMINISTRATIVO"],
     )
-    a15 = feats_15[0]["attributes"]
+    a15 = _select_edificabilidad_feature(feats_15)
     tratamiento_raw = (a15.get("TRATAMIENTO") or "").strip().upper()
 
     if not tratamiento_raw:

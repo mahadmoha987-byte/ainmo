@@ -28,16 +28,19 @@ _GIS_CACHE_TTL = 86_400        # 24 h
 _GIS_CACHE_MAX = 2_000         # max entries before LRU-style eviction
 
 
-def _gis_cache_key(lng: float, lat: float, vis: bool) -> tuple:
-    return (round(lng, 5), round(lat, 5), vis)
+def _gis_cache_key(lng: float, lat: float, vis: bool, expected_lotcodigo: str = "") -> tuple:
+    return (round(lng, 5), round(lat, 5), vis, expected_lotcodigo)
 
 
-def _gis_lookup_cached(lng: float, lat: float, vis: bool):
-    key = _gis_cache_key(lng, lat, vis)
+def _gis_lookup_cached(lng: float, lat: float, vis: bool, expected_lotcodigo: str = ""):
+    key = _gis_cache_key(lng, lat, vis, expected_lotcodigo)
     entry = _GIS_CACHE.get(key)
     if entry and (time.time() - entry[0]) < _GIS_CACHE_TTL:
         return entry[1]
-    result = p2_lookup.lookup(lng, lat, vis_en_sitio=vis)
+    result = p2_lookup.lookup(
+        lng, lat, vis_en_sitio=vis,
+        expected_lotcodigo=expected_lotcodigo or None,
+    )
     if len(_GIS_CACHE) >= _GIS_CACHE_MAX:
         oldest = min(_GIS_CACHE, key=lambda k: _GIS_CACHE[k][0])
         _GIS_CACHE.pop(oldest, None)
@@ -193,9 +196,11 @@ async def calc_endpoint(
             })
 
     try:
-        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio)
-        resolved_lotcodigo = str((lu.get("lote") or {}).get("lotcodigo") or "").strip()
         expected_lotcodigo = str(expected_lotcodigo or "").strip()
+        lu = await asyncio.to_thread(
+            _gis_lookup_cached, lng, lat, vis_en_sitio, expected_lotcodigo,
+        )
+        resolved_lotcodigo = str((lu.get("lote") or {}).get("lotcodigo") or "").strip()
         if expected_lotcodigo and resolved_lotcodigo != expected_lotcodigo:
             return JSONResponse(status_code=200, content={
                 "ok": False,
@@ -277,6 +282,19 @@ async def calc_endpoint(
             "ok": False, "error": "layer_parse_error",
             "layer_name": layer_info["name"], "layer_id": layer_info["id"],
             "message": f"{layer_info['name']} devolvió datos inesperados. Intente de nuevo o reporte el lote si el problema persiste.",
+        })
+    except p2_lookup.AmbiguousRegulationError as exc:
+        return JSONResponse(status_code=200, content={
+            "ok": False,
+            "error": "ambiguous_regulation",
+            "layer_name": "Edificabilidad POT",
+            "layer_id": p2_lookup.L_EDIFICABILIDAD,
+            "options": exc.options,
+            "message": (
+                "El mapa oficial de edificabilidad contiene normas superpuestas y contradictorias "
+                "en este punto. Ainmo no eligió una automáticamente. Verifique el predio con la "
+                "Secretaría Distrital de Planeación o una Curaduría Urbana."
+            ),
         })
     except p2_lookup.BuildabilityLookupError as exc:
         layer_info = _extract_layer_info(str(exc))
@@ -471,6 +489,7 @@ async def report_endpoint(
     frente_m: float | None = Query(None),
     ancho_via_m: float | None = Query(None),
     address: str = Query("Dirección no especificada"),
+    expected_lotcodigo: str | None = Query(None),
     preview: bool = Query(False),
 ):
     user = await get_current_user(request)
@@ -485,7 +504,8 @@ async def report_endpoint(
             "message": "El informe PDF está disponible en el plan Pro.",
         })
     try:
-        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio)
+        expected_lotcodigo = str(expected_lotcodigo or "").strip()
+        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio, expected_lotcodigo)
         result = calc.calculate(lu, anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m)
         loop = asyncio.get_event_loop()
         pdf_bytes = await loop.run_in_executor(
@@ -515,9 +535,11 @@ async def report_html_endpoint(
     frente_m: float | None = Query(None),
     ancho_via_m: float | None = Query(None),
     address: str = Query("Dirección no especificada"),
+    expected_lotcodigo: str | None = Query(None),
 ):
     try:
-        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio)
+        expected_lotcodigo = str(expected_lotcodigo or "").strip()
+        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio, expected_lotcodigo)
         result = calc.calculate(lu, anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m)
         html_str = pdf_report.generate_html_preview(calc_result=result, lookup_snapshot=lu, address=address)
         from fastapi.responses import Response
@@ -646,12 +668,14 @@ async def dxf_endpoint(
     anu_m2: float | None = Query(None),
     frente_m: float | None = Query(None),
     ancho_via_m: float | None = Query(None),
+    expected_lotcodigo: str | None = Query(None),
 ):
     user = await get_current_user(request)
     if not user and not auth.dev_mode():
         return JSONResponse(status_code=401, content={"ok": False, "error": "auth_required"})
     try:
-        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio)
+        expected_lotcodigo = str(expected_lotcodigo or "").strip()
+        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio, expected_lotcodigo)
         result = calc.calculate(lu, anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m)
         loop = asyncio.get_event_loop()
         dxf_bytes = await loop.run_in_executor(

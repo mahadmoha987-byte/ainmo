@@ -60,6 +60,12 @@ check("'Diagonal' -> DG",
 check("'Transversal' -> TV",
   normalizarDireccion("Transversal 15 # 22-30"), "TV 15 # 22-30");
 
+check("multi-letter BIS token without separator",
+  normalizarDireccion("Carrera 72MBIS 10 02"), "KR 72MBIS # 10-02");
+
+check("BISA cross-street token without separator",
+  normalizarDireccion("CL 76BISA 94A 13"), "CL 76BISA # 94A-13");
+
 check("empty string returns empty",
   normalizarDireccion(""), "");
 

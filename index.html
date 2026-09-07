@@ -3043,6 +3043,7 @@ async function downloadPdf(lat, lng, vis) {
   if (inp.anu_m2_supplied)    params.set('anu_m2',      inp.anu_m2_supplied);
   if (inp.frente_m_supplied)  params.set('frente_m',    inp.frente_m_supplied);
   if (inp.ancho_via_m_supplied) params.set('ancho_via_m', inp.ancho_via_m_supplied);
+  if (_expectedLotCodigo) params.set('expected_lotcodigo', _expectedLotCodigo);
 
   const address = document.getElementById('addr-input')?.value?.trim() || 'Dirección no especificada';
   params.set('address', address);
@@ -3177,6 +3178,7 @@ async function downloadDxf(lat, lng, vis) {
   if (inp.anu_m2_supplied)     params.set('anu_m2', inp.anu_m2_supplied);
   if (inp.frente_m_supplied)   params.set('frente_m', inp.frente_m_supplied);
   if (inp.ancho_via_m_supplied) params.set('ancho_via_m', inp.ancho_via_m_supplied);
+  if (_expectedLotCodigo) params.set('expected_lotcodigo', _expectedLotCodigo);
 
   const btn = event?.target || document.activeElement;
   const origText = btn?.textContent;

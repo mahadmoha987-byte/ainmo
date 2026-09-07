@@ -51,6 +51,27 @@ def test_complete_plate_validation_accepts_directional_and_bis_addresses():
     assert not geocode._is_complete_street_plate("BOGOTA")
 
 
+def test_compound_avenue_without_hash_is_not_mistaken_for_intersection():
+    assert not geocode._is_intersection_query("Avenida Carrera 11 109 32")
+    assert not geocode._is_intersection_query("Avenida Calle 13 16A 12")
+    assert geocode._is_intersection_query("Calle 60 Carrera 7")
+
+
+def test_multiletter_bis_tokens_accept_missing_hash_format():
+    assert geocode.normalize_address("Carrera 72MBIS 10 02") == "KR 72MBIS # 10-02"
+    assert geocode.normalize_address("CL 76BISA 94A 13") == "CL 76BISA # 94A-13"
+
+
+def test_polygon_interior_point_stays_inside_concave_lot():
+    rings = [[
+        [0.0, 0.0], [4.0, 0.0], [4.0, 1.0], [1.0, 1.0],
+        [1.0, 4.0], [0.0, 4.0], [0.0, 0.0],
+    ]]
+    point = geocode._polygon_interior_point(rings)
+    assert point is not None
+    assert geocode._point_in_rings(*point, rings)
+
+
 def test_catastro_candidate_preserves_linked_lot_code(monkeypatch):
     class Response:
         def __enter__(self):

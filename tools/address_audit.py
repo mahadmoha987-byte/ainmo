@@ -68,6 +68,7 @@ OUTPUT_FIELDS = [
     "match_type", "match_confidence", "candidate_count", "candidate_source",
     "candidate_label", "candidate_lotcodigo", "candidate_lat", "candidate_lng",
     "expected_candidate_found", "expected_candidate_rank", "coordinate_drift_m",
+    "coordinate_adjusted_to_lot", "address_point_lat", "address_point_lng",
     "degraded_geocode",
     "geocode_ms", "geocode_error", "calc_ok", "calc_state", "calc_error",
     "calc_ms", "treatment", "lot_area_m2", "ic_value", "io_value",
@@ -402,10 +403,13 @@ def audit_case(sample: dict, base_url: str) -> dict:
     row["candidate_lotcodigo"] = candidate.get("lotcodigo", "")
     row["candidate_lat"] = candidate.get("lat", "")
     row["candidate_lng"] = candidate.get("lng", "")
+    row["coordinate_adjusted_to_lot"] = bool(candidate.get("coordinate_adjusted_to_lot"))
+    row["address_point_lat"] = candidate.get("address_point_lat", "")
+    row["address_point_lng"] = candidate.get("address_point_lng", "")
     coordinates = (sample.get("source_lat"), sample.get("source_lng"), candidate.get("lat"), candidate.get("lng"))
     if all(isinstance(value, (int, float)) for value in coordinates):
         row["coordinate_drift_m"] = round(haversine_m(*coordinates), 1)
-        if row["coordinate_drift_m"] > 250:
+        if row["coordinate_drift_m"] > 250 and not row["coordinate_adjusted_to_lot"]:
             anomalies.append("geocode_coordinate_drift")
     row["degraded_geocode"] = candidate.get("source") == "nominatim" and candidate.get("match_type") != "osm_address"
     row["lot_mismatch"] = bool(expected_lot and not expected_ranks)
@@ -437,6 +441,8 @@ def audit_case(sample: dict, base_url: str) -> dict:
     if not calc.get("ok"):
         if calc.get("error") == "cadastral_mismatch":
             anomalies.append("address_point_polygon_mismatch")
+        if calc.get("error") == "ambiguous_regulation":
+            anomalies.append("conflicting_official_regulation")
         if calc.get("error") in {"internal", "layer_error", "layer_timeout", "layer_parse_error"}:
             anomalies.append("calc_failure")
         row["anomalies"] = ";".join(anomalies)
@@ -547,6 +553,7 @@ def write_summary(rows: list[dict], output: Path, base_url: str) -> None:
         f"- Degraded city/region geocodes: **{sum(bool(r['degraded_geocode']) for r in rows)}**",
         f"- Full calculation reports: **{calc_states['full_report']}/{len(real)}**",
         f"- Address-point/parcel mismatches: **{anomaly_counts['address_point_polygon_mismatch']}**",
+        f"- Official address points safely re-anchored to their linked lot: **{sum(bool(r['coordinate_adjusted_to_lot']) for r in rows)}**",
         f"- Geocodes over 250 m from their source point: **{anomaly_counts['geocode_coordinate_drift']}**",
         f"- Geocode latency: median **{statistics.median(geocode_times):.0f} ms**, p95 **{percentile(geocode_times,.95):.0f} ms**",
         f"- Calculation latency: median **{statistics.median(calc_times):.0f} ms**, p95 **{percentile(calc_times,.95):.0f} ms**",

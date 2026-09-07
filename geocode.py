@@ -16,6 +16,10 @@ _CATASTRO_PLACA = (
     "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services"
     "/catastro/placadomiciliaria/MapServer/0"
 )
+_CATASTRO_LOTE = (
+    "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services"
+    "/catastro/lote/MapServer/0"
+)
 _NOMINATIM = "https://nominatim.openstreetmap.org/search"
 _BOGOTA_VIEWBOX = "-74.25,4.45,-73.99,4.83"
 
@@ -48,7 +52,15 @@ def _is_intersection_query(raw: str) -> bool:
     """
     if "#" in raw:
         return False
-    return len(_VIA_WORDS_RE.findall(raw)) >= 2
+    # "Avenida Carrera" and "Avenida Calle" are single compound Bogotá via
+    # types (AK/AC), not intersections. Collapse them before counting roads.
+    probe = re.sub(r"[.,]", " ", raw.upper())
+    probe = re.sub(
+        r"\b(?:AVENIDA|AVDA|AVE|AV)\s+(?:CARRERA|CRA|CARR|KRA|KR|CALLE|CLLE|CLL|CL)\b",
+        "AVENIDA",
+        probe,
+    )
+    return len(_VIA_WORDS_RE.findall(probe)) >= 2
 
 # -----------------------------------------------------------------------
 # Simple LRU-style cache (avoids repeated network hits)
@@ -151,7 +163,7 @@ def normalize_address(raw: str) -> str:
     # Pattern: <TYPE> <via_num> <cross_num> <house_num> with no '#' already present
     if "#" not in s:
         m = re.match(
-            r"^(AC|AK|CL|KR|DG|TV|AV)\s+(\d+[A-Z]?(?:\s+BIS)?(?:\s+[SE])?)\s+(\d+[A-Z]?)\s+(\d+[A-Z]?)(.*)",
+            r"^(AC|AK|CL|KR|DG|TV|AV)\s+(\d+[A-Z]*(?:\s+BIS[A-Z]*)?(?:\s+[SE])?)\s+(\d+[A-Z]*)\s+(\d+[A-Z]*)(.*)",
             s,
         )
         if m:
@@ -370,6 +382,93 @@ def _catastro_near(pdonvial: str, requested_text: str) -> list[dict]:
     return filtered[:5]
 
 
+def _point_in_rings(x: float, y: float, rings: list[list[list[float]]]) -> bool:
+    """Even/odd polygon test that also respects interior rings (holes)."""
+    inside = False
+    for ring in rings:
+        j = len(ring) - 1
+        for i, (xi, yi) in enumerate(ring):
+            xj, yj = ring[j]
+            if ((yi > y) != (yj > y)) and x < (xj - xi) * (y - yi) / ((yj - yi) or 1e-20) + xi:
+                inside = not inside
+            j = i
+    return inside
+
+
+def _polygon_interior_point(rings: list[list[list[float]]]) -> tuple[float, float] | None:
+    """Return a point inside a cadastral polygon without optional GIS libraries."""
+    if not rings or len(rings[0]) < 3:
+        return None
+    outer = rings[0]
+    area2 = cx = cy = 0.0
+    for index, (x1, y1) in enumerate(outer):
+        x2, y2 = outer[(index + 1) % len(outer)]
+        cross = x1 * y2 - x2 * y1
+        area2 += cross
+        cx += (x1 + x2) * cross
+        cy += (y1 + y2) * cross
+    if abs(area2) > 1e-20:
+        centroid = (cx / (3 * area2), cy / (3 * area2))
+        if _point_in_rings(*centroid, rings):
+            return centroid
+
+    xs = [point[0] for point in outer]
+    ys = [point[1] for point in outer]
+    xmin, xmax, ymin, ymax = min(xs), max(xs), min(ys), max(ys)
+    centre = ((xmin + xmax) / 2, (ymin + ymax) / 2)
+    if _point_in_rings(*centre, rings):
+        return centre
+    # Concave lots can have an exterior centroid. A deterministic fine grid is
+    # sufficient for Bogotá parcel polygons and always stays away from edges.
+    grid = []
+    for ix in range(1, 24):
+        for iy in range(1, 24):
+            point = (xmin + (xmax - xmin) * ix / 24, ymin + (ymax - ymin) * iy / 24)
+            grid.append((abs(ix - 12) + abs(iy - 12), point))
+    for _, point in sorted(grid):
+        if _point_in_rings(*point, rings):
+            return point
+    return None
+
+
+def _anchor_candidates_to_linked_lots(candidates: list[dict]) -> list[dict]:
+    """Move misplaced official address points inside their linked lot polygon."""
+    lotcodes = sorted({
+        str(candidate.get("lotcodigo") or "") for candidate in candidates
+        if candidate.get("source") == "catastro" and re.fullmatch(r"[0-9]{12}", str(candidate.get("lotcodigo") or ""))
+    })
+    if not lotcodes:
+        return candidates
+    quoted = ",".join(f"'{code}'" for code in lotcodes)
+    params = urllib.parse.urlencode({
+        "where": f"LOTCODIGO IN ({quoted})",
+        "outFields": "LOTCODIGO",
+        "returnGeometry": "true",
+        "outSR": "4326",
+        "resultRecordCount": max(20, len(lotcodes)),
+        "f": "json",
+    })
+    with urllib.request.urlopen(f"{_CATASTRO_LOTE}/query?{params}", context=_SSL_CTX, timeout=12) as response:
+        data = json.load(response)
+    polygons = {
+        str((feature.get("attributes") or {}).get("LOTCODIGO") or "").strip():
+            (feature.get("geometry") or {}).get("rings") or []
+        for feature in data.get("features", [])
+    }
+    for candidate in candidates:
+        rings = polygons.get(str(candidate.get("lotcodigo") or ""))
+        if not rings or _point_in_rings(candidate["lng"], candidate["lat"], rings):
+            continue
+        interior = _polygon_interior_point(rings)
+        if interior is None:
+            continue
+        candidate["address_point_lat"] = candidate["lat"]
+        candidate["address_point_lng"] = candidate["lng"]
+        candidate["lng"], candidate["lat"] = interior
+        candidate["coordinate_adjusted_to_lot"] = True
+    return candidates
+
+
 # -----------------------------------------------------------------------
 # Nominatim fallback
 # -----------------------------------------------------------------------
@@ -500,6 +599,14 @@ def geocode_detailed(address: str) -> dict:
                 resolution = "street_recognized" if recognized else "unrecognized_street"
         except Exception:
             resolution = "catastro_unavailable"
+
+    if candidates and any(candidate.get("source") == "catastro" for candidate in candidates):
+        try:
+            candidates = _anchor_candidates_to_linked_lots(candidates)
+        except Exception:
+            # Keep the original official address points. The calculation API's
+            # lot-code mismatch guard will still refuse a neighboring parcel.
+            pass
 
     # --- Priority 2: Nominatim (uses original text, not abbreviated form) ---
     if not candidates:
