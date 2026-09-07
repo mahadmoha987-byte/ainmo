@@ -165,6 +165,7 @@ async def calc_endpoint(
     frente_m: float | None = Query(None),
     ancho_via_m: float | None = Query(None),
     address: str = Query(""),
+    expected_lotcodigo: str | None = Query(None),
     scenario_only: bool = Query(False),
 ):
     user = await get_current_user(request)
@@ -182,6 +183,22 @@ async def calc_endpoint(
 
     try:
         lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio)
+        resolved_lotcodigo = str((lu.get("lote") or {}).get("lotcodigo") or "").strip()
+        expected_lotcodigo = str(expected_lotcodigo or "").strip()
+        if expected_lotcodigo and resolved_lotcodigo != expected_lotcodigo:
+            return JSONResponse(status_code=200, content={
+                "ok": False,
+                "error": "cadastral_mismatch",
+                "message": (
+                    "La placa domiciliaria de Catastro identifica el lote "
+                    f"{expected_lotcodigo}, pero su punto publicado cae dentro del lote "
+                    f"{resolved_lotcodigo or 'SIN_DATO'}. No se calcularon normas para evitar "
+                    "mostrar por error las del predio vecino. Seleccione el polígono correcto "
+                    "en el mapa o verifique el CHIP/código de lote en Catastro."
+                ),
+                "expected_lotcodigo": expected_lotcodigo,
+                "resolved_lotcodigo": resolved_lotcodigo or None,
+            })
         result = calc.calculate(lu, anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m)
 
         analysis_id = None

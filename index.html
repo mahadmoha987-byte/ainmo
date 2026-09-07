@@ -682,7 +682,8 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
 let _lastRaw = null;            // raw API response (for JSON export)
 let _pendingAnu = null;         // {lng, lat, vis} waiting for user ANU input
 let _pendingFrente = null;      // {lng, lat, vis, anu} waiting for frente_m / ancho_via_m
-let _confirmedCoords = null;    // {lat, lng} confirmed from geocoder
+let _confirmedCoords = null;    // {lat, lng, lotcodigo} confirmed from geocoder
+let _expectedLotCodigo = null;  // lot linked to Catastro's address plate
 let _geoCandidates = [];        // disambiguation list from geocoder
 let _currentUser = null;        // {email, plan, usage_this_month, usage_limit} or null
 let _currentAnalysisId = null;  // analysis_id returned by last successful /api/calc
@@ -743,6 +744,7 @@ async function submitGeoSearch() {
   if (btn) { btn.disabled = true; btn.textContent = 'Buscando…'; }
   if (geoDiv) geoDiv.style.display = 'none';
   _confirmedCoords = null;
+  _expectedLotCodigo = null;
 
   // Do NOT append ", Bogotá" here — geocode.py already scopes Catastro queries
   // to Bogotá and appends "Bogotá, Colombia" to Nominatim internally.
@@ -780,7 +782,8 @@ async function submitGeoSearch() {
 }
 
 function _showGeoConfirm(candidate) {
-  _confirmedCoords = { lat: candidate.lat, lng: candidate.lng };
+  _confirmedCoords = { lat: candidate.lat, lng: candidate.lng, lotcodigo: candidate.lotcodigo || null };
+  _expectedLotCodigo = candidate.lotcodigo || null;
   const src = candidate.source === 'catastro' ? 'Catastro Bogotá' : 'OpenStreetMap';
   const div = document.getElementById('geo-results');
   div.style.display = 'block';
@@ -856,6 +859,7 @@ function showGeoError(msg, query, kind) {
 
 function resetGeoResults() {
   _confirmedCoords = null;
+  _expectedLotCodigo = null;
   const div = document.getElementById('geo-results');
   div.style.display = 'none';
   div.innerHTML = '';
@@ -897,6 +901,7 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
   if (frente    != null) params.set('frente_m',    frente);
   if (anchoVia  != null) params.set('ancho_via_m', anchoVia);
   if (address)           params.set('address',     address);
+  if (_expectedLotCodigo) params.set('expected_lotcodigo', _expectedLotCodigo);
   if (scenarioOnly)      params.set('scenario_only', 'true');
 
   let json;
@@ -973,7 +978,7 @@ function enterLanding() {
   document.getElementById('results').innerHTML = '';
   document.getElementById('geo-results').style.display = 'none';
   document.getElementById('addr-input').value = '';
-  _confirmedCoords = null; _pendingAnu = null; _pendingFrente = null;
+  _confirmedCoords = null; _expectedLotCodigo = null; _pendingAnu = null; _pendingFrente = null;
   if (_lotLayer) { _map.removeLayer(_lotLayer); _lotLayer = null; }
   if (_markerLayer) { _map.removeLayer(_markerLayer); _markerLayer = null; }
   _map.setView([4.6534, -74.0831], 12);
@@ -987,7 +992,7 @@ function enterLanding() {
 /* ejemplo: Consolidación lot in Chicó / Barrio El Refugio */
 async function loadEjemplo() {
   const EJ_LAT = 4.6736, EJ_LNG = -74.0503;
-  _pendingAnu = null; _pendingFrente = null; _confirmedCoords = null;
+  _pendingAnu = null; _pendingFrente = null; _confirmedCoords = null; _expectedLotCodigo = null;
   document.getElementById('addr-input').value = 'Ej: Calle 90 # 11-73 (Chicó)';
   document.getElementById('geo-results').style.display = 'none';
   await runLookup(EJ_LAT, EJ_LNG, false, null, null, null);
@@ -1001,6 +1006,10 @@ function render(json, lat, lng, vis, anu, frente, anchoVia) {
     const retryCall = `runLookup(${lat},${lng},${vis},${anu??'null'},${frente??'null'},${anchoVia??'null'})`;
     switch (json.error) {
       case 'zero_features':   return showZeroFeatures(json.message);
+      case 'cadastral_mismatch':
+        return showError(json.message, {
+          action: 'La dirección sí existe; el problema está en la ubicación publicada de la placa catastral. Use el mapa para elegir visualmente el lote correcto.'
+        });
       case 'input_required':  return showInputRequired(json, lat, lng, vis, anu, frente, anchoVia);
       case 'layer_timeout':
       case 'layer_error': {
@@ -1331,7 +1340,7 @@ async function submitManualCoords() {
   const lng = parseFloat(document.getElementById('lng').value);
   if (isNaN(lat) || isNaN(lng)) { return; }
   const vis = document.getElementById('vis-check').checked;
-  _pendingAnu = null; _pendingFrente = null; _confirmedCoords = null;
+  _pendingAnu = null; _pendingFrente = null; _confirmedCoords = null; _expectedLotCodigo = null;
   await runLookup(lat, lng, vis, null, null, null);
 }
 
@@ -1838,9 +1847,9 @@ function lotIdFragment(d) {
 function fmtCopM(v) {
   if (v == null) return null;
   if (Math.abs(v) >= 1e9) {
-    return '$' + (v / 1e9).toLocaleString('es-CO', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' mil mill.';
+    return '$' + (v / 1e9).toLocaleString('es-CO', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' mil millones';
   }
-  return '$' + Math.round(v / 1e6).toLocaleString('es-CO') + ' mill.';
+  return '$' + Math.round(v / 1e6).toLocaleString('es-CO') + ' millones';
 }
 
 function _kpiCell(label, value, unit, fin = false) {
@@ -3814,6 +3823,7 @@ function _initMap() {
     _pendingAnu = null;
     _pendingFrente = null;
     _confirmedCoords = null;
+    _expectedLotCodigo = null;
     document.getElementById('geo-results').style.display = 'none';
     await runLookup(e.latlng.lat, e.latlng.lng, vis, null, null, null);
   });

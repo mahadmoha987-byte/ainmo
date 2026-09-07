@@ -107,6 +107,10 @@ def normalize_address(raw: str) -> str:
     # into false block-level "near matches".
     s = re.sub(r"\s+BOGOTA(?:\s+D\s*C)?(?:\s+COLOMBIA)?\s*$", "", s).strip()
     s = re.sub(r"\s+COLOMBIA\s*$", "", s).strip()
+    # Catastro encodes Bogotá directional qualifiers as S/E, while users and
+    # official predio exports commonly spell SUR/ESTE in full.
+    s = re.sub(r"\bSUR\b", "S", s)
+    s = re.sub(r"\bESTE\b", "E", s)
     # Nº / N° / No. / Nro → "#"
     s = re.sub(r"\bN[º°]\s*", "# ", s)
     s = re.sub(r"\b(NO|NRO|NUM|NUMERO)\b\s*", "# ", s)
@@ -132,7 +136,7 @@ def normalize_address(raw: str) -> str:
     # Pattern: <TYPE> <via_num> <cross_num> <house_num> with no '#' already present
     if "#" not in s:
         m = re.match(
-            r"^(AC|AK|CL|KR|DG|TV|AV)\s+(\d+[A-Z]?(?:\s+BIS)?)\s+(\d+[A-Z]?)\s+(\d+[A-Z]?)(.*)",
+            r"^(AC|AK|CL|KR|DG|TV|AV)\s+(\d+[A-Z]?(?:\s+BIS)?(?:\s+[SE])?)\s+(\d+[A-Z]?)\s+(\d+[A-Z]?)(.*)",
             s,
         )
         if m:
@@ -207,13 +211,19 @@ def _parse_address(raw: str) -> tuple[str, str] | None:
 
     # Normalise via number: "72A Bis" → "72ABIS", "7 Bis A" → "7BISA"
     num_part = remainder.upper()
+    direction = ""
+    direction_match = re.match(r"^(.*?)(?:\s+)([SE])$", num_part)
+    if direction_match:
+        num_part, direction = direction_match.groups()
     num_part = re.sub(r"\s+BIS\s*", "BIS", num_part)  # "7 BIS A" → "7BISA"
     num_part = re.sub(r"\s+", "", num_part)             # collapse remaining spaces
-    pdonvial = f"{code} {num_part}"
+    pdonvial = f"{code} {num_part}{(' ' + direction) if direction else ''}"
 
     # Normalise cross+house: "10-34 Sur" → "10 34 SUR"
     # Strip any trailing city/neighborhood suffix (e.g. ", Bogotá") that callers append
     cross = cross_raw.split(",")[0].upper().replace("-", " ")
+    cross = re.sub(r"\bSUR\b", "S", cross)
+    cross = re.sub(r"\bESTE\b", "E", cross)
     cross = re.sub(r"\s+", " ", cross).strip()
 
     return pdonvial, cross
@@ -236,13 +246,16 @@ def _catastro_query(
         # Catastro stores PDOTEXTO with trailing spaces and its ArcGIS SQL
         # dialect does not support TRIM(). Query a narrow prefix, then enforce
         # exact equality in Python below.
-        where = f"PDONVIAL='{pdonvial_sql}' AND PDOTEXTO LIKE '{pdotexto_sql}%'"
+        # Some official records pad PDONVIAL with spaces (for example "KR 6 ").
+        # ArcGIS equality does not consistently ignore that padding, so query a
+        # prefix and enforce exact trimmed equality below.
+        where = f"PDONVIAL LIKE '{pdonvial_sql}%' AND PDOTEXTO LIKE '{pdotexto_sql}%'"
     else:
-        where = f"PDONVIAL='{pdonvial_sql}'"
+        where = f"PDONVIAL LIKE '{pdonvial_sql}%'"
 
     params = urllib.parse.urlencode({
         "where": where,
-        "outFields": "PDONVIAL,PDOTEXTO",
+        "outFields": "PDONVIAL,PDOTEXTO,PDOCLOTE",
         "returnGeometry": "true",
         "outSR": "4326",
         "resultRecordCount": limit,
@@ -256,6 +269,8 @@ def _catastro_query(
     candidates: list[dict] = []
     for feat in data.get("features", []):
         a = feat["attributes"]
+        if str(a.get("PDONVIAL", "")).strip() != pdonvial.strip():
+            continue
         if exact and pdotexto and str(a.get("PDOTEXTO", "")).strip() != pdotexto.strip():
             continue
         g = feat.get("geometry") or {}
@@ -268,7 +283,15 @@ def _catastro_query(
             continue
         seen_coords.add(key)
         label = f"{a['PDONVIAL']} # {a['PDOTEXTO'].strip()}".strip()
-        candidates.append({"lat": lat, "lng": lng, "label": label, "source": "catastro"})
+        candidates.append({
+            "lat": lat,
+            "lng": lng,
+            "label": label,
+            "source": "catastro",
+            # Preserve the lot explicitly linked to the official address plate.
+            # A small number of plate points fall inside an adjacent polygon.
+            "lotcodigo": str(a.get("PDOCLOTE") or "").strip() or None,
+        })
 
     return candidates
 
