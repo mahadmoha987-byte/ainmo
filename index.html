@@ -74,7 +74,10 @@ body{display:flex;flex-direction:column;min-height:100vh}
 main{max-width:var(--col-max);margin:0 auto;padding:var(--sp-5) var(--sp-4) 80px;width:100%}
 
 /* ── Notice bar ──────────────────────────────────────────────────────────── */
-.notice-bar{background:var(--ink-1);border-bottom:var(--rule-heavy)}
+.notice-bar{background:var(--paper-1);color:var(--ink-1);border:var(--rule);border-left:3px solid var(--ink-4);padding:var(--sp-3) var(--sp-4);line-height:1.6}
+.notice-bar strong{color:var(--ink-0)}
+.notice-bar details{color:var(--ink-2)}
+.notice-bar details summary{color:var(--ink-1)}
 .notice-bar summary{padding:5px var(--sp-4);cursor:pointer;list-style:none;display:flex;align-items:center;font-family:var(--ff-mono);font-size:var(--ts-xs);color:var(--ink-4);user-select:none}
 .notice-bar summary::-webkit-details-marker{display:none}
 .notice-bar summary::after{content:'▸ ver aviso';margin-left:auto;font-size:var(--ts-2xs)}
