@@ -443,7 +443,7 @@ def audit_case(sample: dict, base_url: str) -> dict:
             anomalies.append("address_point_polygon_mismatch")
         if calc.get("error") == "ambiguous_regulation":
             anomalies.append("conflicting_official_regulation")
-        if calc.get("error") == "zero_features":
+        if calc.get("error") in {"zero_features", "layer_zero_features"}:
             anomalies.append("official_regulation_missing_at_linked_lot")
         if calc.get("error") in {"internal", "layer_error", "layer_timeout", "layer_parse_error"}:
             anomalies.append("calc_failure")

@@ -1022,10 +1022,22 @@ function render(json, lat, lng, vis, anu, frente, anchoVia) {
     const retryCall = `runLookup(${lat},${lng},${vis},${anu??'null'},${frente??'null'},${anchoVia??'null'})`;
     switch (json.error) {
       case 'zero_features':   return showZeroFeatures(json.message);
+      case 'layer_zero_features':
+        return showError(json.message, {
+          action: 'No interprete este vacío como permiso ni como ausencia de restricción. Verifique el lote en SINUPOT/SDP o con una Curaduría Urbana.'
+        });
       case 'cadastral_mismatch':
         return showError(json.message, {
-          action: 'La dirección sí existe; el problema está en la ubicación publicada de la placa catastral. Use el mapa para elegir visualmente el lote correcto.'
+          action: 'La dirección sí existe, pero su identificador de lote no coincide con los polígonos catastrales actuales. Use el mapa o confirme el CHIP/código con Catastro Bogotá.'
         });
+      case 'ambiguous_regulation': {
+        const options = (json.options || []).map(o =>
+          `${o.TRATAMIENTO || 'SIN_DATO'} · altura ${o.ALTURA_MAXIMA || 'SIN_DATO'}`
+        ).join('; ');
+        return showError(json.message, {
+          action: options ? `Registros oficiales superpuestos: ${options}.` : 'Confirme la norma aplicable con SDP o Curaduría Urbana.'
+        });
+      }
       case 'input_required':  return showInputRequired(json, lat, lng, vis, anu, frente, anchoVia);
       case 'layer_timeout':
       case 'layer_error': {

@@ -367,8 +367,8 @@ def query_fs(layer_id: int, lng: float, lat: float,
         params["units"] = "esriSRUnit_Meter"
     try:
         return _arcgis_query(f"{ARCGIS_FS}/{layer_id}", params)
-    except ZeroFeaturesError:
-        raise
+    except ZeroFeaturesError as exc:
+        raise ZeroFeaturesError(f"Layer {layer_id}: {exc}") from exc
     except BuildabilityLookupError as exc:
         raise BuildabilityLookupError(f"Layer {layer_id}: {exc}") from exc
 

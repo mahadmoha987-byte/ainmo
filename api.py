@@ -271,7 +271,19 @@ async def calc_endpoint(
             "ok": False, "error": "input_required",
             "field": field, "message": str(exc),
         })
-    except p2_lookup.ZeroFeaturesError:
+    except p2_lookup.ZeroFeaturesError as exc:
+        layer_info = _extract_layer_info(str(exc))
+        if layer_info["id"] is not None:
+            return JSONResponse(status_code=200, content={
+                "ok": False,
+                "error": "layer_zero_features",
+                "layer_name": layer_info["name"],
+                "layer_id": layer_info["id"],
+                "message": (
+                    f"El predio existe en Catastro, pero {layer_info['name']} no contiene "
+                    "un registro aplicable en este punto. Esto es SIN_DATO, no ausencia de restricción."
+                ),
+            })
         return JSONResponse(status_code=200, content={
             "ok": False, "error": "zero_features",
             "message": "La coordenada no cae sobre ningún predio catastral registrado en Bogotá.",

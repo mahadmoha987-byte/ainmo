@@ -35,3 +35,12 @@ def test_expected_address_lot_disambiguates_overlapping_catastro_polygons(monkey
     selected, distance = p2_lookup.query_catastro_lote(0, 0, "000000000002")
     assert selected["attributes"]["LOTCODIGO"] == "000000000002"
     assert distance is None
+
+
+def test_empty_pot_query_preserves_layer_identity(monkeypatch):
+    def no_features(*_args, **_kwargs):
+        raise p2_lookup.ZeroFeaturesError("no features")
+
+    monkeypatch.setattr(p2_lookup, "_arcgis_query", no_features)
+    with pytest.raises(p2_lookup.ZeroFeaturesError, match="Layer 15"):
+        p2_lookup.query_fs(15, -74.08, 4.65, ["TRATAMIENTO"])
