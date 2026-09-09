@@ -179,7 +179,13 @@ async def address_suggest_endpoint(
     """Fast, database-only typeahead; never calls Catastro or Nominatim."""
     started = time.perf_counter()
     normalized = geocode.normalize_address_search(q)
-    if len(normalized) < 3:
+    tokens = normalized.split()
+    has_numbered_bogota_road = (
+        bool(tokens)
+        and tokens[0] in {"AC", "AK", "AV", "CL", "DG", "KR", "TV"}
+        and any(character.isdigit() for character in " ".join(tokens[1:]))
+    )
+    if len(normalized) < 3 or not has_numbered_bogota_road:
         return {
             "ok": True,
             "suggestions": [],

@@ -69,9 +69,18 @@ LANGUAGE sql
 STABLE
 SET search_path = public, extensions
 AS $$
-  WITH prefix_candidates AS MATERIALIZED (
-    SELECT ai.*,
-           CASE WHEN ai.normalized_address = p_query THEN 3 ELSE 2 END AS match_class
+  WITH exact_candidates AS MATERIALIZED (
+    SELECT ai.*, 3 AS match_class
+    FROM public.address_index AS ai
+    WHERE ai.normalized_address = p_query
+      AND EXISTS (
+        SELECT 1 FROM public.address_index_meta AS meta
+        WHERE meta.singleton AND meta.status = 'ready'
+      )
+    LIMIT 64
+  ),
+  prefix_candidates AS MATERIALIZED (
+    SELECT ai.*, 2 AS match_class
     FROM public.address_index AS ai
     WHERE length(p_query) >= 3
       AND EXISTS (
@@ -79,29 +88,53 @@ AS $$
         WHERE meta.singleton AND meta.status = 'ready'
       )
       AND ai.normalized_address LIKE p_query || '%'
-    ORDER BY
-      match_class DESC,
-      CASE
-        WHEN length(p_query) >= 5 AND p_lat IS NOT NULL AND p_lng IS NOT NULL
-        THEN power(ai.lat - p_lat, 2) + power(ai.lng - p_lng, 2)
-        ELSE NULL
-      END ASC NULLS LAST,
-      ai.normalized_address,
-      ai.source_address_id
+      AND ai.normalized_address <> p_query
+    -- Keep the indexed prefix scan bounded before optional proximity sorting.
     LIMIT 512
   ),
-  fuzzy_candidates AS MATERIALIZED (
-    SELECT ai.*, 1 AS match_class
+  direct_candidates AS MATERIALIZED (
+    SELECT * FROM exact_candidates
+    UNION ALL
+    SELECT * FROM prefix_candidates
+  ),
+  road_prefix AS MATERIALIZED (
+    SELECT CASE
+      WHEN split_part(p_query, ' ', 3) ~ '^(S|E|BIS[A-Z]*)$'
+      THEN concat_ws(
+        ' ',
+        split_part(p_query, ' ', 1),
+        split_part(p_query, ' ', 2),
+        split_part(p_query, ' ', 3)
+      )
+      ELSE concat_ws(
+        ' ',
+        split_part(p_query, ' ', 1),
+        split_part(p_query, ' ', 2)
+      )
+    END AS value
+    WHERE length(p_query) >= 8
+      AND p_query LIKE '% % % %'
+      AND split_part(p_query, ' ', 1) IN ('AC', 'AK', 'AV', 'CL', 'DG', 'KR', 'TV')
+      AND split_part(p_query, ' ', 2) <> ''
+  ),
+  road_candidates AS MATERIALIZED (
+    SELECT ai.*
     FROM public.address_index AS ai
-    WHERE length(p_query) >= 5
-      AND EXISTS (
+    CROSS JOIN road_prefix AS road
+    WHERE EXISTS (
         SELECT 1 FROM public.address_index_meta AS meta
         WHERE meta.singleton AND meta.status = 'ready'
       )
-      -- Prefix is both the expected typeahead path and substantially faster.
-      -- Fuzzy matching is a typo-recovery fallback, not a parallel full scan.
-      AND NOT EXISTS (SELECT 1 FROM prefix_candidates)
-      AND ai.normalized_address % p_query
+      -- Typo recovery is bounded to the same numbered road. It never scans
+      -- the entire city when a user mistypes a cross street or door number.
+      AND NOT EXISTS (SELECT 1 FROM direct_candidates)
+      AND ai.normalized_address LIKE road.value || '%'
+    LIMIT 1024
+  ),
+  fuzzy_candidates AS MATERIALIZED (
+    SELECT ai.*, 1 AS match_class
+    FROM road_candidates AS ai
+    WHERE similarity(ai.normalized_address, p_query) >= 0.30
     ORDER BY similarity(ai.normalized_address, p_query) DESC,
              ai.normalized_address,
              ai.source_address_id
@@ -110,7 +143,7 @@ AS $$
   candidates AS (
     SELECT DISTINCT ON (source_address_id) *
     FROM (
-      SELECT * FROM prefix_candidates
+      SELECT * FROM direct_candidates
       UNION ALL
       SELECT * FROM fuzzy_candidates
     ) AS combined

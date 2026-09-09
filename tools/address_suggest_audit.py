@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import ssl
 import statistics
 import time
 import urllib.parse
@@ -19,7 +20,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+import certifi
+
 USER_AGENT = "AinmoSuggestAudit/1.0 (owner-operated QA; https://ainmo.uk)"
+SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 FIELDS = [
     "case_id",
     "input_address",
@@ -41,7 +45,9 @@ def request_json(url: str, params: dict[str, Any], timeout: float = 10) -> dict:
         url + "?" + urllib.parse.urlencode(params),
         headers={"User-Agent": USER_AGENT},
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with urllib.request.urlopen(
+        request, context=SSL_CONTEXT, timeout=timeout
+    ) as response:
         raw = response.read()
     payload = json.loads(raw)
     if not isinstance(payload, dict):

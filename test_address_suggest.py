@@ -84,16 +84,19 @@ def test_import_deduplicates_catastro_address_ids_before_upsert():
     ]
 
 
-def test_short_suggestion_query_never_hits_database(monkeypatch):
+def test_incomplete_suggestion_query_never_hits_database(monkeypatch):
     async def unexpected(*_args, **_kwargs):
         raise AssertionError("short queries must not hit Supabase")
 
     monkeypatch.setattr(api.db, "search_address_index", unexpected)
-    result = asyncio.run(
-        api.address_suggest_endpoint(q="Cl", lat=None, lng=None, recent_lots="")
-    )
-    assert result["ok"] is True
-    assert result["suggestions"] == []
+    for query in ("Cl", "Calle", "85", "Bogotá"):
+        result = asyncio.run(
+            api.address_suggest_endpoint(
+                q=query, lat=None, lng=None, recent_lots=""
+            )
+        )
+        assert result["ok"] is True
+        assert result["suggestions"] == []
 
 
 def test_suggestion_endpoint_normalizes_and_forwards_valid_ranking_context(monkeypatch):
