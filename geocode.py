@@ -124,6 +124,14 @@ def normalize_address(raw: str) -> str:
     s = "".join(c for c in s if unicodedata.category(c) != "Mn")
     s = s.replace(",", " ").replace(".", " ")
     s = re.sub(r"\s+", " ", s)
+    # Accept compact mobile input such as ``CL85#11-53`` and
+    # ``CARRERA123B#17-94``. Without this boundary the via alias is not
+    # recognised because the following digit is also a regex word character.
+    s = re.sub(
+        r"^(AVENIDA\s+CARRERA|AVENIDA\s+CALLE|TRANSVERSAL|DIAGONAL|CARRERA|CALLE|AK|AC|CL|KR|DG|TV|AV)(?=\d)",
+        r"\1 ",
+        s,
+    )
     # City/country suffixes are natural user input but are not part of
     # Catastro's PDOTEXTO field.  Leaving them attached turns exact addresses
     # into false block-level "near matches".
@@ -158,6 +166,10 @@ def normalize_address(raw: str) -> str:
     s = re.sub(r"\s*-\s*", "-", s)
     s = re.sub(r"#\s*", "# ", s, count=1)
     s = re.sub(r"\s+", " ", s).strip()
+
+    # Recover an unambiguous compact lettered plate:
+    # ``TV78K#41A04S`` -> ``TV 78K # 41A-04 S``.
+    s = re.sub(r"(#\s*\d+[A-Z])(\d{2})([SE])$", r"\1-\2 \3", s)
 
     # Insert missing '#' separator: "CL 90 11 73" → "CL 90 # 11-73"
     # Pattern: <TYPE> <via_num> <cross_num> <house_num> with no '#' already present

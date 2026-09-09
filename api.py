@@ -220,9 +220,26 @@ async def address_suggest_endpoint(
         # Autocomplete is additive. A database/index incident must never take
         # down the existing submit-to-geocode workflow.
         suggestions, index_ready = [], False
+
+    # Typeahead is a direct route into a cadastral calculation, so it is
+    # intentionally stricter than the explicit geocoder. Keep only exact
+    # indexed plates or genuine completions of what the user already typed.
+    # Road-level fuzzy matches remain available in the labelled geocoder flow.
+    safe_suggestions = []
+    for suggestion in suggestions:
+        candidate = str(suggestion.get("normalized_address") or "").strip()
+        if candidate == normalized:
+            match_type = "exact_address"
+        elif candidate.startswith(normalized):
+            match_type = "address_completion"
+        else:
+            continue
+        safe = dict(suggestion)
+        safe["match_type"] = match_type
+        safe_suggestions.append(safe)
     return {
         "ok": True,
-        "suggestions": suggestions,
+        "suggestions": safe_suggestions,
         "normalized_query": normalized,
         "index_ready": index_ready,
         "elapsed_ms": round((time.perf_counter() - started) * 1_000, 1),

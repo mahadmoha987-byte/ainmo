@@ -50,6 +50,11 @@
       .normalize("NFD").replace(/[̀-ͯ]/g, "")
       .replace(/[.,]/g, " ")
       .replace(/\s+/g, " ");
+    // Accept compact mobile input: CL85#11-53, CARRERA123B#17-94, etc.
+    s = s.replace(
+      /^(AVENIDA\s+CARRERA|AVENIDA\s+CALLE|TRANSVERSAL|DIAGONAL|CARRERA|CALLE|AK|AC|CL|KR|DG|TV|AV)(?=\d)/,
+      "$1 "
+    );
     s = s.replace(/\bSUR\b/g, "S").replace(/\bESTE\b/g, "E");
     // Nº / N° / No. / Nro → "#"
     s = s.replace(/\bN[º°]\s*/g, "# ").replace(/\b(NO|NRO|NUM|NUMERO)\b\s*/g, "# ");
@@ -69,6 +74,8 @@
     s = s.replace(/(#\s*\d+\s*[A-Z]?(?:\s+BIS)?)\s*[-–—]\s*(\d+\s*[A-Z]?)/, "$1-$2");
     // Collapse remaining space-padded hyphens, tidy "#" and whitespace
     s = s.replace(/\s*-\s*/g, "-").replace(/#\s*/, "# ").replace(/\s+/g, " ").trim();
+    // Unambiguous compact lettered plate: TV78K#41A04S -> TV 78K # 41A-04 S.
+    s = s.replace(/(#\s*\d+[A-Z])(\d{2})([SE])$/, "$1-$2 $3");
     // Accept the common Bogotá form without #, e.g. "CL 90 11 73".
     if (s.indexOf("#") === -1) {
       s = s.replace(

@@ -66,6 +66,15 @@ check("multi-letter BIS token without separator",
 check("BISA cross-street token without separator",
   normalizarDireccion("CL 76BISA 94A 13"), "CL 76BISA # 94A-13");
 
+check("fully compact Calle plate",
+  normalizarDireccion("cl85#11-53"), "CL 85 # 11-53");
+
+check("fully compact Carrera plate",
+  normalizarDireccion("Carrera123b#17-94"), "KR 123B # 17-94");
+
+check("compact Transversal with directional suffix",
+  normalizarDireccion("TV78K#41A04S"), "TV 78K # 41A-04 S");
+
 check("empty string returns empty",
   normalizarDireccion(""), "");
 

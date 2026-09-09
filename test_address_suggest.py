@@ -18,6 +18,9 @@ def test_search_normalization_reuses_bogota_aliases_and_ignores_separators():
     assert geocode.normalize_address_search("Calle 85 11 53") == "CL 85 11 53"
     assert geocode.normalize_address_search("Av. Cra. 68 # 40-15") == "AK 68 40 15"
     assert geocode.normalize_address_search("Avenida Boyacá # 63-20") == "AK 72 63 20"
+    assert geocode.normalize_address_search("cl85#11-53") == "CL 85 11 53"
+    assert geocode.normalize_address_search("Carrera123b#17-94") == "KR 123B 17 94"
+    assert geocode.normalize_address_search("TV78K#41A04S") == "TV 78K 41A 04 S"
 
 
 def test_catastro_display_address_formats_the_door_number():
@@ -161,6 +164,7 @@ def test_suggestion_endpoint_normalizes_and_forwards_valid_ranking_context(monke
     )
     assert result["index_ready"] is True
     assert result["suggestions"][0]["lot_code"] == "001234567890"
+    assert result["suggestions"][0]["match_type"] == "address_completion"
     assert captured == {
         "query": "CL 85 11 5",
         "lat": 4.668,
@@ -168,6 +172,31 @@ def test_suggestion_endpoint_normalizes_and_forwards_valid_ranking_context(monke
         "recent_lot_codes": ["001234567890"],
         "limit": 8,
     }
+
+
+def test_suggestion_endpoint_never_surfaces_road_level_fuzzy_lot(monkeypatch):
+    async def fake_search(_query, **_kwargs):
+        return [
+            {
+                "address": "CL 127B # 20-15",
+                "normalized_address": "CL 127B 20 15",
+                "lot_code": "008401004012",
+                "treatment": "CONSOLIDACION",
+                "lat": 4.70,
+                "lng": -74.04,
+                "locality": None,
+                "neighborhood": None,
+            }
+        ], True
+
+    monkeypatch.setattr(api.db, "search_address_index", fake_search)
+    result = asyncio.run(
+        api.address_suggest_endpoint(
+            q="Cl. 127 # 15-30", lat=None, lng=None, recent_lots=""
+        )
+    )
+    assert result["ok"] is True
+    assert result["suggestions"] == []
 
 
 def test_suggestion_endpoint_drops_viewport_outside_bogota(monkeypatch):

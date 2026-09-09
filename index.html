@@ -381,6 +381,7 @@ body{overflow:hidden}
 .address-suggestion-main{display:block;font-size:var(--ts-base);font-weight:var(--fw-6);line-height:1.35}
 .address-suggestion-meta{display:flex;align-items:center;gap:6px;min-width:0;margin-top:4px;font-family:var(--ff-mono);font-size:var(--ts-2xs);color:var(--ink-4)}
 .address-suggestion-treatment{display:inline-flex;align-items:center;gap:4px;min-width:0;font-family:var(--ff-ui);font-weight:var(--fw-6);text-transform:none;letter-spacing:0}
+.address-suggestion-match{display:inline-flex;padding:1px 5px;border:1px solid var(--rule);color:var(--ink-3);background:var(--paper);font-family:var(--ff-mono);font-size:9px;text-transform:uppercase;letter-spacing:.04em}
 .address-suggestion-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .address-suggestion-place{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .address-suggestion-lot{margin-left:auto;white-space:nowrap}
@@ -802,6 +803,7 @@ function _renderAddressSuggestions(suggestions) {
     const placeHtml = place
       ? '<span class="address-suggestion-place">' + escHtml(place) + '</span>'
       : '';
+    const matchLabel = suggestion.match_type === 'exact_address' ? 'Exacta' : 'Completar';
     return '<button class="address-suggestion" id="address-suggestion-' + index + '" ' +
       'type="button" role="option" aria-selected="false" ' +
       'onmousedown="event.preventDefault()" onclick="_selectAddressSuggestion(' + index + ')">' +
@@ -811,6 +813,7 @@ function _renderAddressSuggestions(suggestions) {
             '<span class="address-suggestion-dot" style="background:' + treatment.color + '"></span>' +
             escHtml(treatment.label) +
           '</span>' +
+          '<span class="address-suggestion-match">' + matchLabel + '</span>' +
           placeHtml +
           '<span class="address-suggestion-lot">lote ' + escHtml(suggestion.lot_code) + '</span>' +
         '</span>' +
@@ -1771,12 +1774,12 @@ function showResult(d, lat, lng, vis, anu) {
   _lastCalcData = d;
   _massingInitDone = false;
   parts.push(`<details class="normative-detail" id="normative-detail" open ontoggle="_onNormativeToggle(this)">
-    <summary>Detalle normativo y fuentes<span class="nd-decree">D.555/2021 · D.670/2025 · D.676/2025 · D.253-254/2026</span></summary>
+    <summary>Detalle normativo y fuentes<span class="nd-decree">D.555/2021 · D.670/2025 · D.676/2025 · D.253-254/2026 · Res.962/2026</span></summary>
     <div class="normative-body">${normParts.join('')}</div>
   </details>`);
 
   parts.push(`<div class="print-disclaimer">
-    <strong>ainmo · Estimación de prefactibilidad</strong> — D.555/2021 · D.670/2025 · D.676/2025 · D.253-254/2026.
+    <strong>ainmo · Estimación de prefactibilidad</strong> — D.555/2021 · D.670/2025 · D.676/2025 · D.253-254/2026 · Res.962/2026.
     No constituye norma urbanística certificada ni licencia de construcción.
     Verifique con Curaduría Urbana o Secretaría Distrital de Planeación antes de tomar decisiones
     de transacción, permiso o actuación jurídica.
@@ -2107,10 +2110,12 @@ function lotIdFragment(d) {
 /* ── KPI strip ───────────────────────────────────────────────────────────── */
 function fmtCopM(v) {
   if (v == null) return null;
-  if (Math.abs(v) >= 1e9) {
-    return '$' + (v / 1e9).toLocaleString('es-CO', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' mil millones';
+  const sign = v < 0 ? '−' : '';
+  const abs = Math.abs(v);
+  if (abs >= 1e9) {
+    return sign + '$' + (abs / 1e9).toLocaleString('es-CO', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' mil millones';
   }
-  return '$' + Math.round(v / 1e6).toLocaleString('es-CO') + ' millones';
+  return sign + '$' + Math.round(abs / 1e6).toLocaleString('es-CO') + ' millones';
 }
 
 function _kpiCell(label, value, unit, fin = false) {
@@ -2310,7 +2315,7 @@ function verdictBanner(d) {
     return `<div class="verdict-banner vb-condiciones" role="status">
       <div class="vb-icon" aria-hidden="true">⚠</div>
       <div class="vb-content">
-        <div class="vb-headline">Prefactibilidad favorable, con verificaciones</div>
+        <div class="vb-headline">Resultado preliminar — requiere verificaciones</div>
         <div class="vb-sub">${escHtml(sub)}</div>
       </div>
     </div>`;
@@ -2332,7 +2337,7 @@ function verdictBanner(d) {
   return `<div class="verdict-banner vb-viable" role="status">
     <div class="vb-icon" aria-hidden="true">✓</div>
     <div class="vb-content">
-      <div class="vb-headline">Prefactibilidad favorable</div>
+      <div class="vb-headline">Escenario preliminar calculado</div>
       <div class="vb-sub">${sub}</div>
     </div>
   </div>`;
