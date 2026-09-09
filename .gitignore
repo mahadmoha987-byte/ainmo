@@ -15,6 +15,7 @@ docs/normativa/
 
 # generated QA runs (reproducible via tools/address_audit.py)
 artifacts/address_audit/
+artifacts/address_suggest_audit/
 
 # macos
 .DS_Store

@@ -368,9 +368,22 @@ body{overflow:hidden}
 
 /* ── Search panel (floats over map) ─────────────────────────────────────────*/
 .search-panel{position:absolute;top:16px;left:16px;width:296px;z-index:1000;background:var(--paper);border:var(--rule-heavy);padding:var(--sp-3);box-shadow:0 4px 20px rgba(0,0,0,.18)}
-.sp-row{display:flex;gap:var(--sp-1);margin-bottom:var(--sp-2)}
-.sp-row input[type=text]{flex:1;padding:8px var(--sp-3);border:var(--rule);font-size:var(--ts-base);font-family:var(--ff-ui);color:var(--ink-0);background:var(--paper);border-radius:0}
+.sp-row{display:flex;gap:var(--sp-1);margin-bottom:var(--sp-2);align-items:flex-start}
+.sp-address-field{position:relative;flex:1;min-width:0}
+.sp-row input[type=text]{width:100%;padding:8px 30px 8px var(--sp-3);border:var(--rule);font-size:var(--ts-base);font-family:var(--ff-ui);color:var(--ink-0);background:var(--paper);border-radius:0}
 .sp-row input[type=text]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
+.sp-suggest-spinner{position:absolute;right:10px;top:11px;width:12px;height:12px;border:2px solid var(--ink-6);border-top-color:var(--accent);border-radius:50%;animation:spin .65s linear infinite;pointer-events:none}
+.address-suggestions{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:1200;background:var(--paper);border:var(--rule-heavy);box-shadow:0 10px 28px rgba(17,19,24,.2);max-height:min(420px,60vh);overflow-y:auto}
+.address-suggestion{display:block;width:100%;border:0;border-bottom:var(--rule-light);background:var(--paper);padding:9px var(--sp-3);text-align:left;color:var(--ink-0);font-family:var(--ff-ui);cursor:pointer}
+.address-suggestion:last-child{border-bottom:0}
+.address-suggestion:hover,.address-suggestion.is-active{background:var(--accent-bg);outline:none}
+.address-suggestion.is-active{box-shadow:inset 3px 0 0 var(--accent)}
+.address-suggestion-main{display:block;font-size:var(--ts-base);font-weight:var(--fw-6);line-height:1.35}
+.address-suggestion-meta{display:flex;align-items:center;gap:6px;min-width:0;margin-top:4px;font-family:var(--ff-mono);font-size:var(--ts-2xs);color:var(--ink-4)}
+.address-suggestion-treatment{display:inline-flex;align-items:center;gap:4px;min-width:0;font-family:var(--ff-ui);font-weight:var(--fw-6);text-transform:none;letter-spacing:0}
+.address-suggestion-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.address-suggestion-place{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.address-suggestion-lot{margin-left:auto;white-space:nowrap}
 .sp-go{padding:8px 13px;background:var(--ink-0);color:var(--paper);border:none;cursor:pointer;font-size:var(--ts-md);font-weight:var(--fw-5);flex-shrink:0;line-height:1}
 .sp-go:hover{background:var(--ink-1)}
 .sp-hint{font-size:var(--ts-xs);color:var(--ink-4);margin-bottom:var(--sp-2);line-height:1.5}
@@ -531,7 +544,15 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
         <p>Edificabilidad, restricciones y valor residual con trazabilidad normativa y GIS.</p>
       </div>
       <div class="sp-row" style="margin-top:var(--sp-2)">
-        <input type="text" id="addr-input" placeholder="Dirección o clic en el mapa…" autocomplete="off" spellcheck="false" aria-label="Buscar dirección">
+        <div class="sp-address-field">
+          <input type="text" id="addr-input" placeholder="Dirección o clic en el mapa…" autocomplete="off" spellcheck="false"
+                 aria-label="Buscar dirección" role="combobox" aria-autocomplete="list"
+                 aria-controls="address-suggestions" aria-expanded="false">
+          <span class="sp-suggest-spinner" id="address-suggest-spinner" hidden aria-hidden="true"></span>
+          <div class="address-suggestions" id="address-suggestions" role="listbox"
+               aria-label="Direcciones sugeridas" hidden></div>
+          <span class="sr-only" id="address-suggest-status" aria-live="polite"></span>
+        </div>
         <button class="sp-go" id="geo-btn" onclick="submitGeoSearch()" aria-label="Buscar">→</button>
       </div>
       <div class="sp-chips">
@@ -701,6 +722,11 @@ let _massingInitDone = false;   // true once massing has been initialised for cu
 let _geoSearchInFlight = false; // prevents concurrent submitGeoSearch calls
 let _lookupAbortCtrl = null;    // AbortController for the in-flight /api/calc fetch
 let _lookupSeq = 0;             // monotonically increasing; discard stale responses
+let _suggestTimer = null;       // 250 ms input debounce
+let _suggestAbortCtrl = null;   // cancels superseded suggestion requests
+let _suggestSeq = 0;            // prevents out-of-order dropdown renders
+let _addressSuggestions = [];
+let _suggestActiveIndex = -1;
 
 function _authHeaders() {
   if (_session?.access_token) {
@@ -712,9 +738,198 @@ function _authHeaders() {
 /* ══════════════════════════════════════════════════════════════════════════
    Geocoder UI
 ══════════════════════════════════════════════════════════════════════════ */
-// addr-input: submit on Enter
-document.getElementById('addr-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); submitGeoSearch(); }
+const _SUGGEST_TREATMENT_META = {
+  'DESARROLLO':            { color:'#4B7BEC', label:'Desarrollo' },
+  'CONSOLIDACION':         { color:'#2ECC71', label:'Consolidación' },
+  'MEJORAMIENTO INTEGRAL': { color:'#F39C12', label:'Mejoramiento integral' },
+  'RENOVACION':            { color:'#E74C3C', label:'Renovación urbana' },
+  'CONSERVACION':          { color:'#9B59B6', label:'Conservación' },
+  'REDESARROLLO':          { color:'#E67E22', label:'Redesarrollo' },
+};
+
+function _setSuggestLoading(loading) {
+  const spinner = document.getElementById('address-suggest-spinner');
+  const input = document.getElementById('addr-input');
+  if (spinner) spinner.hidden = !loading;
+  if (input) input.setAttribute('aria-busy', loading ? 'true' : 'false');
+}
+
+function _closeAddressSuggestions(abort = false) {
+  clearTimeout(_suggestTimer);
+  _suggestTimer = null;
+  if (abort && _suggestAbortCtrl) {
+    _suggestAbortCtrl.abort();
+    _suggestAbortCtrl = null;
+    _suggestSeq += 1;
+  }
+  _setSuggestLoading(false);
+  _suggestActiveIndex = -1;
+  const input = document.getElementById('addr-input');
+  const list = document.getElementById('address-suggestions');
+  if (input) {
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+  }
+  if (list) {
+    list.hidden = true;
+    list.innerHTML = '';
+  }
+}
+
+function _suggestTreatmentMeta(treatment) {
+  const key = String(treatment || '').trim().toUpperCase();
+  return _SUGGEST_TREATMENT_META[key] || {
+    color:'#8D929E',
+    label:key ? key.charAt(0) + key.slice(1).toLowerCase() : 'Tratamiento por verificar',
+  };
+}
+
+function _renderAddressSuggestions(suggestions) {
+  _addressSuggestions = Array.isArray(suggestions) ? suggestions.slice(0, 8) : [];
+  _suggestActiveIndex = -1;
+  const input = document.getElementById('addr-input');
+  const list = document.getElementById('address-suggestions');
+  const status = document.getElementById('address-suggest-status');
+  if (!input || !list) return;
+  if (!_addressSuggestions.length) {
+    _closeAddressSuggestions(false);
+    if (status) status.textContent = 'Sin sugerencias. Presione Enter para buscar la dirección completa.';
+    return;
+  }
+  list.innerHTML = _addressSuggestions.map((suggestion, index) => {
+    const treatment = _suggestTreatmentMeta(suggestion.treatment);
+    const place = suggestion.neighborhood || suggestion.locality || '';
+    const placeHtml = place
+      ? '<span class="address-suggestion-place">' + escHtml(place) + '</span>'
+      : '';
+    return '<button class="address-suggestion" id="address-suggestion-' + index + '" ' +
+      'type="button" role="option" aria-selected="false" ' +
+      'onmousedown="event.preventDefault()" onclick="_selectAddressSuggestion(' + index + ')">' +
+        '<span class="address-suggestion-main">' + escHtml(suggestion.address) + '</span>' +
+        '<span class="address-suggestion-meta">' +
+          '<span class="address-suggestion-treatment">' +
+            '<span class="address-suggestion-dot" style="background:' + treatment.color + '"></span>' +
+            escHtml(treatment.label) +
+          '</span>' +
+          placeHtml +
+          '<span class="address-suggestion-lot">lote ' + escHtml(suggestion.lot_code) + '</span>' +
+        '</span>' +
+      '</button>';
+  }).join('');
+  list.hidden = false;
+  input.setAttribute('aria-expanded', 'true');
+  if (status) status.textContent = _addressSuggestions.length + ' direcciones sugeridas.';
+}
+
+function _setSuggestActive(nextIndex) {
+  if (!_addressSuggestions.length) return;
+  const list = document.getElementById('address-suggestions');
+  const input = document.getElementById('addr-input');
+  _suggestActiveIndex = (nextIndex + _addressSuggestions.length) % _addressSuggestions.length;
+  list?.querySelectorAll('.address-suggestion').forEach((element, index) => {
+    const active = index === _suggestActiveIndex;
+    element.classList.toggle('is-active', active);
+    element.setAttribute('aria-selected', active ? 'true' : 'false');
+    if (active) element.scrollIntoView({ block:'nearest' });
+  });
+  if (input) input.setAttribute('aria-activedescendant', 'address-suggestion-' + _suggestActiveIndex);
+}
+
+async function _requestAddressSuggestions(query) {
+  if (_suggestAbortCtrl) _suggestAbortCtrl.abort();
+  _suggestAbortCtrl = new AbortController();
+  const signal = _suggestAbortCtrl.signal;
+  const requestSeq = ++_suggestSeq;
+  const params = new URLSearchParams({ q: query });
+  if (typeof _map !== 'undefined' && _map?.getCenter) {
+    const center = _map.getCenter();
+    params.set('lat', center.lat.toFixed(6));
+    params.set('lng', center.lng.toFixed(6));
+  }
+  const recentLots = _loadHistory()
+    .map(item => String(item.lotcodigo || ''))
+    .filter(code => /^\d{12}$/.test(code))
+    .slice(0, 6);
+  if (recentLots.length) params.set('recent_lots', recentLots.join(','));
+  _setSuggestLoading(true);
+  try {
+    const response = await fetch('/api/address-suggest?' + params.toString(), { signal });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const json = await response.json();
+    if (requestSeq !== _suggestSeq || query !== document.getElementById('addr-input')?.value.trim()) return;
+    if (!json.ok || json.index_ready === false) {
+      _closeAddressSuggestions(false);
+      return;
+    }
+    _renderAddressSuggestions(json.suggestions);
+  } catch (error) {
+    if (error.name !== 'AbortError' && requestSeq === _suggestSeq) {
+      _closeAddressSuggestions(false);
+    }
+  } finally {
+    if (requestSeq === _suggestSeq) _setSuggestLoading(false);
+  }
+}
+
+function _scheduleAddressSuggestions() {
+  const query = document.getElementById('addr-input')?.value.trim() || '';
+  clearTimeout(_suggestTimer);
+  if (_suggestAbortCtrl) _suggestAbortCtrl.abort();
+  _suggestSeq += 1;
+  _addressSuggestions = [];
+  _closeAddressSuggestions(false);
+  if (query.length < 3) return;
+  _suggestTimer = setTimeout(() => _requestAddressSuggestions(query), 250);
+}
+
+async function _selectAddressSuggestion(index) {
+  const suggestion = _addressSuggestions[index];
+  if (!suggestion) return;
+  const input = document.getElementById('addr-input');
+  if (input) input.value = suggestion.address;
+  _confirmedCoords = {
+    lat: Number(suggestion.lat),
+    lng: Number(suggestion.lng),
+    lotcodigo: suggestion.lot_code || null,
+  };
+  _expectedLotCodigo = suggestion.lot_code || null;
+  _closeAddressSuggestions(true);
+  const geoDiv = document.getElementById('geo-results');
+  if (geoDiv) {
+    geoDiv.style.display = 'none';
+    geoDiv.innerHTML = '';
+  }
+  const vis = document.getElementById('vis-check').checked;
+  await runLookup(
+    Number(suggestion.lat), Number(suggestion.lng), vis, null, null, null
+  );
+}
+
+const _addressInput = document.getElementById('addr-input');
+_addressInput.addEventListener('input', _scheduleAddressSuggestions);
+_addressInput.addEventListener('keydown', (event) => {
+  const listOpen = !document.getElementById('address-suggestions').hidden;
+  if (event.key === 'ArrowDown' && listOpen) {
+    event.preventDefault();
+    _setSuggestActive(_suggestActiveIndex + 1);
+  } else if (event.key === 'ArrowUp' && listOpen) {
+    event.preventDefault();
+    _setSuggestActive(_suggestActiveIndex - 1);
+  } else if (event.key === 'Escape' && listOpen) {
+    event.preventDefault();
+    _closeAddressSuggestions(true);
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    if (listOpen && _suggestActiveIndex >= 0) {
+      _selectAddressSuggestion(_suggestActiveIndex);
+    } else {
+      _closeAddressSuggestions(true);
+      submitGeoSearch();
+    }
+  }
+});
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('.sp-address-field')) _closeAddressSuggestions(true);
 });
 
 // A VIS/VIP scenario changes height and parking rules. Never leave a result
@@ -736,6 +951,7 @@ document.getElementById('vis-check').addEventListener('change', async (e) => {
 
 async function submitGeoSearch() {
   if (_geoSearchInFlight) return;
+  _closeAddressSuggestions(true);
   const q = document.getElementById('addr-input')?.value?.trim();
   if (!q) return;
 
@@ -981,7 +1197,12 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
       }
       const d = json.data || {};
       const address = d.direccion || document.getElementById('addr-input')?.value?.trim() || '';
-      saveToHistory({ lat, lng, vis, address, tratamiento: d.tratamiento, ts: Date.now() });
+      saveToHistory({
+        lat, lng, vis, address,
+        tratamiento: d.tratamiento,
+        lotcodigo: d.lote?.lotcodigo || _expectedLotCodigo || null,
+        ts: Date.now(),
+      });
     }
     render(json, lat, lng, vis, anu, frente, anchoVia);
   } catch (err) {
@@ -1000,6 +1221,7 @@ function enterResult() {
 }
 
 function enterLanding() {
+  _closeAddressSuggestions(true);
   document.getElementById('app').classList.remove('has-result');
   document.getElementById('result-col').classList.add('hidden');
   document.getElementById('results').innerHTML = '';
@@ -3516,6 +3738,7 @@ function _runHistItem(i) {
   if (!h) return;
   const inp = document.getElementById('addr-input');
   if (inp) inp.value = h.address || '';
+  _expectedLotCodigo = /^\d{12}$/.test(String(h.lotcodigo || '')) ? h.lotcodigo : null;
   runLookup(h.lat, h.lng, !!h.vis, null, null, null);
 }
 

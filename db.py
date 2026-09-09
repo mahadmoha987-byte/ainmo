@@ -8,6 +8,8 @@ RLS still applies for any direct client access (defence-in-depth).
 from __future__ import annotations
 
 import os
+import time
+from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Any
 
@@ -18,6 +20,11 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 FREE_MONTHLY_LIMIT = 5
 DECREE_VERSION = REGULATORY_VERSION
+
+_suggest_client: httpx.AsyncClient | None = None
+_SUGGEST_CACHE_TTL = 60.0
+_SUGGEST_CACHE_MAX = 2_000
+_suggest_cache: OrderedDict[tuple, tuple[float, list[dict]]] = OrderedDict()
 
 
 def _ok() -> bool:
@@ -53,11 +60,113 @@ def _now() -> str:
 
 
 async def init() -> None:
-    pass
+    global _suggest_client
+    if _ok() and _suggest_client is None:
+        # Reuse one keep-alive connection pool for latency-sensitive calls.
+        # The rest of the persistence layer remains intentionally unchanged.
+        _suggest_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(2.5, connect=1.5),
+            limits=httpx.Limits(max_connections=40, max_keepalive_connections=20),
+        )
 
 
 async def close() -> None:
-    pass
+    global _suggest_client
+    if _suggest_client is not None:
+        await _suggest_client.aclose()
+        _suggest_client = None
+
+
+# ── Address autocomplete ─────────────────────────────────────────────────────
+
+async def search_address_index(
+    normalized_query: str,
+    *,
+    lat: float | None = None,
+    lng: float | None = None,
+    recent_lot_codes: list[str] | None = None,
+    limit: int = 8,
+) -> tuple[list[dict], bool]:
+    """Return ranked local address suggestions and whether the index is ready.
+
+    The PostgreSQL RPC owns ranking/index use.  ``False`` is returned for the
+    availability flag when the migration has not been applied yet, allowing
+    the existing full geocoder to remain usable during a rolling deployment.
+    """
+    if not _ok():
+        return [], False
+
+    clean_recent = tuple(
+        code for code in (recent_lot_codes or [])
+        if isinstance(code, str) and code.isdigit() and len(code) == 12
+    )[:6]
+    safe_limit = min(max(int(limit), 1), 8)
+    cache_key = (
+        normalized_query,
+        round(lat, 3) if lat is not None else None,
+        round(lng, 3) if lng is not None else None,
+        clean_recent,
+        safe_limit,
+    )
+    cached = _suggest_cache.get(cache_key)
+    if cached and time.monotonic() - cached[0] < _SUGGEST_CACHE_TTL:
+        _suggest_cache.move_to_end(cache_key)
+        return [dict(row) for row in cached[1]], True
+
+    payload = {
+        "p_query": normalized_query,
+        "p_lat": lat,
+        "p_lng": lng,
+        "p_recent_lot_codes": list(clean_recent),
+        "p_limit": safe_limit,
+    }
+    temporary_client = _suggest_client is None
+    client = _suggest_client or httpx.AsyncClient(timeout=2.5)
+    try:
+        response = await client.post(
+            _rpc("search_address_index"),
+            headers=_h(),
+            json=payload,
+        )
+    except httpx.HTTPError:
+        return [], False
+    finally:
+        if temporary_client:
+            await client.aclose()
+
+    if response.status_code >= 400:
+        # Missing table/function during migration is a feature-availability
+        # state, not a user-facing address-search failure.
+        return [], False
+    try:
+        rows = response.json()
+    except ValueError:
+        return [], False
+    if not isinstance(rows, list):
+        return [], False
+
+    suggestions: list[dict] = []
+    for row in rows[:safe_limit]:
+        try:
+            suggestion = {
+                "address": str(row["address"]),
+                "normalized_address": str(row["normalized_address"]),
+                "lot_code": str(row["lot_code"]),
+                "treatment": str(row["treatment"]) if row.get("treatment") else None,
+                "lat": float(row["lat"]),
+                "lng": float(row["lng"]),
+                "locality": str(row["locality"]) if row.get("locality") else None,
+                "neighborhood": str(row["neighborhood"]) if row.get("neighborhood") else None,
+            }
+        except (KeyError, TypeError, ValueError):
+            continue
+        suggestions.append(suggestion)
+
+    _suggest_cache[cache_key] = (time.monotonic(), suggestions)
+    _suggest_cache.move_to_end(cache_key)
+    while len(_suggest_cache) > _SUGGEST_CACHE_MAX:
+        _suggest_cache.popitem(last=False)
+    return [dict(row) for row in suggestions], True
 
 
 # ── Profiles ──────────────────────────────────────────────────────────────────

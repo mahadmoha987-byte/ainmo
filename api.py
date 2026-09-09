@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     await db.close()
 
 
-app = FastAPI(title="Ainmo · Prefactibilidad Bogotá", version="2.1.0", lifespan=lifespan)
+app = FastAPI(title="Ainmo · Prefactibilidad Bogotá", version="2.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -145,7 +145,9 @@ async def me(request: Request):
 @app.get("/api/geocode")
 async def geocode_endpoint(q: str = Query(..., description="Dirección en Bogotá")):
     try:
-        result = geocode.geocode_detailed(q)
+        # The full resolver performs blocking government-GIS requests. Keep it
+        # off the event loop so autocomplete and other users stay responsive.
+        result = await asyncio.to_thread(geocode.geocode_detailed, q)
         candidates = result["candidates"]
         if not candidates:
             resolution = result.get("resolution")
@@ -165,6 +167,52 @@ async def geocode_endpoint(q: str = Query(..., description="Dirección en Bogot�
         return {"ok": True, "candidates": candidates, "resolution": result.get("resolution")}
     except Exception as exc:
         return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": str(exc)})
+
+
+@app.get("/api/address-suggest")
+async def address_suggest_endpoint(
+    q: str = Query("", max_length=120, description="Dirección parcial en Bogotá"),
+    lat: float | None = Query(None, ge=-90, le=90),
+    lng: float | None = Query(None, ge=-180, le=180),
+    recent_lots: str = Query("", max_length=200),
+):
+    """Fast, database-only typeahead; never calls Catastro or Nominatim."""
+    started = time.perf_counter()
+    normalized = geocode.normalize_address_search(q)
+    if len(normalized) < 3:
+        return {
+            "ok": True,
+            "suggestions": [],
+            "normalized_query": normalized,
+            "index_ready": True,
+            "elapsed_ms": round((time.perf_counter() - started) * 1_000, 1),
+        }
+
+    # Viewport proximity is useful only inside the product's Bogotá envelope.
+    if lat is None or lng is None or not geocode._in_bogota(lat, lng):
+        lat = lng = None
+    recent = [part.strip() for part in recent_lots.split(",")]
+    recent = [code for code in recent if code.isdigit() and len(code) == 12][:6]
+
+    try:
+        suggestions, index_ready = await db.search_address_index(
+            normalized,
+            lat=lat,
+            lng=lng,
+            recent_lot_codes=recent,
+            limit=8,
+        )
+    except Exception:
+        # Autocomplete is additive. A database/index incident must never take
+        # down the existing submit-to-geocode workflow.
+        suggestions, index_ready = [], False
+    return {
+        "ok": True,
+        "suggestions": suggestions,
+        "normalized_query": normalized,
+        "index_ready": index_ready,
+        "elapsed_ms": round((time.perf_counter() - started) * 1_000, 1),
+    }
 
 
 # ── Calc ───────────────────────────────────────────────────────────────────────

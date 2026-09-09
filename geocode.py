@@ -176,6 +176,36 @@ def normalize_address(raw: str) -> str:
     return s
 
 
+def normalize_address_search(raw: str) -> str:
+    """Return the stable token form used by autocomplete and its database index.
+
+    ``normalize_address`` remains the single source of truth for Bogotá street
+    aliases and directional modifiers.  This second pass removes presentation
+    separators so an official Catastro value such as ``11 53`` and a user value
+    such as ``11-53`` produce the same indexed string.
+
+    Examples:
+        ``Cl. 85 # 11-53`` -> ``CL 85 11 53``
+        ``Av. Cra. 68 # 40-15`` -> ``AK 68 40 15``
+    """
+    canonical = normalize_address(raw)
+    canonical = re.sub(r"[^A-Z0-9]+", " ", canonical)
+    return re.sub(r"\s+", " ", canonical).strip()
+
+
+def canonical_catastro_address(pdonvial: str, pdotexto: str) -> str:
+    """Format Catastro's split address fields as a human-readable plate."""
+    via = re.sub(r"\s+", " ", str(pdonvial or "").strip())
+    parts = str(pdotexto or "").strip().split()
+    if len(parts) >= 2:
+        plate = f"{parts[0]}-{parts[1]}"
+        if len(parts) > 2:
+            plate += " " + " ".join(parts[2:])
+    else:
+        plate = " ".join(parts)
+    return f"{via} # {plate}".strip()
+
+
 def _fuzzy_score(query: str, label: str) -> float:
     """SequenceMatcher ratio between normalized forms (case-insensitive, stripped)."""
     a = query.strip().upper()
