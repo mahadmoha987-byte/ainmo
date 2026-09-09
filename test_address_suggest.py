@@ -1,10 +1,12 @@
 import asyncio
 
 import api
+import db
 import geocode
 from tools.import_address_index import (
     TreatmentGrid,
     TreatmentPolygon,
+    compact_alias_record,
     deduplicate_records,
     searchable_record,
 )
@@ -68,6 +70,7 @@ def test_import_record_uses_the_same_search_normalizer():
     assert row["address"] == "CL 85 # 11-53"
     assert row["normalized_address"] == "CL 85 11 53"
     assert row["lot_code"] == "001234567890"
+    assert row["address_type"] == 1
 
 
 def test_import_deduplicates_catastro_address_ids_before_upsert():
@@ -82,6 +85,78 @@ def test_import_deduplicates_catastro_address_ids_before_upsert():
         {"source_address_id": "A", "source_object_id": 12},
         {"source_address_id": "B", "source_object_id": 11},
     ]
+
+
+def test_secondary_alias_is_compacted_only_after_deduplication():
+    row = {
+        "source_address_id": "ABC123",
+        "source_object_id": 42,
+        "address": "KR 123B # 17-94",
+        "normalized_address": "KR 123B 17 94",
+        "lot_code": "006413081014",
+        "lat": 4.64,
+        "lng": -74.16,
+        "address_type": 3,
+        "treatment": None,
+        "source_snapshot_date": "2026-09-08",
+    }
+    compact = compact_alias_record(row)
+    assert compact["address_type"] == 3
+    assert compact["lot_code"] == "006413081014"
+    assert "source_object_id" not in compact
+    assert "source_snapshot_date" not in compact
+
+
+def test_prefix_ranking_deduplicates_lots_and_prefers_exact_principal_plate():
+    rows = [
+        {
+            "address": "CL 85 # 11-53 ENTRADA 2",
+            "normalized_address": "CL 85 11 53 ENTRADA 2",
+            "lot_code": "000000000001",
+            "treatment": None,
+            "lat": 4.67,
+            "lng": -74.05,
+            "locality": None,
+            "neighborhood": None,
+            "address_type": 2,
+        },
+        {
+            "address": "CL 85 # 11-53",
+            "normalized_address": "CL 85 11 53",
+            "lot_code": "000000000001",
+            "treatment": "RENOVACION",
+            "lat": 4.67,
+            "lng": -74.05,
+            "locality": None,
+            "neighborhood": None,
+            "address_type": 1,
+        },
+        {
+            "address": "CL 85 # 12-10",
+            "normalized_address": "CL 85 12 10",
+            "lot_code": "000000000002",
+            "treatment": "CONSOLIDACION",
+            "lat": 4.68,
+            "lng": -74.06,
+            "locality": None,
+            "neighborhood": None,
+            "address_type": 1,
+        },
+    ]
+    ranked = db._rank_address_rows(
+        rows,
+        "CL 85 11 53",
+        lat=None,
+        lng=None,
+        recent_lot_codes=(),
+        limit=8,
+    )
+    assert [row["lot_code"] for row in ranked] == [
+        "000000000001",
+        "000000000002",
+    ]
+    assert ranked[0]["address"] == "CL 85 # 11-53"
+    assert all("_address_type" not in row for row in ranked)
 
 
 def test_incomplete_suggestion_query_never_hits_database(monkeypatch):

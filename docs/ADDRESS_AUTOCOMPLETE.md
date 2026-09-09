@@ -21,13 +21,23 @@ Ainmo's typeahead is deliberately separate from the full geocoder:
 
        python3 tools/import_address_index.py --resume
 
-The importer reads only principal UAECD address plates (PDOTIPO=1), applies
-the same normalization as the production geocoder, classifies treatment
-against POT Layer 15 locally, and checkpoints last_object_id after every
-2,000 source records. Re-run with --resume after any interruption.
+5. Add the compact secondary/corner address aliases after the principal index
+   is ready:
 
-The search RPC is disabled while address_index_meta.status is not ready, so
-users never receive a silently partial city index.
+       python3 tools/import_address_index.py --secondary-aliases --resume
+
+The first pass reads principal UAECD address plates (PDOTIPO=1), applies the
+same normalization as the production geocoder, classifies treatment against
+POT Layer 15 locally, and checkpoints `last_object_id` after every 2,000 source
+records. The second pass stores PDOTIPO 2/3 plates in a compact alias table so
+corner entrances and alternate plates resolve to the same cadastral lot. It
+checkpoints independently and can run without taking principal search offline.
+Re-run either command with `--resume` after any interruption.
+
+The search RPC is disabled while the principal
+`address_index_meta.status` is not ready, so users never receive a silently
+partial principal city index. Results from both tables are deduplicated by lot,
+preferring an exact match and then a principal plate.
 
 ## Refresh and QA
 

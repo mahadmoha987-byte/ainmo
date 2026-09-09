@@ -172,6 +172,7 @@ CREATE TABLE IF NOT EXISTS public.address_index (
   lot_code             text NOT NULL CHECK (lot_code ~ '^[0-9]{12}$'),
   lat                  double precision NOT NULL CHECK (lat BETWEEN 3.6 AND 4.9),
   lng                  double precision NOT NULL CHECK (lng BETWEEN -75.1 AND -73.9),
+  address_type         smallint NOT NULL DEFAULT 1 CHECK (address_type BETWEEN 1 AND 3),
   treatment            text,
   locality             text,
   neighborhood         text,
@@ -179,6 +180,9 @@ CREATE TABLE IF NOT EXISTS public.address_index (
   indexed_at           timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.address_index ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.address_index
+  ADD COLUMN IF NOT EXISTS address_type smallint NOT NULL DEFAULT 1
+  CHECK (address_type BETWEEN 1 AND 3);
 
 CREATE INDEX IF NOT EXISTS address_index_lot_code_idx
   ON public.address_index (lot_code);
@@ -186,6 +190,36 @@ CREATE INDEX IF NOT EXISTS address_index_normalized_prefix_idx
   ON public.address_index (normalized_address text_pattern_ops);
 CREATE INDEX IF NOT EXISTS address_index_normalized_trgm_idx
   ON public.address_index USING gin (normalized_address gin_trgm_ops);
+
+CREATE TABLE IF NOT EXISTS public.address_alias_index (
+  source_address_id  text PRIMARY KEY,
+  address            text NOT NULL,
+  normalized_address text NOT NULL CHECK (normalized_address <> ''),
+  lot_code           text NOT NULL CHECK (lot_code ~ '^[0-9]{12}$'),
+  lat                double precision NOT NULL CHECK (lat BETWEEN 3.6 AND 4.9),
+  lng                double precision NOT NULL CHECK (lng BETWEEN -75.1 AND -73.9),
+  address_type       smallint NOT NULL CHECK (address_type IN (2, 3))
+);
+
+ALTER TABLE public.address_alias_index ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS address_alias_normalized_prefix_idx
+  ON public.address_alias_index (normalized_address text_pattern_ops);
+CREATE INDEX IF NOT EXISTS address_alias_normalized_trgm_idx
+  ON public.address_alias_index USING gin (normalized_address gin_trgm_ops);
+
+CREATE OR REPLACE VIEW public.address_search_source
+WITH (security_invoker = true)
+AS
+  SELECT
+    source_address_id, address, normalized_address, lot_code,
+    lat, lng, address_type, treatment, locality, neighborhood
+  FROM public.address_index
+  UNION ALL
+  SELECT
+    source_address_id, address, normalized_address, lot_code,
+    lat, lng, address_type, NULL::text, NULL::text, NULL::text
+  FROM public.address_alias_index;
 
 CREATE TABLE IF NOT EXISTS public.address_index_meta (
   singleton             boolean PRIMARY KEY DEFAULT true CHECK (singleton),
@@ -197,9 +231,18 @@ CREATE TABLE IF NOT EXISTS public.address_index_meta (
   last_object_id        bigint NOT NULL DEFAULT 0,
   started_at            timestamptz,
   completed_at          timestamptz,
+  alias_imported_count  bigint NOT NULL DEFAULT 0,
+  alias_source_count    bigint,
+  alias_last_object_id  bigint NOT NULL DEFAULT 0,
+  alias_completed_at    timestamptz,
   error                 text
 );
 ALTER TABLE public.address_index_meta ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.address_index_meta
+  ADD COLUMN IF NOT EXISTS alias_imported_count bigint NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS alias_source_count bigint,
+  ADD COLUMN IF NOT EXISTS alias_last_object_id bigint NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS alias_completed_at timestamptz;
 INSERT INTO public.address_index_meta (singleton)
 VALUES (true)
 ON CONFLICT (singleton) DO NOTHING;
@@ -227,7 +270,7 @@ SET search_path = public, extensions
 AS $$
   WITH exact_candidates AS MATERIALIZED (
     SELECT ai.*, 3 AS match_class
-    FROM public.address_index AS ai
+    FROM public.address_search_source AS ai
     WHERE ai.normalized_address = p_query
       AND EXISTS (
         SELECT 1 FROM public.address_index_meta AS meta
@@ -237,7 +280,7 @@ AS $$
   ),
   prefix_candidates AS MATERIALIZED (
     SELECT ai.*, 2 AS match_class
-    FROM public.address_index AS ai
+    FROM public.address_search_source AS ai
     WHERE length(p_query) >= 3
       AND EXISTS (
         SELECT 1 FROM public.address_index_meta AS meta
@@ -246,7 +289,7 @@ AS $$
       AND ai.normalized_address LIKE p_query || '%'
       AND ai.normalized_address <> p_query
     -- Keep the indexed prefix scan bounded before optional proximity sorting.
-    LIMIT 512
+    LIMIT 128
   ),
   direct_candidates AS MATERIALIZED (
     SELECT * FROM exact_candidates
@@ -275,7 +318,7 @@ AS $$
   ),
   road_candidates AS MATERIALIZED (
     SELECT ai.*
-    FROM public.address_index AS ai
+    FROM public.address_search_source AS ai
     CROSS JOIN road_prefix AS road
     WHERE EXISTS (
         SELECT 1 FROM public.address_index_meta AS meta
@@ -304,6 +347,22 @@ AS $$
       SELECT * FROM fuzzy_candidates
     ) AS combined
     ORDER BY source_address_id, match_class DESC
+  ),
+  lot_candidates AS MATERIALIZED (
+    SELECT DISTINCT ON (c.lot_code) c.*
+    FROM candidates AS c
+    ORDER BY
+      c.lot_code,
+      c.match_class DESC,
+      CASE
+        WHEN p_lat IS NOT NULL AND p_lng IS NOT NULL
+        THEN power(c.lat - p_lat, 2) + power(c.lng - p_lng, 2)
+        ELSE NULL
+      END ASC NULLS LAST,
+      similarity(c.normalized_address, p_query) DESC,
+      c.address_type ASC,
+      c.address,
+      c.source_address_id
   )
   SELECT
     c.address,
@@ -314,7 +373,7 @@ AS $$
     c.lng,
     c.locality,
     c.neighborhood
-  FROM candidates AS c
+  FROM lot_candidates AS c
   ORDER BY
     c.match_class DESC,
     CASE
@@ -328,14 +387,19 @@ AS $$
       THEN array_position(p_recent_lot_codes, c.lot_code)
       ELSE 2147483647
     END ASC,
+    c.address_type ASC,
     c.address,
     c.lot_code
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 8), 1), 8);
 $$;
 
 REVOKE ALL ON TABLE public.address_index FROM anon, authenticated;
+REVOKE ALL ON TABLE public.address_alias_index FROM anon, authenticated;
+REVOKE ALL ON TABLE public.address_search_source FROM anon, authenticated;
 REVOKE ALL ON TABLE public.address_index_meta FROM anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.address_index TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.address_alias_index TO service_role;
+GRANT SELECT ON TABLE public.address_search_source TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.address_index_meta TO service_role;
 REVOKE ALL ON FUNCTION public.search_address_index(
   text, double precision, double precision, text[], integer

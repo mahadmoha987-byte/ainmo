@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Build Ainmo's persistent Bogotá autocomplete index from official GIS data.
 
-The import is resumable. It reads only principal UAECD address plates
+The import is resumable. By default it reads principal UAECD address plates
 (PDOTIPO=1), classifies each point against POT Layer 15 locally, and upserts
-compact rows through Supabase's service-role REST API.
+the canonical index. ``--secondary-aliases`` loads compact PDOTIPO 2/3 entry
+aliases without hiding the already-ready principal index.
 
 Examples:
   python3 tools/import_address_index.py --dry-run --limit 2000
   python3 tools/import_address_index.py
   python3 tools/import_address_index.py --resume
+  python3 tools/import_address_index.py --secondary-aliases --resume
 
 Required for a real import:
   SUPABASE_URL
@@ -54,6 +56,8 @@ UPSERT_SIZE = 500
 SUPABASE_RETRYABLE_STATUS = {408, 425, 429, 500, 502, 503, 504}
 SUPABASE_ATTEMPTS = 7
 GRID_SIZE = 0.005  # approximately 550 m; narrows point-in-polygon candidates
+PRIMARY_WHERE = "PDOTIPO=1"
+ALIAS_WHERE = "PDOTIPO IN (2,3)"
 
 SSL_CONTEXT = ssl.create_default_context()
 SSL_CONTEXT.check_hostname = False
@@ -200,11 +204,11 @@ def download_treatment_grid() -> TreatmentGrid:
     return TreatmentGrid(polygons)
 
 
-def source_count() -> int:
+def source_count(where: str = PRIMARY_WHERE) -> int:
     payload = request_json(
         ADDRESS_LAYER + "/query",
         {
-            "where": "PDOTIPO=1",
+            "where": where,
             "returnCountOnly": "true",
             "f": "json",
         },
@@ -212,11 +216,15 @@ def source_count() -> int:
     return int(payload.get("count") or 0)
 
 
-def fetch_address_page(after_object_id: int, page_size: int) -> list[dict]:
+def fetch_address_page(
+    after_object_id: int,
+    page_size: int,
+    where: str = PRIMARY_WHERE,
+) -> list[dict]:
     payload = request_json(
         ADDRESS_LAYER + "/query",
         {
-            "where": f"PDOTIPO=1 AND OBJECTID>{int(after_object_id)}",
+            "where": f"({where}) AND OBJECTID>{int(after_object_id)}",
             "outFields": (
                 "OBJECTID,PDOCODIGO,PDONVIAL,PDOTEXTO,PDOCLOTE,PDOTIPO"
             ),
@@ -246,8 +254,11 @@ def searchable_record(
         lat = float(geometry["y"])
         lng = float(geometry["x"])
         object_id = int(object_id)
+        address_type = int(attributes.get("PDOTIPO") or 1)
     except (KeyError, TypeError, ValueError):
         return None, "invalid_geometry"
+    if address_type not in (1, 2, 3):
+        return None, "invalid_address_type"
     if not source_address_id:
         return None, "missing_address_id"
     if not (lot_code.isdigit() and len(lot_code) == 12):
@@ -279,6 +290,7 @@ def searchable_record(
         "lot_code": lot_code,
         "lat": lat,
         "lng": lng,
+        "address_type": address_type,
         "treatment": treatment,
         "source_snapshot_date": snapshot_date,
     }, "ambiguous_treatment" if ambiguity else None
@@ -297,6 +309,22 @@ def deduplicate_records(rows: list[dict]) -> tuple[list[dict], int]:
                 continue
         rows_by_source_id[source_address_id] = row
     return list(rows_by_source_id.values()), duplicates
+
+
+ALIAS_FIELDS = (
+    "source_address_id",
+    "address",
+    "normalized_address",
+    "lot_code",
+    "lat",
+    "lng",
+    "address_type",
+)
+
+
+def compact_alias_record(row: dict) -> dict:
+    """Drop import-only fields after ArcGIS duplicate resolution."""
+    return {key: row[key] for key in ALIAS_FIELDS}
 
 
 class SupabaseWriter:
@@ -364,12 +392,12 @@ class SupabaseWriter:
             json=values,
         )
 
-    def upsert(self, rows: list[dict]) -> None:
+    def upsert(self, rows: list[dict], table: str = "address_index") -> None:
         for start in range(0, len(rows), UPSERT_SIZE):
             batch = rows[start : start + UPSERT_SIZE]
             self._request(
                 "POST",
-                self._url("address_index", "on_conflict=source_address_id"),
+                self._url(table, "on_conflict=source_address_id"),
                 headers={
                     **self.headers,
                     "Prefer": "resolution=merge-duplicates,return=minimal",
@@ -406,6 +434,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Import treatment as null; intended only for diagnostics.",
     )
+    parser.add_argument(
+        "--secondary-aliases",
+        action="store_true",
+        help="Load compact PDOTIPO 2/3 entrance aliases while keeping search live.",
+    )
     return parser.parse_args()
 
 
@@ -418,9 +451,16 @@ def main() -> int:
             "SUPABASE_URL and SUPABASE_SERVICE_KEY are required for a real import"
         )
 
-    total_source = source_count()
+    alias_mode = args.secondary_aliases
+    source_where = ALIAS_WHERE if alias_mode else PRIMARY_WHERE
+    target_table = "address_alias_index" if alias_mode else "address_index"
+    total_source = source_count(source_where)
     snapshot_date = date.today().isoformat()
-    treatment_grid = None if args.skip_treatment else download_treatment_grid()
+    treatment_grid = (
+        None
+        if args.skip_treatment or alias_mode
+        else download_treatment_grid()
+    )
     writer = None if args.dry_run else SupabaseWriter(supabase_url, service_key)
     start_object_id = max(args.start_object_id, 0)
     imported = 0
@@ -432,23 +472,40 @@ def main() -> int:
         if writer is not None:
             meta = writer.meta()
             if args.resume:
-                start_object_id = max(
-                    start_object_id, int(meta.get("last_object_id") or 0)
+                checkpoint_field = (
+                    "alias_last_object_id" if alias_mode else "last_object_id"
                 )
-                imported = int(meta.get("imported_count") or 0)
-            writer.update_meta(
-                status="importing",
-                source_count=total_source,
-                source_snapshot_date=snapshot_date,
-                last_object_id=start_object_id,
-                started_at=(
-                    meta.get("started_at")
-                    if args.resume and meta.get("started_at")
-                    else datetime.now(timezone.utc).isoformat()
-                ),
-                completed_at=None,
-                error=None,
-            )
+                count_field = (
+                    "alias_imported_count" if alias_mode else "imported_count"
+                )
+                start_object_id = max(
+                    start_object_id, int(meta.get(checkpoint_field) or 0)
+                )
+                imported = int(meta.get(count_field) or 0)
+            if alias_mode:
+                writer.update_meta(
+                    # Principal suggestions remain complete and queryable while
+                    # compact secondary/corner aliases are added online.
+                    status="ready",
+                    alias_source_count=total_source,
+                    alias_last_object_id=start_object_id,
+                    alias_completed_at=None,
+                    error=None,
+                )
+            else:
+                writer.update_meta(
+                    status="importing",
+                    source_count=total_source,
+                    source_snapshot_date=snapshot_date,
+                    last_object_id=start_object_id,
+                    started_at=(
+                        meta.get("started_at")
+                        if args.resume and meta.get("started_at")
+                        else datetime.now(timezone.utc).isoformat()
+                    ),
+                    completed_at=None,
+                    error=None,
+                )
 
         last_object_id = start_object_id
         committed_object_id = start_object_id
@@ -458,7 +515,9 @@ def main() -> int:
             if remaining is not None and remaining <= 0:
                 break
             page_size = PAGE_SIZE if remaining is None else min(PAGE_SIZE, remaining)
-            features = fetch_address_page(last_object_id, page_size)
+            features = fetch_address_page(
+                last_object_id, page_size, where=source_where
+            )
             if not features:
                 completed_source = True
                 break
@@ -480,17 +539,27 @@ def main() -> int:
                     skipped[note] += 1
                 page_rows.append(row)
             rows, duplicate_count = deduplicate_records(page_rows)
+            if alias_mode:
+                rows = [compact_alias_record(row) for row in rows]
             skipped["duplicate_address_id"] += duplicate_count
             if writer is not None and rows:
-                writer.upsert(rows)
+                writer.upsert(rows, table=target_table)
             imported += len(rows)
             if writer is not None:
-                writer.update_meta(
-                    status="importing",
-                    imported_count=imported,
-                    last_object_id=last_object_id,
-                    error=None,
-                )
+                if alias_mode:
+                    writer.update_meta(
+                        status="ready",
+                        alias_imported_count=imported,
+                        alias_last_object_id=last_object_id,
+                        error=None,
+                    )
+                else:
+                    writer.update_meta(
+                        status="importing",
+                        imported_count=imported,
+                        last_object_id=last_object_id,
+                        error=None,
+                    )
             committed_object_id = last_object_id
             print(
                 f"scanned={scanned:,} imported={imported:,} "
@@ -502,17 +571,31 @@ def main() -> int:
                 break
 
         if writer is not None:
-            writer.update_meta(
-                status="ready" if completed_source and args.limit is None else "importing",
-                imported_count=imported,
-                last_object_id=last_object_id,
-                completed_at=(
-                    datetime.now(timezone.utc).isoformat()
-                    if completed_source and args.limit is None
-                    else None
-                ),
-                error=None,
-            )
+            complete = completed_source and args.limit is None
+            if alias_mode:
+                writer.update_meta(
+                    status="ready",
+                    alias_imported_count=imported,
+                    alias_last_object_id=last_object_id,
+                    alias_completed_at=(
+                        datetime.now(timezone.utc).isoformat()
+                        if complete
+                        else None
+                    ),
+                    error=None,
+                )
+            else:
+                writer.update_meta(
+                    status="ready" if complete else "importing",
+                    imported_count=imported,
+                    last_object_id=last_object_id,
+                    completed_at=(
+                        datetime.now(timezone.utc).isoformat()
+                        if complete
+                        else None
+                    ),
+                    error=None,
+                )
         print(
             json.dumps(
                 {
@@ -523,6 +606,7 @@ def main() -> int:
                     "complete": completed_source and args.limit is None,
                     "skipped": dict(skipped),
                     "dry_run": args.dry_run,
+                    "target_table": target_table,
                 },
                 indent=2,
                 sort_keys=True,
@@ -532,17 +616,24 @@ def main() -> int:
     except Exception as exc:
         if writer is not None:
             try:
-                writer.update_meta(
-                    status="failed",
-                    imported_count=imported,
-                    # Only resume after the last page whose rows and checkpoint
-                    # both committed. Re-reading an earlier page is safe because
-                    # source_address_id is upserted idempotently.
-                    last_object_id=locals().get(
-                        "committed_object_id", start_object_id
-                    ),
-                    error=f"{type(exc).__name__}: {exc}"[:1_000],
-                )
+                checkpoint = locals().get("committed_object_id", start_object_id)
+                if alias_mode:
+                    writer.update_meta(
+                        status="ready",
+                        alias_imported_count=imported,
+                        alias_last_object_id=checkpoint,
+                        error=f"{type(exc).__name__}: {exc}"[:1_000],
+                    )
+                else:
+                    writer.update_meta(
+                        status="failed",
+                        imported_count=imported,
+                        # Only resume after the last page whose rows and checkpoint
+                        # both committed. Re-reading an earlier page is safe because
+                        # source_address_id is upserted idempotently.
+                        last_object_id=checkpoint,
+                        error=f"{type(exc).__name__}: {exc}"[:1_000],
+                    )
             except Exception:
                 pass
         raise

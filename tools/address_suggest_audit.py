@@ -36,6 +36,10 @@ FIELDS = [
     "expected_found",
     "expected_rank",
     "latency_ms",
+    "server_elapsed_ms",
+    "normalized_query",
+    "returned_lot_codes",
+    "returned_addresses",
     "error",
 ]
 
@@ -93,8 +97,16 @@ def probe(
         row["latency_ms"] = round((time.perf_counter() - started) * 1_000, 1)
         row["http_ok"] = bool(payload.get("ok"))
         row["index_ready"] = payload.get("index_ready")
+        row["server_elapsed_ms"] = payload.get("elapsed_ms", "")
+        row["normalized_query"] = payload.get("normalized_query", "")
         suggestions = payload.get("suggestions") or []
         row["suggestion_count"] = len(suggestions)
+        row["returned_lot_codes"] = "|".join(
+            str(suggestion.get("lot_code") or "") for suggestion in suggestions
+        )
+        row["returned_addresses"] = "|".join(
+            str(suggestion.get("address") or "") for suggestion in suggestions
+        )
         expected = str(sample["expected_lotcodigo"])
         ranks = [
             index + 1
@@ -119,6 +131,11 @@ def percentile(values: list[float], fraction: float) -> float:
 
 def write_summary(rows: list[dict], samples: list[dict], output: Path, base_url: str) -> None:
     times = [float(row["latency_ms"]) for row in rows if row["latency_ms"] != ""]
+    server_times = [
+        float(row["server_elapsed_ms"])
+        for row in rows
+        if row["server_elapsed_ms"] != ""
+    ]
     by_case: dict[str, list[dict]] = {}
     for row in rows:
         by_case.setdefault(str(row["case_id"]), []).append(row)
@@ -152,6 +169,16 @@ def write_summary(rows: list[dict], samples: list[dict], output: Path, base_url:
         f"- Typeahead probes: **{len(rows)}**",
         f"- Endpoint latency p50: **{statistics.median(times):.0f} ms**",
         f"- Endpoint latency p95: **{percentile(times, .95):.0f} ms**",
+        (
+            f"- Server work p50: **{statistics.median(server_times):.0f} ms**"
+            if server_times
+            else "- Server work p50: **n/a**"
+        ),
+        (
+            f"- Server work p95: **{percentile(server_times, .95):.0f} ms**"
+            if server_times
+            else "- Server work p95: **n/a**"
+        ),
         f"- Correct lot found at any probe: **{len(samples) - len(never_found)}/{len(samples)}**",
         f"- Correct lot found for full input: **{len(samples) - len(full_failures)}/{len(samples)}**",
         (
