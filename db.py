@@ -123,17 +123,26 @@ async def search_address_index(
     temporary_client = _suggest_client is None
     client = _suggest_client or httpx.AsyncClient(timeout=2.5)
     try:
-        response = await client.post(
-            _rpc("search_address_index"),
-            headers=_h(),
-            json=payload,
-        )
-    except httpx.HTTPError:
-        return [], False
+        response = None
+        for attempt in range(2):
+            try:
+                response = await client.post(
+                    _rpc("search_address_index"),
+                    headers=_h(),
+                    json=payload,
+                )
+                break
+            except httpx.TimeoutException:
+                if attempt == 1:
+                    return [], False
+            except httpx.HTTPError:
+                return [], False
     finally:
         if temporary_client:
             await client.aclose()
 
+    if response is None:
+        return [], False
     if response.status_code >= 400:
         # Missing table/function during migration is a feature-availability
         # state, not a user-facing address-search failure.

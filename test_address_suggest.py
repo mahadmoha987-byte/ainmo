@@ -1,7 +1,9 @@
 import asyncio
 
 import api
+import db
 import geocode
+import httpx
 from tools.import_address_index import (
     TreatmentGrid,
     TreatmentPolygon,
@@ -201,3 +203,42 @@ def test_suggestion_database_incident_preserves_existing_search(monkeypatch):
     assert result["ok"] is True
     assert result["suggestions"] == []
     assert result["index_ready"] is False
+
+
+def test_suggestion_database_retries_one_transient_timeout(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return [{
+                "address": "KR 8 E # 108-39 S",
+                "normalized_address": "KR 8 E 108 39 S",
+                "lot_code": "002618065027",
+                "treatment": "MEJORAMIENTO INTEGRAL",
+                "lat": 4.51,
+                "lng": -74.10,
+                "locality": None,
+                "neighborhood": None,
+            }]
+
+    class FlakyClient:
+        def __init__(self):
+            self.calls = 0
+
+        async def post(self, *_args, **_kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise httpx.ReadTimeout("cold query")
+            return FakeResponse()
+
+    client = FlakyClient()
+    db._suggest_cache.clear()
+    monkeypatch.setattr(db, "_ok", lambda: True)
+    monkeypatch.setattr(db, "_suggest_client", client)
+    suggestions, ready = asyncio.run(
+        db.search_address_index("KR 8 E 108 39 S", limit=8)
+    )
+    assert ready is True
+    assert client.calls == 2
+    assert suggestions[0]["lot_code"] == "002618065027"
