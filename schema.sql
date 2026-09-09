@@ -249,11 +249,14 @@ AS $$
   fuzzy_candidates AS MATERIALIZED (
     SELECT ai.*, 1 AS match_class
     FROM public.address_index AS ai
-    WHERE length(p_query) >= 3
+    WHERE length(p_query) >= 5
       AND EXISTS (
         SELECT 1 FROM public.address_index_meta AS meta
         WHERE meta.singleton AND meta.status = 'ready'
       )
+      -- Prefix is both the expected typeahead path and substantially faster.
+      -- Fuzzy matching is a typo-recovery fallback, not a parallel full scan.
+      AND NOT EXISTS (SELECT 1 FROM prefix_candidates)
       AND ai.normalized_address % p_query
     ORDER BY similarity(ai.normalized_address, p_query) DESC,
              ai.normalized_address,
