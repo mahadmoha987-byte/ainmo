@@ -185,7 +185,15 @@ async def address_suggest_endpoint(
         and tokens[0] in {"AC", "AK", "AV", "CL", "DG", "KR", "TV"}
         and any(character.isdigit() for character in " ".join(tokens[1:]))
     )
-    if len(normalized) < 3 or not has_numbered_bogota_road:
+    # A road name alone can match tens of thousands of plates and is not yet
+    # useful for choosing a lot. Wait for road, cross street and at least the
+    # beginning of the door number before asking the citywide index.
+    has_property_prefix = len(tokens) >= 4
+    if (
+        len(normalized) < 3
+        or not has_numbered_bogota_road
+        or not has_property_prefix
+    ):
         return {
             "ok": True,
             "suggestions": [],

@@ -111,7 +111,15 @@ def test_incomplete_suggestion_query_never_hits_database(monkeypatch):
         raise AssertionError("short queries must not hit Supabase")
 
     monkeypatch.setattr(api.db, "search_address_index", unexpected)
-    for query in ("Cl", "Calle", "85", "Bogotá"):
+    for query in (
+        "Cl",
+        "Calle",
+        "85",
+        "Bogotá",
+        "CL 70",
+        "Calle 70A",
+        "Cra. 53 #5",
+    ):
         result = asyncio.run(
             api.address_suggest_endpoint(
                 q=query, lat=None, lng=None, recent_lots=""
@@ -143,7 +151,7 @@ def test_suggestion_endpoint_normalizes_and_forwards_valid_ranking_context(monke
     monkeypatch.setattr(api.db, "search_address_index", fake_search)
     result = asyncio.run(
         api.address_suggest_endpoint(
-            q="Cl. 85 # 11",
+            q="Cl. 85 # 11-5",
             lat=4.668,
             lng=-74.052,
             recent_lots="001234567890,bad-value",
@@ -152,7 +160,7 @@ def test_suggestion_endpoint_normalizes_and_forwards_valid_ranking_context(monke
     assert result["index_ready"] is True
     assert result["suggestions"][0]["lot_code"] == "001234567890"
     assert captured == {
-        "query": "CL 85 11",
+        "query": "CL 85 11 5",
         "lat": 4.668,
         "lng": -74.052,
         "recent_lot_codes": ["001234567890"],
@@ -170,7 +178,7 @@ def test_suggestion_endpoint_drops_viewport_outside_bogota(monkeypatch):
     monkeypatch.setattr(api.db, "search_address_index", fake_search)
     asyncio.run(
         api.address_suggest_endpoint(
-            q="Calle 85",
+            q="Calle 85 # 11-5",
             lat=40.7128,
             lng=-74.006,
             recent_lots="",
@@ -187,7 +195,7 @@ def test_suggestion_database_incident_preserves_existing_search(monkeypatch):
     monkeypatch.setattr(api.db, "search_address_index", broken_search)
     result = asyncio.run(
         api.address_suggest_endpoint(
-            q="Calle 85", lat=4.668, lng=-74.052, recent_lots=""
+            q="Calle 85 # 11-5", lat=4.668, lng=-74.052, recent_lots=""
         )
     )
     assert result["ok"] is True
