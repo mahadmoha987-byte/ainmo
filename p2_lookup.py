@@ -19,6 +19,7 @@ import decreto253
 import re
 import ssl
 import sys
+import time
 import warnings
 from datetime import date
 from regulatory import REGULATORY_VERSION, REGULATORY_CUTOFF, context as regulatory_context
@@ -242,13 +243,20 @@ class ProjectionError(BuildabilityLookupError):
 # ── Low-level HTTP / ArcGIS helpers ─────────────────────────────────────────
 
 def _fetch_json(url: str, timeout_s: int = TIMEOUT_S) -> dict:
-    try:
-        with urlopen(url, timeout=timeout_s, context=_SSL_CTX) as resp:
-            return json.loads(resp.read().decode())
-    except HTTPError as exc:
-        raise BuildabilityLookupError(f"HTTP {exc.code}: {url}") from exc
-    except URLError as exc:
-        raise BuildabilityLookupError(f"Network error — {exc.reason}: {url}") from exc
+    for attempt in range(2):
+        try:
+            with urlopen(url, timeout=timeout_s, context=_SSL_CTX) as resp:
+                return json.loads(resp.read().decode())
+        except TimeoutError as exc:
+            if attempt == 0:
+                time.sleep(0.2)
+                continue
+            raise BuildabilityLookupError(f"Network timeout: {url}") from exc
+        except HTTPError as exc:
+            raise BuildabilityLookupError(f"HTTP {exc.code}: {url}") from exc
+        except URLError as exc:
+            raise BuildabilityLookupError(f"Network error — {exc.reason}: {url}") from exc
+    raise BuildabilityLookupError(f"Network timeout: {url}")
 
 
 def _arcgis_query(base: str, params: dict, timeout_s: int = TIMEOUT_S) -> list[dict]:
