@@ -50,7 +50,9 @@ TREATMENT_LAYER = (
 )
 USER_AGENT = "AinmoAddressIndexer/1.0 (owner-operated; https://ainmo.uk)"
 PAGE_SIZE = 2_000
-UPSERT_SIZE = 1_000
+UPSERT_SIZE = 500
+SUPABASE_RETRYABLE_STATUS = {408, 425, 429, 500, 502, 503, 504}
+SUPABASE_ATTEMPTS = 7
 GRID_SIZE = 0.005  # approximately 550 m; narrows point-in-polygon candidates
 
 SSL_CONTEXT = ssl.create_default_context()
@@ -282,6 +284,21 @@ def searchable_record(
     }, "ambiguous_treatment" if ambiguity else None
 
 
+def deduplicate_records(rows: list[dict]) -> tuple[list[dict], int]:
+    """Keep the newest ArcGIS object for each Catastro address identifier."""
+    rows_by_source_id: dict[str, dict] = {}
+    duplicates = 0
+    for row in rows:
+        source_address_id = row["source_address_id"]
+        existing = rows_by_source_id.get(source_address_id)
+        if existing is not None:
+            duplicates += 1
+            if row["source_object_id"] <= existing["source_object_id"]:
+                continue
+        rows_by_source_id[source_address_id] = row
+    return list(rows_by_source_id.values()), duplicates
+
+
 class SupabaseWriter:
     def __init__(self, base_url: str, service_key: str):
         self.base_url = base_url.rstrip("/")
@@ -302,27 +319,56 @@ class SupabaseWriter:
         url = f"{self.base_url}/rest/v1/{table}"
         return f"{url}?{query}" if query else url
 
+    def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        """Retry transient Supabase/PostgREST failures without losing a page."""
+        last_error: Exception | None = None
+        for attempt in range(SUPABASE_ATTEMPTS):
+            try:
+                response = self.client.request(method, url, **kwargs)
+                if response.status_code not in SUPABASE_RETRYABLE_STATUS:
+                    response.raise_for_status()
+                    return response
+                last_error = httpx.HTTPStatusError(
+                    f"retryable Supabase status {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                last_error = exc
+            if attempt + 1 < SUPABASE_ATTEMPTS:
+                delay = min(2**attempt, 20)
+                print(
+                    f"Supabase request retry {attempt + 1}/{SUPABASE_ATTEMPTS - 1} "
+                    f"in {delay}s: {last_error}",
+                    flush=True,
+                )
+                time.sleep(delay)
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Supabase request failed without a response")
+
     def meta(self) -> dict:
-        response = self.client.get(
+        response = self._request(
+            "GET",
             self._url("address_index_meta", "singleton=eq.true&select=*"),
             headers=self.headers,
         )
-        response.raise_for_status()
         rows = response.json()
         return rows[0] if isinstance(rows, list) and rows else {}
 
     def update_meta(self, **values: Any) -> None:
-        response = self.client.patch(
+        self._request(
+            "PATCH",
             self._url("address_index_meta", "singleton=eq.true"),
             headers={**self.headers, "Prefer": "return=minimal"},
             json=values,
         )
-        response.raise_for_status()
 
     def upsert(self, rows: list[dict]) -> None:
         for start in range(0, len(rows), UPSERT_SIZE):
             batch = rows[start : start + UPSERT_SIZE]
-            response = self.client.post(
+            self._request(
+                "POST",
                 self._url("address_index", "on_conflict=source_address_id"),
                 headers={
                     **self.headers,
@@ -330,7 +376,6 @@ class SupabaseWriter:
                 },
                 json=batch,
             )
-            response.raise_for_status()
 
 
 def parse_args() -> argparse.Namespace:
@@ -406,6 +451,7 @@ def main() -> int:
             )
 
         last_object_id = start_object_id
+        committed_object_id = start_object_id
         completed_source = False
         while True:
             remaining = None if args.limit is None else args.limit - scanned
@@ -421,7 +467,10 @@ def main() -> int:
                 int((feature.get("attributes") or {}).get("OBJECTID") or 0)
                 for feature in features
             )
-            rows: list[dict] = []
+            # Catastro occasionally returns the same PDOCODIGO more than once.
+            # PostgreSQL cannot upsert two copies of one conflict key in the
+            # same statement, so collapse them deterministically per page.
+            page_rows: list[dict] = []
             for feature in features:
                 row, note = searchable_record(feature, treatment_grid, snapshot_date)
                 if row is None:
@@ -429,7 +478,9 @@ def main() -> int:
                     continue
                 if note:
                     skipped[note] += 1
-                rows.append(row)
+                page_rows.append(row)
+            rows, duplicate_count = deduplicate_records(page_rows)
+            skipped["duplicate_address_id"] += duplicate_count
             if writer is not None and rows:
                 writer.upsert(rows)
             imported += len(rows)
@@ -440,6 +491,7 @@ def main() -> int:
                     last_object_id=last_object_id,
                     error=None,
                 )
+            committed_object_id = last_object_id
             print(
                 f"scanned={scanned:,} imported={imported:,} "
                 f"last_object_id={last_object_id:,} skipped={sum(skipped.values()):,}",
@@ -483,7 +535,12 @@ def main() -> int:
                 writer.update_meta(
                     status="failed",
                     imported_count=imported,
-                    last_object_id=locals().get("last_object_id", start_object_id),
+                    # Only resume after the last page whose rows and checkpoint
+                    # both committed. Re-reading an earlier page is safe because
+                    # source_address_id is upserted idempotently.
+                    last_object_id=locals().get(
+                        "committed_object_id", start_object_id
+                    ),
                     error=f"{type(exc).__name__}: {exc}"[:1_000],
                 )
             except Exception:

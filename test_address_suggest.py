@@ -5,6 +5,7 @@ import geocode
 from tools.import_address_index import (
     TreatmentGrid,
     TreatmentPolygon,
+    deduplicate_records,
     searchable_record,
 )
 
@@ -67,6 +68,20 @@ def test_import_record_uses_the_same_search_normalizer():
     assert row["address"] == "CL 85 # 11-53"
     assert row["normalized_address"] == "CL 85 11 53"
     assert row["lot_code"] == "001234567890"
+
+
+def test_import_deduplicates_catastro_address_ids_before_upsert():
+    rows = [
+        {"source_address_id": "A", "source_object_id": 10},
+        {"source_address_id": "B", "source_object_id": 11},
+        {"source_address_id": "A", "source_object_id": 12},
+    ]
+    deduplicated, duplicate_count = deduplicate_records(rows)
+    assert duplicate_count == 1
+    assert deduplicated == [
+        {"source_address_id": "A", "source_object_id": 12},
+        {"source_address_id": "B", "source_object_id": 11},
+    ]
 
 
 def test_short_suggestion_query_never_hits_database(monkeypatch):
