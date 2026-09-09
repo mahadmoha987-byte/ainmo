@@ -25,10 +25,6 @@ _suggest_client: httpx.AsyncClient | None = None
 _SUGGEST_CACHE_TTL = 60.0
 _SUGGEST_CACHE_MAX = 2_000
 _suggest_cache: OrderedDict[tuple, tuple[float, list[dict]]] = OrderedDict()
-_SUGGEST_PREFIX_CANDIDATES = 128
-_SUGGEST_READY_TTL = 10.0
-_suggest_ready_checked_at = 0.0
-_suggest_ready = False
 
 
 def _ok() -> bool:
@@ -83,87 +79,6 @@ async def close() -> None:
 
 # ── Address autocomplete ─────────────────────────────────────────────────────
 
-def _suggestion_from_row(row: dict) -> dict | None:
-    try:
-        return {
-            "address": str(row["address"]),
-            "normalized_address": str(row["normalized_address"]),
-            "lot_code": str(row["lot_code"]),
-            "treatment": str(row["treatment"]) if row.get("treatment") else None,
-            "lat": float(row["lat"]),
-            "lng": float(row["lng"]),
-            "locality": str(row["locality"]) if row.get("locality") else None,
-            "neighborhood": str(row["neighborhood"]) if row.get("neighborhood") else None,
-            "_address_type": int(row.get("address_type") or 1),
-        }
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
-def _rank_address_rows(
-    rows: list[dict],
-    normalized_query: str,
-    *,
-    lat: float | None,
-    lng: float | None,
-    recent_lot_codes: tuple[str, ...],
-    limit: int,
-) -> list[dict]:
-    """Rank a bounded indexed prefix result and return one row per lot."""
-    recent_rank = {lot_code: index for index, lot_code in enumerate(recent_lot_codes)}
-    parsed = [suggestion for row in rows if (suggestion := _suggestion_from_row(row))]
-
-    def score(row: dict) -> tuple:
-        exact_rank = 0 if row["normalized_address"] == normalized_query else 1
-        if lat is not None and lng is not None:
-            proximity = (row["lat"] - lat) ** 2 + (row["lng"] - lng) ** 2
-        else:
-            proximity = 0.0
-        return (
-            exact_rank,
-            proximity,
-            recent_rank.get(row["lot_code"], len(recent_rank) + 1),
-            max(len(row["normalized_address"]) - len(normalized_query), 0),
-            row["_address_type"],
-            row["address"],
-            row["lot_code"],
-        )
-
-    parsed.sort(key=score)
-    suggestions: list[dict] = []
-    seen_lots: set[str] = set()
-    for row in parsed:
-        if row["lot_code"] in seen_lots:
-            continue
-        seen_lots.add(row["lot_code"])
-        row.pop("_address_type", None)
-        suggestions.append(row)
-        if len(suggestions) >= limit:
-            break
-    return suggestions
-
-
-async def _address_index_is_ready(client: httpx.AsyncClient) -> bool:
-    """Cache the import gate briefly without exposing a partial city index."""
-    global _suggest_ready_checked_at, _suggest_ready
-    now = time.monotonic()
-    if now - _suggest_ready_checked_at < _SUGGEST_READY_TTL:
-        return _suggest_ready
-    try:
-        response = await client.get(
-            _url("address_index_meta"),
-            headers=_h(),
-            params={"singleton": "eq.true", "select": "status", "limit": "1"},
-        )
-        rows = response.json() if response.status_code < 400 else []
-        _suggest_ready = bool(
-            isinstance(rows, list) and rows and rows[0].get("status") == "ready"
-        )
-    except (httpx.HTTPError, ValueError):
-        _suggest_ready = False
-    _suggest_ready_checked_at = now
-    return _suggest_ready
-
 async def search_address_index(
     normalized_query: str,
     *,
@@ -174,10 +89,9 @@ async def search_address_index(
 ) -> tuple[list[dict], bool]:
     """Return ranked local address suggestions and whether the index is ready.
 
-    Indexed exact/prefix lookup is kept deliberately cheap and ranked here.
-    The PostgreSQL RPC is reserved for bounded same-road typo recovery.
-    ``False`` is returned when the migration is unavailable, allowing the
-    existing full geocoder to remain usable during a rolling deployment.
+    The PostgreSQL RPC owns ranking/index use.  ``False`` is returned for the
+    availability flag when the migration has not been applied yet, allowing
+    the existing full geocoder to remain usable during a rolling deployment.
     """
     if not _ok():
         return [], False
@@ -209,69 +123,44 @@ async def search_address_index(
     temporary_client = _suggest_client is None
     client = _suggest_client or httpx.AsyncClient(timeout=2.5)
     try:
-        if not await _address_index_is_ready(client):
-            if temporary_client:
-                await client.aclose()
-            return [], False
-        response = await client.get(
-            _url("address_search_source"),
+        response = await client.post(
+            _rpc("search_address_index"),
             headers=_h(),
-            params={
-                "select": (
-                    "address,normalized_address,lot_code,treatment,lat,lng,"
-                    "locality,neighborhood,address_type"
-                ),
-                "normalized_address": f"like.{normalized_query}*",
-                "order": "normalized_address.asc",
-                "limit": str(_SUGGEST_PREFIX_CANDIDATES),
-            },
+            json=payload,
         )
     except httpx.HTTPError:
+        return [], False
+    finally:
         if temporary_client:
             await client.aclose()
+
+    if response.status_code >= 400:
+        # Missing table/function during migration is a feature-availability
+        # state, not a user-facing address-search failure.
+        return [], False
+    try:
+        rows = response.json()
+    except ValueError:
+        return [], False
+    if not isinstance(rows, list):
         return [], False
 
-    try:
-        rows = response.json() if response.status_code < 400 else []
-    except ValueError:
-        rows = []
-    if not isinstance(rows, list):
-        rows = []
-
-    suggestions = _rank_address_rows(
-        rows,
-        normalized_query,
-        lat=lat,
-        lng=lng,
-        recent_lot_codes=clean_recent,
-        limit=safe_limit,
-    )
-
-    # No direct prefix means a likely typo only once a complete-looking plate
-    # exists. Short/broad queries return immediately instead of invoking fuzzy
-    # work that cannot identify a useful lot yet.
-    if not suggestions and len(normalized_query.split()) >= 4:
+    suggestions: list[dict] = []
+    for row in rows[:safe_limit]:
         try:
-            response = await client.post(
-                _rpc("search_address_index"),
-                headers=_h(),
-                json=payload,
-            )
-            rpc_rows = response.json() if response.status_code < 400 else []
-        except (httpx.HTTPError, ValueError):
-            rpc_rows = []
-        if isinstance(rpc_rows, list):
-            suggestions = _rank_address_rows(
-                rpc_rows,
-                normalized_query,
-                lat=lat,
-                lng=lng,
-                recent_lot_codes=clean_recent,
-                limit=safe_limit,
-            )
-
-    if temporary_client:
-        await client.aclose()
+            suggestion = {
+                "address": str(row["address"]),
+                "normalized_address": str(row["normalized_address"]),
+                "lot_code": str(row["lot_code"]),
+                "treatment": str(row["treatment"]) if row.get("treatment") else None,
+                "lat": float(row["lat"]),
+                "lng": float(row["lng"]),
+                "locality": str(row["locality"]) if row.get("locality") else None,
+                "neighborhood": str(row["neighborhood"]) if row.get("neighborhood") else None,
+            }
+        except (KeyError, TypeError, ValueError):
+            continue
+        suggestions.append(suggestion)
 
     _suggest_cache[cache_key] = (time.monotonic(), suggestions)
     _suggest_cache.move_to_end(cache_key)
