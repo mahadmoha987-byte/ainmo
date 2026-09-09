@@ -13,9 +13,9 @@ venv/
 # downloaded official legal source archive (large, retained locally)
 docs/normativa/
 
-# generated QA runs (reproducible via tools/address_audit.py)
-artifacts/address_audit/
-artifacts/address_suggest_audit/
+# generated QA runs (reproducible via tools/address_audit.py and
+# tools/address_suggest_audit.py)
+artifacts/
 
 # macos
 .DS_Store
