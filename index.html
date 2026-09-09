@@ -634,7 +634,7 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
   <div class="modal-box" style="position:relative">
     <button class="modal-close" onclick="hideUpgradeModal()" title="Cerrar">×</button>
     <h2>Plan Pro — próximamente</h2>
-    <p class="modal-sub">PDF ilimitados, historial guardado, traza de cálculo completa y consultas ilimitadas.</p>
+    <p class="modal-sub">Historial guardado, traza de cálculo completa, consultas ilimitadas e informes con marca blanca.</p>
     <div id="upgrade-interest-wrap">
       <p style="font-size:14px;margin-bottom:12px">Deja tu correo y te avisamos cuando esté disponible:</p>
       <div class="modal-row">
@@ -3306,12 +3306,11 @@ async function downloadPdf(lat, lng, vis) {
   btn.disabled = true;
 
   try {
-    const resp = await fetch(`/api/report?${params}`, { headers: _authHeaders() });
+    const resp = await fetch(`/api/report?${params}`);
     const contentType = resp.headers.get('content-type') || '';
     if (!resp.ok || !contentType.includes('application/pdf')) {
       const err = contentType.includes('json') ? await resp.json() : null;
-      if (resp.status === 401) showAuthModal();
-      else alert(err?.message || 'No fue posible generar el PDF con los datos actuales.');
+      alert(err?.message || 'No fue posible generar el PDF con los datos actuales.');
       return;
     }
     const blob = await resp.blob();
@@ -3545,7 +3544,7 @@ async function signInWithGoogle() {
   if (!_supabase) return;
   await _supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: window.location.origin },
+    options: { redirectTo: window.location.origin + '/app' },
   });
 }
 
@@ -3557,7 +3556,7 @@ async function submitMagicLink() {
   btn.disabled = true; btn.textContent = 'Enviando…';
   const { error } = await _supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: window.location.origin },
+    options: { emailRedirectTo: window.location.origin + '/app' },
   });
   if (error) {
     showToast(error.message || 'Error al enviar', 'err');

@@ -583,17 +583,8 @@ async def report_endpoint(
     expected_lotcodigo: str | None = Query(None),
     preview: bool = Query(False),
 ):
-    user = await get_current_user(request)
-    if not user and not auth.dev_mode():
-        return JSONResponse(status_code=401, content={
-            "ok": False, "error": "auth_required",
-            "message": "Inicia sesión para descargar el informe PDF.",
-        })
-    if user and user["plan"] != "pro" and not auth.dev_mode():
-        return JSONResponse(status_code=403, content={
-            "ok": False, "error": "pro_required",
-            "message": "El informe PDF está disponible en el plan Pro.",
-        })
+    # The current-analysis PDF is a public product export. Saved-history PDFs
+    # remain protected by ownership checks on /api/analyses/{id}/report.
     try:
         expected_lotcodigo = str(expected_lotcodigo or "").strip()
         lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio, expected_lotcodigo)
