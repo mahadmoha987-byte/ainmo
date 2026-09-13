@@ -198,6 +198,12 @@ input[type=number]:focus,input[type=text]:focus{outline:none;border-color:var(--
 .metric-card .m-note{font-size:var(--ts-xs);color:var(--ink-3);margin-top:var(--sp-2);line-height:1.5}
 .metric-card .m-cond{font-size:var(--ts-xs);color:var(--accent);margin-top:var(--sp-1)}
 .metric-card.m-null{opacity:.75}.metric-card.m-null .m-value{font-size:var(--ts-md);font-weight:var(--fw-4);color:var(--ink-4)}
+.metric-card.m-derived{grid-column:span 2;border:2px dashed var(--c-m-b);background:var(--c-m-bg)}
+.metric-card.m-derived .m-label{color:var(--c-m-fg);font-weight:var(--fw-7)}
+.derived-warning{font-size:var(--ts-xs);line-height:1.5;color:var(--c-m-fg);margin-top:var(--sp-2);font-weight:var(--fw-5)}
+.derived-assumptions{margin:var(--sp-2) 0 0;padding-left:18px;color:var(--ink-3);font-size:var(--ts-xs);line-height:1.45}
+.pf-estimated-flag{background:var(--c-m-bg);border:1px solid var(--c-m-b);color:var(--c-m-fg);padding:var(--sp-2) var(--sp-3);font-size:var(--ts-sm);line-height:1.5;margin-bottom:var(--sp-3)}
+@media(max-width:700px){.metric-card.m-derived{grid-column:span 1}}
 .confianza-badge{display:inline-block;font-size:var(--ts-2xs);font-weight:var(--fw-6);letter-spacing:.3px;padding:1px 6px;border-radius:var(--r1);margin-top:var(--sp-1);text-transform:uppercase}
 .conf-alta{background:var(--c-a-bg);color:var(--c-a-fg);border:1px solid var(--c-a-b)}
 .conf-media{background:var(--c-m-bg);color:var(--c-m-fg);border:1px solid var(--c-m-b)}
@@ -1786,11 +1792,9 @@ function showResult(d, lat, lng, vis, anu) {
   </div>`);
 
   set(parts.join(''));
-  // Compute total = huella × pisos and trigger financial KPIs.
-  // Returns true if it handled _fetchKpiFinancials (always when pisos is known).
-  if (!_tryComputeFootprintArea(d)) {
-    _fetchKpiFinancials(d);
-  }
+  // Financial KPIs consume the server-labelled area source. A derived area is
+  // never substituted into area_construible_max_m2.
+  _fetchKpiFinancials(d);
   // Normative panel is open by default — init 3D massing immediately.
   if (!_massingInitDone) {
     _massingInitDone = true;
@@ -2141,24 +2145,42 @@ function _kpiLoading(label, fin = false) {
   </div>`;
 }
 
+function _areaForFinancials(d) {
+  const m = d?.metrics || {};
+  const trat = (d?.tratamiento || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const isRenov = trat.includes('RENOVACION');
+  const regulatory = isRenov
+    ? (m.area_construible_max_sin_manzana_completa_m2?.valor ?? m.area_construible_max_m2?.valor)
+    : m.area_construible_max_m2?.valor;
+  if (regulatory != null) return { area: regulatory, estimated: false, range: null };
+  const estimate = m.area_construible_estimada;
+  if (trat.includes('CONSOLIDACION') && estimate?.valor_m2 != null) {
+    return { area: estimate.valor_m2, estimated: true, range: null };
+  }
+  return { area: null, estimated: false, range: estimate?.rango_m2 || null };
+}
+
 function kpiStrip(d) {
   const m = d.metrics || {};
   const trat = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
   const isRenov = trat.includes('RENOVACION');
 
-  const area = isRenov
-    ? (m.area_construible_max_sin_manzana_completa_m2?.valor ?? m.area_construible_max_m2?.valor)
-    : m.area_construible_max_m2?.valor;
+  const areaSource = _areaForFinancials(d);
+  const area = areaSource.area;
   const pisos = m.altura_base_pisos?.valor ?? m.altura_maxima_pisos?.valor;
 
-  const areaLabel = isRenov ? 'ICe 5.0 BASE' : 'ÁREA CONSTRUIBLE';
+  const areaLabel = isRenov ? 'ICe 5.0 BASE' : areaSource.estimated ? 'ÁREA ESTIMADA' : 'ÁREA CONSTRUIBLE';
   const areaCell = area != null
-    ? _kpiCell(areaLabel, fmt(area), 'm²')
-    : _kpiNull(areaLabel, 'requiere modelado');
+    ? _kpiCell(areaLabel, fmt(area), areaSource.estimated ? 'm² · derivada, no tope normativo' : 'm²')
+    : areaSource.range
+      ? _kpiCell('ÁREA ESTIMADA', `${fmt(areaSource.range[0])}–${fmt(areaSource.range[1])}`, 'm² · rango derivado')
+      : _kpiNull(areaLabel, 'requiere modelado');
 
   const pisosCell = pisos != null
-    ? _kpiCell('PISOS', pisos, pisos === 1 ? 'piso' : 'pisos')
-    : _kpiNull('PISOS', 'sin datos');
+    ? _kpiCell('PISOS', pisos, `${pisos === 1 ? 'piso' : 'pisos'} · ${escHtml((m.altura_base_pisos || m.altura_maxima_pisos || {}).articulo || 'mapa CU-5.4.x')}`)
+    : (m.altura_maxima_pisos
+      ? _kpiCell('PISOS', 'Resultante', escHtml(m.altura_maxima_pisos.articulo || 'Arts. 304–307 y Anexo 5 D.555/2021'))
+      : _kpiNull('PISOS', 'sin datos'));
 
   const hasArea = area != null;
 
@@ -2214,19 +2236,15 @@ async function _fetchKpiFinancials(d) {
   // Capture sequence at call time; discard stale responses if a newer lookup started.
   const seqAtStart = _lookupSeq;
 
-  const m = d.metrics || {};
-  const trat = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
-  const isRenov = trat.includes('RENOVACION');
-  const area = isRenov
-    ? (m.area_construible_max_sin_manzana_completa_m2?.valor ?? m.area_construible_max_m2?.valor)
-    : m.area_construible_max_m2?.valor;
+  const areaSource = _areaForFinancials(d);
+  const area = areaSource.area;
   if (!area) return;
 
   const inp = d.input || {};
 
   // Fetch proforma and units in parallel with defaults
   const [pfResp, unResp] = await Promise.allSettled([
-    fetch(`/api/proforma?area_m2=${area}${inp.lng != null ? `&lng=${inp.lng}&lat=${inp.lat}` : ''}`).then(r => r.json()),
+    fetch(`/api/proforma?area_m2=${area}${areaSource.estimated ? '&area_estimada=true' : ''}${inp.lng != null ? `&lng=${inp.lng}&lat=${inp.lat}` : ''}`).then(r => r.json()),
     fetch(`/api/units?area_m2=${area}&circulacion_pct=18&pct_studio=20&pct_1br=30&pct_2br=35&pct_3br=15&m2_studio=40&m2_1br=55&m2_2br=75&m2_3br=95`).then(r => r.json()),
   ]);
 
@@ -2240,10 +2258,11 @@ async function _fetchKpiFinancials(d) {
   const setCell = (id, html) => { const el = document.getElementById(id); if (el) el.outerHTML = html; };
 
   if (pf) {
-    setCell('kpi-ingresos-cell', _kpiCell('INGRESOS EST.', fmtCopM(pf.ingresos_totales_cop), 'supuestos predeterminados', true));
-    setCell('kpi-costos-cell',   _kpiCell('COSTO EST.',    fmtCopM(pf.costos_totales_cop),    'supuestos predeterminados', true));
+    const pfUnit = pf.basado_en_area_estimada ? 'basado en área estimada' : 'supuestos predeterminados';
+    setCell('kpi-ingresos-cell', _kpiCell('INGRESOS EST.', fmtCopM(pf.ingresos_totales_cop), pfUnit, true));
+    setCell('kpi-costos-cell',   _kpiCell('COSTO EST.',    fmtCopM(pf.costos_totales_cop),    pfUnit, true));
     setCell('kpi-residual-cell', pf.valor_residual_lote_cop != null
-      ? _kpiCell('VALOR RESIDUAL', fmtCopM(pf.valor_residual_lote_cop), 'supuestos predeterminados', true)
+      ? _kpiCell('VALOR RESIDUAL', fmtCopM(pf.valor_residual_lote_cop), pfUnit, true)
       : _kpiNull('VALOR RESIDUAL', 'sin datos', true));
 
     // Pre-fill proforma inputs with market defaults and render result
@@ -2274,7 +2293,8 @@ async function _fetchKpiFinancials(d) {
   // Update units cell
   const un = unResp.status === 'fulfilled' && unResp.value.ok ? unResp.value.data : null;
   if (un?.total_unidades) {
-    setCell('kpi-units-cell', _kpiCell('UNIDADES', un.total_unidades, 'aprox.'));
+    setCell('kpi-units-cell', _kpiCell('UNIDADES', un.total_unidades,
+      areaSource.estimated ? 'aprox. · área estimada' : 'aprox.'));
   } else {
     setCell('kpi-units-cell', _kpiNull('UNIDADES', 'sin datos'));
   }
@@ -2485,8 +2505,12 @@ function metricsSection(d) {
     const pBsVis = m.altura_base_con_vis_bonus_pisos;
 
     if (pBase?.valor != null) {
-      cards.push(metricCard('Altura base (mapa)', pBase.valor, 'pisos', pBase.confianza, null));
+      cards.push(metricCard('Altura base (mapa)', pBase.valor, 'pisos', pBase.confianza,
+        [pBase.articulo, pBase.fuente, pBase.fecha_consulta].filter(Boolean).join(' · ')));
     }
+
+    const derived = m.area_construible_estimada;
+    if (derived) cards.push(derivedAreaCard(derived));
     // Range case: show bonus height separately
     if (pBonus?.valor != null) {
       cards.push(metricCard('Altura con bonus manzana', pBonus.valor, 'pisos', pBonus.confianza,
@@ -2657,6 +2681,26 @@ function metricNullCard(label, reason, confianza) {
     <div class="m-value">Resultante</div>
     ${confianzaBadge(confianza)}
     <div class="m-note">${escHtml(reason || '')}</div>
+  </div>`;
+}
+
+function derivedAreaCard(estimate) {
+  const range = estimate.rango_m2;
+  const display = estimate.valor_m2 != null
+    ? fmt(estimate.valor_m2)
+    : range ? `${fmt(range[0])}–${fmt(range[1])}` : 'No calculable';
+  const footprint = estimate.entradas?.huella_calculada;
+  const method = footprint != null
+    ? `Huella ${fmt(footprint)} m² × ${estimate.entradas?.pisos ?? '—'} pisos`
+    : range ? 'Rango por antejardín sin dato' : 'Faltan entradas geométricas';
+  const assumptions = (estimate.supuestos || []).map(s => `<li>${escHtml(s)}</li>`).join('');
+  return `<div class="metric-card m-derived">
+    <div class="m-label">Área construible estimada · derivada</div>
+    <div class="m-value">${display}</div>
+    <div class="m-unit">m² · ${escHtml(method)}</div>
+    ${confianzaBadge(estimate.confianza)}
+    <div class="derived-warning">${escHtml(estimate.advertencia || '')}</div>
+    ${assumptions ? `<details><summary class="m-note">Ver supuestos y trazabilidad</summary><ul class="derived-assumptions">${assumptions}</ul></details>` : ''}
   </div>`;
 }
 
@@ -2974,43 +3018,43 @@ function renderUnitsResult(data) {
 let _lastProformaArea = null;
 let _lastProformaLng  = null;
 let _lastProformaLat  = null;
+let _lastProformaAreaEstimated = false;
 let _proformaDefaults = null;
 
-function _pfHeader() {
+function _pfHeader(estimated = false) {
   return `<div class="section-head" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-3)">
     <span>Pro-forma de viabilidad</span>
     <span class="badge badge-est">ESTIMACIÓN</span>
   </div>
+  ${estimated ? `<div class="pf-estimated-flag"><strong>Basado en área estimada.</strong> El VRL y la sensibilidad usan una derivación volumétrica de Consolidación, no un IC/IO fijado por el Decreto 555.</div>` : ''}
   <p class="units-disclaimer" style="margin-bottom:var(--sp-4)">
     Modelo de residuo de tierra. Referencia de mercado — no sustituye estudio de mercado profesional ni avalúo.
   </p>`;
 }
 
 function proformaPanel(d) {
-  const m = d.metrics || {};
-  const trat = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
-  const isRenov = trat.includes('RENOVACION');
-  const area = isRenov
-    ? (m.area_construible_max_sin_manzana_completa_m2?.valor ?? m.area_construible_max_m2?.valor)
-    : m.area_construible_max_m2?.valor;
+  const areaSource = _areaForFinancials(d);
+  const area = areaSource.area;
 
   const inp = d.input || {};
   _lastProformaArea = area ?? null;
+  _lastProformaAreaEstimated = areaSource.estimated || !!areaSource.range;
   _lastProformaLng  = inp.lng ?? null;
   _lastProformaLat  = inp.lat ?? null;
   _proformaDefaults = null;
 
   if (!area) {
     return `<div class="card" id="proforma-panel" style="opacity:.65">
-      ${_pfHeader()}
+      ${_pfHeader(!!areaSource.range)}
       <div class="pf-blocked-form">
         <p style="font-size:var(--ts-base);font-weight:var(--fw-5);color:var(--ink-2);margin-bottom:var(--sp-3)">
-          Ingresa el área construible modelada para calcular el retorno
+          ${areaSource.range ? `Elige un área dentro del rango derivado ${fmt(areaSource.range[0])}–${fmt(areaSource.range[1])} m²` : 'Ingresa el área construible modelada para calcular el retorno'}
         </p>
         <div class="req-form-row">
           <div>
             <label style="font-size:var(--ts-sm);color:var(--ink-3);display:block;margin-bottom:3px">Área construible estimada</label>
             <input type="number" id="pf-manual-area" min="1" step="10" placeholder="Ej: 1 500"
+              ${areaSource.range ? `value="${Math.round((areaSource.range[0] + areaSource.range[1]) / 2)}"` : ''}
               style="width:140px;padding:6px 10px;border:var(--rule);font-family:var(--ff-mono);font-size:var(--ts-base)">
             <span style="font-size:var(--ts-sm);color:var(--ink-4);margin-left:4px">m²</span>
           </div>
@@ -3023,7 +3067,7 @@ function proformaPanel(d) {
   }
 
   return `<div class="card" id="proforma-panel">
-    ${_pfHeader()}
+    ${_pfHeader(areaSource.estimated)}
     <div class="proforma-grid" style="margin-bottom:var(--sp-3)">
       <label>Precio del lote (COP, opcional)
         <input id="pf-lote" type="number" min="0" step="1000000" placeholder="ej. 800 000 000">
@@ -3103,6 +3147,7 @@ async function calcProforma() {
   });
   if (lote)                     params.set('precio_lote_cop', lote);
   if (_lastProformaLng != null) { params.set('lng', _lastProformaLng); params.set('lat', _lastProformaLat); }
+  if (_lastProformaAreaEstimated) params.set('area_estimada', 'true');
 
   try {
     const resp = await fetch(`/api/proforma?${params}`);
@@ -3122,6 +3167,7 @@ async function calcProformaManual() {
   const resDiv = document.getElementById('pf-result');
   if (resDiv) resDiv.innerHTML = '<em style="color:var(--ink-4)">Calculando…</em>';
   const params = new URLSearchParams({area_m2: area});
+  if (_lastProformaAreaEstimated) params.set('area_estimada', 'true');
   if (_lastProformaLng != null) { params.set('lng', _lastProformaLng); params.set('lat', _lastProformaLat); }
   try {
     const json = await fetch(`/api/proforma?${params}`).then(r => r.json());
@@ -3223,8 +3269,12 @@ function renderProformaResult(d) {
   const efVal  = echo?.eficiencia_vendible_pct?.valor ?? 0.82;
   const efPct  = Math.round(efVal * 100);
   const aVend  = d.area_vendible_m2 ?? (d.area_construible_m2 * efVal);
+  const estimatedFlag = d.basado_en_area_estimada
+    ? `<div class="pf-estimated-flag"><strong>Basado en área estimada.</strong> Tanto el valor residual del lote como toda la matriz de sensibilidad dependen de esta cabida derivada; no es un ICe/IO normativo.</div>`
+    : '';
 
   return `
+    ${estimatedFlag}
     ${veredictoHtml}
     <table class="proforma-table">
       <tbody>
@@ -3237,7 +3287,7 @@ function renderProformaResult(d) {
         <tr class="pf-total"><td>Total costos</td><td>${red(d.costos_totales_cop)}</td></tr>
         <tr class="pf-section"><td colspan="2">Utilidad</td></tr>
         <tr><td>Utilidad objetivo del promotor${mgOrigen}</td><td>${neutral(d.utilidad_objetivo_cop)}</td></tr>
-        <tr class="pf-rlv"><td>Valor residual del lote (VRL)</td><td>${colRlv(d.valor_residual_lote_cop)}</td></tr>
+        <tr class="pf-rlv"><td>Valor residual del lote (VRL)${d.basado_en_area_estimada ? ' · área estimada' : ''}</td><td>${colRlv(d.valor_residual_lote_cop)}</td></tr>
         ${loteRow}
       </tbody>
     </table>
@@ -3378,15 +3428,6 @@ async function initMassing(calcData) {
   const _fp = _lastCalcData?.metrics?.planta_maxima_m2?.valor ?? _massingInst.meta.areaFootprint;
   _renderMassingInfo(_massingInst.meta, _fp);
 
-  // Second-chance KPI update: if showResult's _tryComputeFootprintArea couldn't
-  // compute a footprint, use the footprint the 3D canvas already computed.
-  // Use _bestPisos (reads altura_maxima_rango_pisos) not meta.pisos (base only).
-  const mFp  = _massingInst.meta.areaFootprint;
-  const mPis = _bestPisos(_lastCalcData?.metrics || {}) || _massingInst.meta.pisos;
-  const kpiFirst = document.getElementById('kpi-strip')?.firstElementChild;
-  if (mFp && mFp > 0 && mPis && kpiFirst?.classList.contains('kpi-null')) {
-    _updateKpiFromFootprint(mFp, mPis, 'Estimado modelado 3D', _lastCalcData);
-  }
 }
 
 function _renderMassingInfo(m, footprintM2 = null) {

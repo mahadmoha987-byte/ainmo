@@ -442,6 +442,7 @@ async def units_endpoint(
 @app.get("/api/proforma")
 async def proforma_endpoint(
     area_m2: float = Query(...),
+    area_estimada: bool = Query(False),
     lng: float | None = Query(None),
     lat: float | None = Query(None),
     precio_lote_cop: float | None = Query(None),
@@ -507,6 +508,12 @@ async def proforma_endpoint(
             "ok": True,
             "data": {
                 "area_construible_m2": result.inputs_echo["area_construible_m2"],
+                "basado_en_area_estimada": area_estimada,
+                "advertencia_area": (
+                    "Basado en área estimada: el VRL y la sensibilidad dependen de una "
+                    "derivación volumétrica, no de un IC/IO numérico fijado por el Decreto 555."
+                    if area_estimada else None
+                ),
                 "area_vendible_m2": result.inputs_echo["area_vendible_m2"],
                 "ingresos_totales_cop": result.ingresos_totales_cop,
                 "costos_duros_cop": result.costos_duros_cop,

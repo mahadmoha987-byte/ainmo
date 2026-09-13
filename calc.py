@@ -17,6 +17,7 @@ Usage
 from __future__ import annotations
 
 import json
+import math
 import sys
 from typing import Any
 
@@ -61,6 +62,363 @@ def _step(
     if nota:
         s["nota"] = nota
     return s
+
+
+# ── Consolidación derived-envelope geometry ───────────────────────────────
+
+_CONSERVATIVE_ANTEJARDIN_M = 5.0
+_DERIVED_AREA_WARNING = (
+    "Estimación derivada. El Decreto 555 no fija IC/IO numéricamente en "
+    "Consolidación; este valor resulta de la norma volumétrica y debe verificarse "
+    "con modelación del proyecto."
+)
+
+
+def _polygon_area(points: list[tuple[float, float]]) -> float:
+    if len(points) < 3:
+        return 0.0
+    return abs(sum(
+        points[i][0] * points[(i + 1) % len(points)][1]
+        - points[(i + 1) % len(points)][0] * points[i][1]
+        for i in range(len(points))
+    )) / 2.0
+
+
+def _signed_polygon_area(points: list[tuple[float, float]]) -> float:
+    if len(points) < 3:
+        return 0.0
+    return sum(
+        points[i][0] * points[(i + 1) % len(points)][1]
+        - points[(i + 1) % len(points)][0] * points[i][1]
+        for i in range(len(points))
+    ) / 2.0
+
+
+def _clip_inside_edge(
+    polygon: list[tuple[float, float]],
+    edge_a: tuple[float, float],
+    edge_b: tuple[float, float],
+    setback_m: float,
+) -> list[tuple[float, float]]:
+    """Clip a CCW polygon against one original edge shifted inward."""
+    if not polygon or setback_m <= 0:
+        return polygon
+    ex, ey = edge_b[0] - edge_a[0], edge_b[1] - edge_a[1]
+    edge_len = math.hypot(ex, ey)
+    if edge_len < 1e-8:
+        return polygon
+
+    def signed_distance(point: tuple[float, float]) -> float:
+        return (ex * (point[1] - edge_a[1]) - ey * (point[0] - edge_a[0])) / edge_len
+
+    output: list[tuple[float, float]] = []
+    previous = polygon[-1]
+    previous_d = signed_distance(previous) - setback_m
+    for current in polygon:
+        current_d = signed_distance(current) - setback_m
+        previous_inside = previous_d >= -1e-8
+        current_inside = current_d >= -1e-8
+        if previous_inside != current_inside:
+            denom = previous_d - current_d
+            if abs(denom) > 1e-12:
+                t = previous_d / denom
+                output.append((
+                    previous[0] + t * (current[0] - previous[0]),
+                    previous[1] + t * (current[1] - previous[1]),
+                ))
+        if current_inside:
+            output.append(current)
+        previous, previous_d = current, current_d
+    return output
+
+
+def _project_lot_ring(ring: list) -> list[tuple[float, float]]:
+    raw = [tuple(map(float, p[:2])) for p in ring if len(p) >= 2]
+    if len(raw) > 1 and raw[0] == raw[-1]:
+        raw.pop()
+    if len(raw) < 3:
+        return []
+    lon0 = sum(p[0] for p in raw) / len(raw)
+    lat0 = sum(p[1] for p in raw) / len(raw)
+    cos_lat = math.cos(math.radians(lat0))
+    points = [
+        ((lon - lon0) * cos_lat * 111_319.49, (lat - lat0) * 111_319.49)
+        for lon, lat in raw
+    ]
+    return points if _signed_polygon_area(points) > 0 else list(reversed(points))
+
+
+def _project_input_point(lookup: dict, ring: list) -> tuple[float, float]:
+    raw = [tuple(map(float, p[:2])) for p in ring if len(p) >= 2]
+    if len(raw) > 1 and raw[0] == raw[-1]:
+        raw.pop()
+    lon0 = sum(p[0] for p in raw) / len(raw)
+    lat0 = sum(p[1] for p in raw) / len(raw)
+    inp = lookup.get("input") or {}
+    lon, lat = float(inp.get("lng", lon0)), float(inp.get("lat", lat0))
+    return ((lon - lon0) * math.cos(math.radians(lat0)) * 111_319.49,
+            (lat - lat0) * 111_319.49)
+
+
+def _point_segment_distance(
+    point: tuple[float, float],
+    a: tuple[float, float],
+    b: tuple[float, float],
+) -> float:
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 1e-12:
+        return math.hypot(point[0] - a[0], point[1] - a[1])
+    t = max(0.0, min(1.0, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length_sq))
+    return math.hypot(point[0] - (a[0] + t * dx), point[1] - (a[1] + t * dy))
+
+
+def _footprint_from_polygon(
+    lookup: dict,
+    *,
+    antejardin_m: float,
+    posterior_m: float,
+    lateral_m: float,
+) -> tuple[float | None, dict]:
+    """Apply edge-specific setbacks to the cadastral lot polygon."""
+    rings = (lookup.get("lote") or {}).get("geojson_polygon") or []
+    if not rings or not rings[0] or len(rings[0]) < 4:
+        return None, {"reason": "polygon_missing"}
+    points = _project_lot_ring(rings[0])
+    if len(points) < 3:
+        return None, {"reason": "polygon_invalid"}
+
+    input_point = _project_input_point(lookup, rings[0])
+    edges = [(points[i], points[(i + 1) % len(points)]) for i in range(len(points))]
+    # Front/rear are the most widely separated approximately parallel boundary
+    # lines. This is more stable than choosing the edge nearest a cadastral
+    # centroid, which commonly sits in the middle of the lot rather than at its
+    # street frontage. The query point only decides which member is the front.
+    edge_data = []
+    for i, (a, b) in enumerate(edges):
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length = max(math.hypot(dx, dy), 1e-9)
+        edge_data.append({
+            "i": i,
+            "length": length,
+            "inward": (-dy / length, dx / length),
+            "mid": ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2),
+        })
+    opposite_pairs = []
+    for left in edge_data:
+        if left["length"] < 0.5:
+            continue
+        for right in edge_data[left["i"] + 1:]:
+            if right["length"] < 0.5:
+                continue
+            dot = (left["inward"][0] * right["inward"][0]
+                   + left["inward"][1] * right["inward"][1])
+            if dot <= -0.70:
+                separation = math.hypot(
+                    left["mid"][0] - right["mid"][0],
+                    left["mid"][1] - right["mid"][1],
+                )
+                opposite_pairs.append((separation, left["i"], right["i"]))
+    if opposite_pairs:
+        _, first_idx, second_idx = max(opposite_pairs)
+        if _point_segment_distance(input_point, *edges[first_idx]) <= _point_segment_distance(input_point, *edges[second_idx]):
+            front_idx, rear_idx = first_idx, second_idx
+        else:
+            front_idx, rear_idx = second_idx, first_idx
+    else:
+        front_idx = min(
+            range(len(edges)),
+            key=lambda i: _point_segment_distance(input_point, edges[i][0], edges[i][1]),
+        )
+        fa, fb = edges[front_idx]
+        fdx, fdy = fb[0] - fa[0], fb[1] - fa[1]
+        flen = max(math.hypot(fdx, fdy), 1e-9)
+        front_normal = (-fdy / flen, fdx / flen)
+
+        def rear_score(i: int) -> tuple[float, float]:
+            if i == front_idx:
+                return (float("inf"), 0.0)
+            a, b = edges[i]
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            length = max(math.hypot(dx, dy), 1e-9)
+            inward = (-dy / length, dx / length)
+            alignment = front_normal[0] * inward[0] + front_normal[1] * inward[1]
+            midpoint_distance = math.hypot((a[0] + b[0] - fa[0] - fb[0]) / 2,
+                                           (a[1] + b[1] - fa[1] - fb[1]) / 2)
+            return (alignment, -midpoint_distance)
+
+        rear_idx = min(range(len(edges)), key=rear_score)
+    clipped = list(points)
+    for i, (a, b) in enumerate(edges):
+        setback = antejardin_m if i == front_idx else posterior_m if i == rear_idx else lateral_m
+        if setback > 0:
+            clipped = _clip_inside_edge(clipped, a, b, setback)
+            if len(clipped) < 3:
+                return 0.0, {
+                    "front_edge": front_idx,
+                    "rear_edge": rear_idx,
+                    "outer_area_local_m2": round(_polygon_area(points), 2),
+                    "clipped_area_local_m2": 0.0,
+                    "has_holes": len(rings) > 1,
+                }
+
+    outer_area = _polygon_area(points)
+    clipped_area = _polygon_area(clipped)
+    lot_area = float((lookup.get("lote") or {}).get("area_m2", {}).get("valor") or 0)
+    if outer_area <= 0 or lot_area <= 0:
+        return None, {"reason": "polygon_area_invalid"}
+    footprint = max(0.0, min(lot_area, clipped_area / outer_area * lot_area))
+    return round(footprint, 1), {
+        "front_edge": front_idx,
+        "rear_edge": rear_idx,
+        "outer_area_local_m2": round(outer_area, 2),
+        "clipped_area_local_m2": round(clipped_area, 2),
+        "has_holes": len(rings) > 1,
+    }
+
+
+def _derive_consolidacion_area(
+    lookup: dict,
+    metrics: dict,
+    antejardin: dict,
+    trace: list,
+    N,
+) -> dict:
+    """Derive a non-regulatory Consolidación area from its volumetric envelope."""
+    lot_area = float(lookup["lote"]["area_m2"]["valor"])
+    pisos = metrics.get("altura_base_pisos", {}).get("valor")
+    posterior_obj = metrics.get("aislamiento_posterior_m") or {}
+    lateral_obj = metrics.get("aislamiento_lateral_m") or {}
+    retroceso_obj = metrics.get("retroceso_fachada_A_m") or {}
+    posterior = posterior_obj.get("valor")
+    lateral = lateral_obj.get("valor")
+    antejardin_m = antejardin.get("dimension_m")
+    retroceso_a = retroceso_obj.get("valor")
+    consultation_date = (lookup.get("consulta") or {}).get("fecha")
+
+    assumptions = [
+        "La huella se recortó sobre el polígono catastral real; el par de bordes paralelos con mayor separación se trató como frente y fondo, y el punto consultado orientó cuál es el frente.",
+        "Los pisos usados son la altura base del mapa CU-5.4.x; no se incluyeron bonificaciones condicionadas.",
+        "A = 2,5 × D es la altura máxima de fachada sobre el espacio público, no un retiro horizontal; no se descontó como distancia de la huella.",
+    ]
+    confidence = "media"
+
+    if pisos is None or pisos <= 0:
+        assumptions.append("No hay una altura base numérica para multiplicar por la huella.")
+        return {
+            "valor_m2": None, "rango_m2": None, "metodo": "huella_x_pisos",
+            "confianza": "baja", "supuestos": assumptions,
+            "entradas": {
+                "area_lote": lot_area, "huella_calculada": None, "pisos": None,
+                "aislamientos_aplicados": {"posterior_m": posterior, "lateral_m": lateral},
+                "antejardin_m": antejardin_m, "retroceso_m": retroceso_a,
+            },
+            "advertencia": _DERIVED_AREA_WARNING,
+        }
+
+    if posterior is None:
+        posterior = 0.0
+        confidence = "baja"
+        assumptions.append("El aislamiento posterior no estaba disponible y no se descontó; el resultado puede sobreestimar la cabida.")
+    if lateral is None:
+        lateral = 0.0
+        confidence = "baja"
+        assumptions.append("El aislamiento lateral no estaba disponible y no se descontó; el resultado puede sobreestimar la cabida.")
+    if posterior_obj.get("confianza") not in (None, "alta") or lateral_obj.get("confianza") not in (None, "alta"):
+        confidence = "baja"
+    if retroceso_obj.get("confianza") not in (None, "alta"):
+        confidence = "baja"
+        assumptions.append("D proviene del ancho de calzada GIS y puede omitir andenes o separadores; confirme el perfil vial oficial.")
+    if lookup.get("lote", {}).get("consulta_catastro"):
+        confidence = "baja"
+        assumptions.append("El lote fue seleccionado por proximidad (snap); confirme que el polígono corresponde al predio consultado.")
+
+    def footprint(front_m: float) -> tuple[float | None, dict]:
+        return _footprint_from_polygon(
+            lookup,
+            antejardin_m=front_m,
+            posterior_m=float(posterior),
+            lateral_m=float(lateral),
+        )
+
+    value: float | None = None
+    area_range: list[float] | None = None
+    footprint_value: float | None = None
+    footprint_range: list[float] | None = None
+    geometry_meta: dict = {}
+
+    if antejardin_m is None:
+        confidence = "baja"
+        fp_max, geometry_meta = footprint(0.0)
+        fp_min, _ = footprint(_CONSERVATIVE_ANTEJARDIN_M)
+        assumptions.append(
+            "La Capa 22 no devolvió antejardín: el extremo máximo usa 0 m y el mínimo usa 5,0 m como supuesto conservador del modelo; 5,0 m no es una dimensión normativa confirmada para el predio."
+        )
+        if fp_min is not None and fp_max is not None:
+            footprint_range = [round(min(fp_min, fp_max), 1), round(max(fp_min, fp_max), 1)]
+            area_range = [round(footprint_range[0] * pisos, 1), round(footprint_range[1] * pisos, 1)]
+    else:
+        footprint_value, geometry_meta = footprint(float(antejardin_m))
+        if footprint_value is not None:
+            value = round(footprint_value * pisos, 1)
+
+    if geometry_meta.get("reason"):
+        confidence = "baja"
+        assumptions.append("El polígono del lote no estuvo disponible o no fue válido; no se calculó una huella.")
+        value, area_range = None, None
+    if geometry_meta.get("has_holes"):
+        confidence = "baja"
+        assumptions.append("El polígono contiene anillos interiores; el ajuste geométrico requiere verificación en CAD/GIS.")
+
+    assumed_height_m = float(pisos) * 3.0
+    if retroceso_a is not None and assumed_height_m > float(retroceso_a):
+        confidence = "baja"
+        assumptions.append(
+            "La altura base aproximada supera A = 2,5 × D; falta la geometría horizontal del retranqueo de pisos superiores, por lo que el extremo alto no debe tratarse como cabida cerrada."
+        )
+        if value is not None and footprint_value is not None:
+            full_floor_count = max(0, math.floor(float(retroceso_a) / 3.0))
+            area_range = [round(footprint_value * full_floor_count, 1), value]
+            value = None
+
+    sources = [
+        {"entrada": "area_lote/poligono", "fuente": "Catastro Bogotá MapServer, capa 0 (LOTE)", "fecha_consulta": consultation_date},
+        {"entrada": "pisos", "fuente": metrics.get("altura_base_pisos", {}).get("fuente") or "Layer 15 campo ALTURA_MAXIMA", "articulo": metrics.get("altura_base_pisos", {}).get("articulo"), "fecha_consulta": consultation_date},
+        {"entrada": "antejardin", "fuente": antejardin.get("fuente"), "articulo": antejardin.get("articulo"), "fecha_consulta": consultation_date},
+        {"entrada": "aislamiento_posterior", "fuente": "Anexo 5 Cap. 2.4.2.A.2 Decreto 555/2021", "fecha_consulta": consultation_date},
+        {"entrada": "aislamiento_lateral", "fuente": "Art. 310 Num. 3 / Anexo 5 Cap. 1.2.2.D.2 Decreto 555/2021", "fecha_consulta": consultation_date},
+        {"entrada": "altura_fachada_A", "fuente": "Anexo 5 Cap. 1.2.2.E.1.1 Decreto 555/2021", "fecha_consulta": consultation_date},
+    ]
+    estimate = {
+        "valor_m2": value,
+        "rango_m2": area_range,
+        "metodo": "huella_x_pisos",
+        "confianza": confidence,
+        "supuestos": assumptions,
+        "entradas": {
+            "area_lote": lot_area,
+            "huella_calculada": footprint_value,
+            "rango_huella_m2": footprint_range,
+            "pisos": pisos,
+            "aislamientos_aplicados": {"posterior_m": posterior, "lateral_m": lateral},
+            "antejardin_m": antejardin_m,
+            "retroceso_m": retroceso_a,
+            "retroceso_aplicado_a_huella": False,
+        },
+        "fuentes": sources,
+        "fecha_consulta": consultation_date,
+        "advertencia": _DERIVED_AREA_WARNING,
+    }
+    trace.append(_step(
+        N(), "Área construible estimada — derivación volumétrica",
+        "huella_poligono_con_retiros × pisos_base",
+        estimate["entradas"],
+        value if value is not None else area_range,
+        "m²",
+        fuente="Fuentes encadenadas: Catastro capa 0 + POT capas 15, 22 y 38 + reglas ya mapeadas del Art. 310/Anexo 5",
+        nota=_DERIVED_AREA_WARNING,
+    ))
+    return estimate
 
 
 # ── Antejardín parser ─────────────────────────────────────────────────────────
@@ -832,6 +1190,11 @@ def calculate(
             "Consulte directamente la Secretaría Distrital de Planeación."
         )
 
+    if "CONSOLIDACION" in trat and metrics is not None:
+        metrics["area_construible_estimada"] = _derive_consolidacion_area(
+            lookup, metrics, result["antejardin"], trace, N,
+        )
+
     result["metrics"] = metrics
     result["binding_constraint"] = binding
 
@@ -1169,7 +1532,13 @@ def _calc_consolidacion(
             pisos, "pisos",
             fuente=alt_struct.get("fuente", "Layer 15 campo ALTURA_MAXIMA"),
         ))
-        metrics["altura_base_pisos"] = {"valor": pisos, "confianza": "alta"}
+        metrics["altura_base_pisos"] = {
+            "valor": pisos,
+            "confianza": "alta",
+            "fuente": alt_struct.get("fuente", "Layer 15 campo ALTURA_MAXIMA"),
+            "articulo": alt_struct.get("articulo", "Art. 310 Decreto 555/2021"),
+            "fecha_consulta": (lookup.get("consulta") or {}).get("fecha"),
+        }
         metrics["altura_con_bonus_pisos"] = {
             "valor": None, "confianza": "alta",
             "nota": "Mapa indica altura fija — no hay separación base/bonus para este lote.",
@@ -1263,7 +1632,13 @@ def _calc_consolidacion(
             "unidad": "pisos",
             "fuente": alt_struct.get("fuente", "Layer 15 campo ALTURA_MAXIMA"),
         })
-        metrics["altura_base_pisos"] = {"valor": p_base, "confianza": "alta"}
+        metrics["altura_base_pisos"] = {
+            "valor": p_base,
+            "confianza": "alta",
+            "fuente": alt_struct.get("fuente", "Layer 15 campo ALTURA_MAXIMA"),
+            "articulo": alt_struct.get("articulo", "Art. 310 Decreto 555/2021"),
+            "fecha_consulta": (lookup.get("consulta") or {}).get("fecha"),
+        }
         # Upper bound of the range — always emitted so the client can estimate
         # total buildable area (footprint × p_bonus) even before frente is known.
         metrics["altura_maxima_rango_pisos"] = {"valor": p_bonus, "confianza": "media",
@@ -1657,7 +2032,14 @@ def _calc_renovacion_urbana(
             "nota": _RU_IO_ALTURA_NULL,
         })
     metrics["planta_maxima_m2"] = {"valor": None, "confianza": "media", "nota": _RU_IO_ALTURA_NULL}
-    metrics["altura_maxima_pisos"] = {"valor": None, "confianza": "media", "nota": _RU_IO_ALTURA_NULL}
+    metrics["altura_maxima_pisos"] = {
+        "valor": None,
+        "confianza": "media",
+        "nota": _RU_IO_ALTURA_NULL,
+        "fuente": "Artículos 304–307 y Anexo 5, Decreto Distrital 555 de 2021",
+        "articulo": "Arts. 304–307 y Anexo 5 Decreto 555/2021",
+        "fecha_consulta": (lookup.get("consulta") or {}).get("fecha"),
+    }
 
     trace.append({
         "paso": N(),

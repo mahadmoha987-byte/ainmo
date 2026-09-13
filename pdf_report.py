@@ -359,6 +359,25 @@ def _param_rows(d: dict, lu: dict) -> list[dict]:
                     io_ed.get("confianza") or "media",
                     io_ed.get("nota") or ""))
 
+    derived = dm.get("area_construible_estimada") or {}
+    if derived:
+        derived_range = derived.get("rango_m2")
+        derived_value = (
+            f"{_n(derived.get('valor_m2'), 1)} m²"
+            if derived.get("valor_m2") is not None
+            else (
+                f"{_n(derived_range[0], 1)}–{_n(derived_range[1], 1)} m²"
+                if derived_range else "No calculable"
+            )
+        )
+        rows.append(row(
+            "Estimación", "Área construible estimada (huella × pisos)",
+            derived_value,
+            "Catastro capa 0 + POT capas 15, 22 y 38; Art. 310/Anexo 5 ya mapeados",
+            derived.get("confianza") or "baja",
+            derived.get("advertencia") or "Estimación derivada; no es un IC/IO fijado por el decreto.",
+        ))
+
     sub_ed = ed.get("subdivision_permitida") or {}
     if sub_ed:
         rows.append(row("Norma", "Subdivisión permitida",
@@ -881,7 +900,7 @@ body {
     <div class="verdict no-break">
       <div class="verdict-grid">
         <div class="verdict-cell accent">
-          <div class="vc-label">Área construible máx.</div>
+          <div class="vc-label">{{ area_label }}</div>
           <div class="vc-val">{{ area_max }}</div>
           {% if area_max_unit %}<div class="vc-sub">{{ area_max_unit }}</div>{% endif %}
         </div>
@@ -1249,9 +1268,20 @@ def _render_html(
 
     # Verdict
     area_max_val = _get(m, "area_construible_max_m2", "valor")
+    derived_area = m.get("area_construible_estimada") or {}
+    area_label = "Área construible máx."
     if area_max_val:
         area_max  = _n(area_max_val, 1)
         area_unit = "m²"
+    elif derived_area.get("valor_m2") is not None:
+        area_label = "Área estimada · derivada"
+        area_max = _n(derived_area["valor_m2"], 1)
+        area_unit = "m² · no es tope normativo"
+    elif derived_area.get("rango_m2"):
+        area_label = "Área estimada · rango"
+        derived_range = derived_area["rango_m2"]
+        area_max = f"{_n(derived_range[0], 1)}–{_n(derived_range[1], 1)}"
+        area_unit = "m² · no es tope normativo"
     else:
         nota_ic = _get(m, "area_construible_max_m2", "nota") or ""
         area_max  = "IC resultante"
@@ -1333,6 +1363,7 @@ def _render_html(
         lng          = lng,
         map_img      = map_img,
         area_max     = area_max,
+        area_label   = area_label,
         area_max_unit = area_unit,
         units_est    = units_est,
         units_sub    = units_sub,
