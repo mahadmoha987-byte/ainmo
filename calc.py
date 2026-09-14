@@ -1002,36 +1002,94 @@ def estimate_units(
 
     # Step 4: Units per type
     unidades_por_tipo: dict[str, dict] = {}
-    total_unidades = 0
+    expected_units: dict[str, float] = {}
+    unit_trace_steps: dict[str, dict] = {}
 
     for tipo, cfg in mix.items():
         pct = cfg["pct"]
         m2 = cfg["m2_neta"]
         area_tipo = round(area_vendible * pct / 100, 1)
-        n_units = int(area_tipo / m2)
-        total_unidades += n_units
+        theoretical_units = area_tipo / m2
+        n_units = int(theoretical_units)
+        expected_units[tipo] = theoretical_units
         unidades_por_tipo[tipo] = {
             "label": cfg["label"],
             "pct_mezcla": pct,
             "m2_neta_por_unidad": m2,
             "area_asignada_m2": area_tipo,
             "unidades": n_units,
+            "unidades_teoricas": round(theoretical_units, 2),
         }
         ftrace.append(_step(
             SN(), f"Unidades {cfg['label']}",
-            f"área_{tipo} = {pct}% × área_vendible;  n_{tipo} = área_{tipo} / {m2} m²",
+            f"área_{tipo} = {pct}% × área_vendible; unidades_teóricas = área_{tipo} / {m2} m²",
             {"pct": pct, "área_vendible_m2": area_vendible, "m2_por_unidad": m2},
-            n_units, "unidades",
-            nota=f"área asignada = {area_tipo} m²",
+            round(theoretical_units, 2), "unidades teóricas",
+            nota=f"Área asignada teórica = {area_tipo} m²; falta la asignación entera por mayor residuo.",
         ))
+        unit_trace_steps[tipo] = ftrace[-1]
+
+    # Add fractional yields before rounding. Rounding every typology
+    # independently makes small but viable projects report zero.
+    target_total = int(sum(expected_units.values()))
+    allocated_total = sum(v["unidades"] for v in unidades_por_tipo.values())
+    used_area = sum(v["unidades"] * v["m2_neta_por_unidad"] for v in unidades_por_tipo.values())
+    remaining = max(0, target_total - allocated_total)
+    ranked_types = sorted(
+        mix,
+        key=lambda tipo: expected_units[tipo] - int(expected_units[tipo]),
+        reverse=True,
+    )
+    while remaining:
+        candidate = next(
+            (tipo for tipo in ranked_types
+             if used_area + mix[tipo]["m2_neta"] <= area_vendible + 1e-9),
+            None,
+        )
+        if candidate is None:
+            break
+        unidades_por_tipo[candidate]["unidades"] += 1
+        used_area += mix[candidate]["m2_neta"]
+        remaining -= 1
+        ranked_types.remove(candidate)
+        if not ranked_types and remaining:
+            ranked_types = sorted(mix, key=lambda tipo: mix[tipo]["m2_neta"])
+
+    total_unidades = sum(v["unidades"] for v in unidades_por_tipo.values())
+    for tipo, values in unidades_por_tipo.items():
+        step = unit_trace_steps[tipo]
+        step["resultado"] = values["unidades"]
+        step["unidad"] = "unidades completas"
+        step["nota"] = (
+            f"Área asignada teórica = {values['area_asignada_m2']} m²; rendimiento fraccional = "
+            f"{values['unidades_teoricas']}; asignación entera final por mayor residuo = "
+            f"{values['unidades']}."
+        )
 
     ftrace.append(_step(
         SN(), "Total unidades estimadas",
         "total = Σ n_tipo",
         {t: unidades_por_tipo[t]["unidades"] for t in unidades_por_tipo},
         total_unidades, "unidades",
-        nota=UNIT_ESTIMATE_DISCLAIMER,
+        nota=("Las fracciones por tipología se suman antes del redondeo conservador; "
+              "esto evita devolver cero solo por redondear cada mezcla por separado. "
+              + UNIT_ESTIMATE_DISCLAIMER),
     ))
+
+    def fmt_es_1(value: float) -> str:
+        return f"{value:,.1f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+    if total_unidades:
+        motivo = (
+            f"Estimación derivada: {fmt_es_1(area_construible_m2)} m² brutos menos "
+            f"{circulacion_pct:.0f}% de circulación dejan {fmt_es_1(area_vendible)} m² vendibles; "
+            f"la mezcla indicada produce {total_unidades} unidades completas antes del diseño."
+        )
+    else:
+        motivo = (
+            f"Con {fmt_es_1(area_vendible)} m² vendibles y la mezcla indicada no cabe una unidad "
+            "completa; ajuste la mezcla o modele una distribución arquitectónica."
+        )
 
     return {
         "estimacion": True,
@@ -1042,6 +1100,11 @@ def estimate_units(
         "area_vendible_neta_m2": area_vendible,
         "total_unidades": total_unidades,
         "unidades_por_tipo": unidades_por_tipo,
+        "estado": "derivado",
+        "motivo": motivo,
+        "que_se_necesita": "Definir la mezcla, las áreas promedio y la eficiencia vendible del proyecto.",
+        "quien_lo_resuelve": "profesional",
+        "metodo": "suma_de_unidades_teoricas_con_redondeo_conservador",
         "formula_trace": ftrace,
     }
 

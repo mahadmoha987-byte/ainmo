@@ -266,6 +266,8 @@ details.trace-block[open] summary::after{content:"\25BE contraer"}
 .kpi-unit{font-size:var(--ts-xs);color:var(--ink-4);margin-top:3px}
 .kpi-null .kpi-value{font-family:var(--ff-ui);font-size:var(--ts-md);font-weight:var(--fw-4);color:var(--ink-4)}
 .kpi-reason{font-size:var(--ts-xs);color:var(--ink-4);margin-top:3px}
+.kpi-units-explained .kpi-reason{line-height:1.5;margin-top:8px;color:var(--ink-3)}
+.kpi-action{font-size:var(--ts-2xs);line-height:1.45;color:var(--ink-3);margin-top:8px;padding-top:7px;border-top:var(--rule-light)}
 .kpi-fin{background:var(--paper-1)}
 .kpi-fin .kpi-label{color:var(--ink-3)}
 .kpi-fin .kpi-value{font-size:var(--ts-xl)}
@@ -298,8 +300,12 @@ details.trace-block[open] summary::after{content:"\25BE contraer"}
 /* ── Verdict banner — top-level feasibility verdict ─────────────────────── */
 .verdict-banner{display:flex;align-items:flex-start;gap:var(--sp-4);padding:var(--sp-5);margin-bottom:var(--sp-4);border-left:5px solid}
 .verdict-banner .vb-icon{font-size:28px;line-height:1;flex-shrink:0;margin-top:1px}
+.verdict-banner .vb-content{max-width:850px}
+.verdict-banner .vb-question{font-size:var(--ts-sm);font-weight:var(--fw-7);letter-spacing:.45px;text-transform:uppercase;margin-bottom:4px;opacity:.8}
+.verdict-banner .vb-answer{font-size:clamp(32px,4vw,54px);font-weight:var(--fw-8);line-height:1;margin-bottom:10px;letter-spacing:-1.2px}
 .verdict-banner .vb-headline{font-size:var(--ts-2xl);font-weight:var(--fw-8);line-height:1.2;margin-bottom:5px}
 .verdict-banner .vb-sub{font-size:var(--ts-md);line-height:1.5}
+.verdict-banner .vb-binding{font-size:var(--ts-base);line-height:1.5;margin-top:12px;padding-top:10px;border-top:1px solid currentColor}
 .vb-viable{background:var(--c-a-bg);border-color:var(--c-a-fg);color:var(--c-a-fg)}
 .vb-condiciones{background:var(--c-m-bg);border-color:var(--c-m-fg);color:var(--c-m-fg)}
 .vb-bloqueado{background:var(--c-r-bg);border-color:var(--c-r-fg);color:var(--c-r-fg)}
@@ -2248,6 +2254,21 @@ function _kpiLoading(label, fin = false) {
   </div>`;
 }
 
+function _kpiUnits(un, estimatedArea) {
+  const estado = un.estado || 'derivado';
+  const total = Number(un.total_unidades);
+  const hasTotal = Number.isFinite(total);
+  const value = !hasTotal ? 'No calculado' : total === 0 ? 'Sin unidades completas' : total;
+  return `<div class="kpi-cell kpi-units-explained" data-estado="${escHtml(estado)}">
+    <div class="kpi-label">UNIDADES</div>
+    ${AinmoFigures.badge(estado)}
+    <div class="kpi-value${total === 0 || !hasTotal ? ' figure-text-value' : ''}">${escHtml(String(value))}</div>
+    <div class="kpi-unit">aprox.${estimatedArea ? ' · área estimada' : ''}</div>
+    <div class="kpi-reason">${escHtml(un.motivo || 'Estimación según área vendible, circulación y mezcla de unidades.')}</div>
+    ${un.que_se_necesita ? `<div class="kpi-action"><strong>Se necesita:</strong> ${escHtml(un.que_se_necesita)}${un.quien_lo_resuelve ? ` — ${escHtml(un.quien_lo_resuelve)}` : ''}</div>` : ''}
+  </div>`;
+}
+
 function _areaForFinancials(d) {
   const m = d?.metrics || {};
   const trat = (d?.tratamiento || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -2406,8 +2427,7 @@ async function _fetchKpiFinancials(d) {
   // Update units cell
   const un = unResp.status === 'fulfilled' && unResp.value.ok ? unResp.value.data : null;
   if (un?.total_unidades != null) {
-    setCell('kpi-units-cell', _kpiCell('UNIDADES', un.total_unidades,
-      areaSource.estimated ? 'aprox. · área estimada' : 'aprox.'));
+    setCell('kpi-units-cell', _kpiUnits(un, areaSource.estimated));
   } else {
     setCell('kpi-units-cell', _kpiNull('UNIDADES', 'No se pudo obtener el escenario de unidades. Reintente el cálculo.', false, 'error'));
   }
@@ -2438,41 +2458,41 @@ function _verdictBlockers(d) {
 function verdictBanner(d) {
   const m = d.metrics || {};
   const bc = d.binding_constraint;
-  const trat = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
-  const isRenov = trat.includes('RENOVACION');
-
   const blockers = _verdictBlockers(d);
-  const isBlocked = bc === 'indeterminado' || blockers.length > 0;
-
-  if (isBlocked) {
-    const sub = blockers.length ? blockers.join('. ') + '.' : 'Verifique los datos del lote con un profesional.';
-    return `<div class="verdict-banner vb-condiciones" role="status">
-      <div class="vb-icon" aria-hidden="true">⚠</div>
-      <div class="vb-content">
-        <div class="vb-headline">Resultado preliminar — requiere verificaciones</div>
-        <div class="vb-sub">${escHtml(sub)}</div>
-      </div>
-    </div>`;
-  }
-
-  // VIABLE — assemble sub-line from available data
-  const area = isRenov
-    ? (m.area_construible_max_sin_manzana_completa_m2?.valor ?? m.area_construible_max_m2?.valor)
-    : m.area_construible_max_m2?.valor;
-  const pisos = m.altura_base_pisos?.valor ?? m.altura_maxima_pisos?.valor;
-  const unidades = d.unit_estimate?.total_unidades;
-
-  const subParts = [];
-  if (area != null)    subParts.push(isRenov ? `Hasta ${fmt(area)} m² (ICe 5.0)` : `Hasta ${fmt(area)} m²`);
-  if (unidades)        subParts.push(`aprox. ${unidades} unidades`);
-  if (pisos != null)   subParts.push(`${pisos} piso${pisos !== 1 ? 's' : ''}`);
-
-  const sub = subParts.length ? subParts.join(' · ') : 'Revisa los detalles abajo.';
-  return `<div class="verdict-banner vb-viable" role="status">
-    <div class="vb-icon" aria-hidden="true">✓</div>
+  const hardStops = ['restriccion_bloqueante','tratamiento_no_implementado','conservacion_no_soportado'];
+  const no = hardStops.includes(bc);
+  const conditional = !no && (bc === 'indeterminado' || bc === 'anu_required' || blockers.length > 0
+    || Object.values(m).some(x => x?.estado === 'insuficiente' || x?.estado === 'requiere_concepto'));
+  const answer = no ? 'No' : conditional ? 'Con condiciones' : 'Sí';
+  const tone = no ? 'vb-bloqueado' : conditional ? 'vb-condiciones' : 'vb-viable';
+  const icon = no ? '✕' : conditional ? '⚠' : '✓';
+  const hasDerivedArea = m.area_construible_estimada?.estado === 'derivado';
+  const reason = no
+    ? 'La restricción o el tratamiento identificado impide emitir una cabida ordinaria con este cálculo.'
+    : hasDerivedArea
+      ? 'Existe un escenario edificable preliminar, pero el área es derivada y la geometría del proyecto debe verificarse.'
+      : conditional
+        ? (blockers[0] || 'Existe potencial edificable, pero falta resolver información necesaria antes de diseñar o comprar.')
+        : 'El motor resolvió un escenario edificable preliminar con las reglas y fuentes consultadas.';
+  const bindingText = ({
+    height: 'La altura es la restricción que manda aquí, no el índice de construcción.',
+    footprint: 'La huella edificable es la restricción que manda aquí.',
+    footprint_and_height: 'La huella edificable y la altura mandan conjuntamente aquí.',
+    total_area: 'El área construible total es la restricción que manda aquí.',
+    total_area_and_footprint: 'El área construible total y la huella mandan conjuntamente aquí.',
+    anu_required: 'El ANU debe confirmarse antes de poder determinar la restricción que manda.',
+    indeterminado: 'La restricción principal depende de la modelación volumétrica del proyecto.',
+    restriccion_bloqueante: 'Una restricción superior bloquea la aplicación ordinaria de la edificabilidad POT.',
+    tratamiento_no_implementado: 'El tratamiento aplicable todavía no tiene un cálculo automatizado completo.',
+    conservacion_no_soportado: 'El instrumento patrimonial específico manda y requiere revisión especializada.'
+  })[bc] || 'La restricción principal debe confirmarse en el detalle normativo del resultado.';
+  return `<div class="verdict-banner ${tone}" role="status" aria-label="Veredicto de edificabilidad">
+    <div class="vb-icon" aria-hidden="true">${icon}</div>
     <div class="vb-content">
-      <div class="vb-headline">Escenario preliminar calculado</div>
-      <div class="vb-sub">${sub}</div>
+      <div class="vb-question">¿Se puede construir en este predio?</div>
+      <div class="vb-answer">${answer}</div>
+      <div class="vb-sub">${escHtml(reason)}</div>
+      <div class="vb-binding"><strong>Restricción que manda:</strong> ${escHtml(bindingText)}</div>
     </div>
   </div>`;
 }
