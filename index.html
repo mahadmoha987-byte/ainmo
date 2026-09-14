@@ -537,6 +537,8 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
 @media print{.result-anchor-rail{display:none!important}.result-anchor-section,.result-anchor-target{scroll-margin-top:0}}
 
 </style>
+<link rel="stylesheet" href="/static/figure-status.css?v=20260914">
+<script src="/static/figure-status.js?v=20260914"></script>
 </head>
 <body>
 
@@ -1660,6 +1662,7 @@ function showResult(d, lat, lng, vis, anu) {
       <span class="result-context-pill">${d.lote?.area_m2?.valor != null ? `${fmt(d.lote.area_m2.valor)} m²` : 'Área SIN_DATO'}</span>
     </div>
   </header>`);
+  if (d.figuras) parts.push(AinmoFigures.summary(d));
   parts.push(`<nav class="result-anchor-rail" aria-label="Secciones del resultado">
     <a class="is-active" href="#result-resumen">Resumen</a>
     <a href="#result-volumetria">Norma y volumen</a>
@@ -1680,6 +1683,7 @@ function showResult(d, lat, lng, vis, anu) {
   // requires diligence. Built exclusively from the cited calculation result.
   parts.push(acquisitionBrief(d));
   parts.push(`</section><section class="result-anchor-section" id="result-restricciones"><div class="result-section-label">Restricciones y condiciones</div>`);
+  if (d.figuras) parts.push(AinmoFigures.grid(d, 'restricciones'));
 
   const eq253 = d.equipamiento_decreto_253;
   if (eq253) {
@@ -1705,7 +1709,7 @@ function showResult(d, lat, lng, vis, anu) {
   }
 
   const obl2026 = d.referencia_obligaciones_urbanisticas_2026;
-  if (obl2026) {
+  if (obl2026 && !d.figuras) {
     parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--ink-4)">
       <strong>Obligaciones urbanísticas - referencia 2026: $${Number(obl2026.valor_tope_cop_m2).toLocaleString('es-CO')}/m².</strong>
       ${escHtml(obl2026.nota)} <span style="font-size:12px">${escHtml(obl2026.cita)}</span>
@@ -1773,7 +1777,8 @@ function showResult(d, lat, lng, vis, anu) {
     normParts.push(_frenteInputCard(lat, lng, vis, anu ?? d.input?.anu_m2_supplied ?? null));
   }
 
-  normParts.push(`<div class="result-anchor-target" id="result-modelo-3d"><div class="result-section-label">Modelo tridimensional</div>
+  normParts.push(`<div class="result-anchor-target" id="result-modelo-3d" data-estado="derivado"><div class="result-section-label">Modelo tridimensional</div>
+  ${AinmoFigures.badge('derivado')} <span class="m-note">Maqueta aproximada con supuestos propios; no sustituye la modelación del proyecto ni necesariamente reproduce la huella estimada del resumen.</span>
   <div class="massing-wrap" id="massing-wrap">
     <div class="massing-toolbar">
       <span class="mtb-label">Vista 3D — maqueta normativa</span>
@@ -1795,10 +1800,10 @@ function showResult(d, lat, lng, vis, anu) {
     }
   }
 
-  if (!_isRenov) normParts.push(antejardínCard(d.antejardin));
+  if (!_isRenov && !d.figuras) normParts.push(antejardínCard(d.antejardin));
   normParts.push(metricsSection(d));
-  normParts.push(setbacksCard(d));
-  normParts.push(parkingCard(d));
+  if (!d.figuras) normParts.push(setbacksCard(d));
+  if (!d.figuras) normParts.push(parkingCard(d));
   normParts.push(unitsPanel(d));
   normParts.push(`</section>`);
 
@@ -1839,6 +1844,7 @@ function showResult(d, lat, lng, vis, anu) {
   </div>`);
 
   set(parts.join(''));
+  if (d.figuras) AinmoFigures.init();
   _initResultAnchors();
   // Financial KPIs consume the server-labelled area source. A derived area is
   // never substituted into area_construible_max_m2.
@@ -2173,14 +2179,14 @@ function buildingProfile(d) {
 function lotIdFull(d, lat, lng) {
   const lote = d.lote || {};
   const area = lote.area_m2?.valor;
-  const trat = d.tratamiento || '—';
+  const trat = d.tratamiento || 'Tratamiento sin dato: consultar Capa 15';
   const tipp = d.tipologia?.valor || null;
   const rango = d.rango || null;
   const anu = d.anu?.valor_m2;
 
   let items = [
-    { label: 'LOTE (LOTCODIGO)', val: lote.lotcodigo || '—' },
-    { label: 'Área del lote', val: area ? `${fmt(area)} m²` : '—' },
+    { label: 'LOTE (LOTCODIGO)', val: lote.lotcodigo || 'Identificador catastral sin dato' },
+    { label: 'Área del lote', val: area != null ? `${fmt(area)} m²` : 'Área sin dato: verificar polígono catastral' },
     { label: 'Tratamiento', val: trat },
   ];
   if (rango) items.push({ label: 'Rango', val: `Rango ${rango}` });
@@ -2217,17 +2223,20 @@ function fmtCopM(v) {
 }
 
 function _kpiCell(label, value, unit, fin = false) {
-  return `<div class="kpi-cell${fin ? ' kpi-fin' : ''}">
+  const estimated = fin || label === 'UNIDADES';
+  return `<div class="kpi-cell${fin ? ' kpi-fin' : ''}"${estimated ? ' data-estado="derivado"' : ''}>
     <div class="kpi-label">${label}</div>
-    <div class="kpi-value">${value}</div>
+    ${estimated ? AinmoFigures.badge('derivado') : ''}
+    <div class="kpi-value">${value ?? 'Datos insuficientes'}</div>
     ${unit ? `<div class="kpi-unit">${unit}</div>` : ''}
   </div>`;
 }
 
-function _kpiNull(label, reason, fin = false) {
-  return `<div class="kpi-cell kpi-null${fin ? ' kpi-fin' : ''}">
+function _kpiNull(label, reason, fin = false, estado = 'insuficiente') {
+  return `<div class="kpi-cell kpi-null${fin ? ' kpi-fin' : ''}" data-estado="${estado}">
     <div class="kpi-label">${label}</div>
-    <div class="kpi-value">—</div>
+    ${AinmoFigures.badge(estado)}
+    <div class="kpi-value figure-text-value">${estado === 'error' ? 'Falló la consulta' : 'Faltan datos'}</div>
     <div class="kpi-reason">${reason}</div>
   </div>`;
 }
@@ -2235,7 +2244,7 @@ function _kpiNull(label, reason, fin = false) {
 function _kpiLoading(label, fin = false) {
   return `<div class="kpi-cell kpi-loading${fin ? ' kpi-fin' : ''}">
     <div class="kpi-label">${label}</div>
-    <div class="kpi-value">…</div>
+    <div class="kpi-value figure-text-value">Calculando…</div>
   </div>`;
 }
 
@@ -2264,19 +2273,29 @@ function kpiStrip(d) {
   const pisos = m.altura_base_pisos?.valor ?? m.altura_maxima_pisos?.valor;
 
   const areaLabel = isRenov ? 'ICe 5.0 BASE' : areaSource.estimated ? 'ÁREA ESTIMADA' : 'ÁREA CONSTRUIBLE';
-  const areaCell = area != null
+  let areaCell = area != null
     ? _kpiCell(areaLabel, fmt(area), areaSource.estimated ? 'm² · derivada, no tope normativo' : 'm²')
     : areaSource.range
       ? _kpiCell('ÁREA ESTIMADA', `${fmt(areaSource.range[0])}–${fmt(areaSource.range[1])}`, 'm² · rango derivado')
       : _kpiNull(areaLabel, 'requiere modelado');
 
-  const pisosCell = pisos != null
+  let pisosCell = pisos != null
     ? _kpiCell('PISOS', pisos, `${pisos === 1 ? 'piso' : 'pisos'} · ${escHtml((m.altura_base_pisos || m.altura_maxima_pisos || {}).articulo || 'mapa CU-5.4.x')}`)
     : (m.altura_maxima_pisos
       ? _kpiCell('PISOS', 'Resultante', escHtml(m.altura_maxima_pisos.articulo || 'Arts. 304–307 y Anexo 5 D.555/2021'))
       : _kpiNull('PISOS', 'sin datos'));
 
   const hasArea = area != null;
+
+  if (d.figuras) {
+    const find = id => d.figuras.find(f => f.id === id);
+    const areaFigure = areaSource.estimated || areaSource.range
+      ? find('metrics.area_construible_estimada')
+      : find(isRenov ? 'metrics.area_construible_max_sin_manzana_completa_m2' : 'metrics.area_construible_max_m2');
+    const heightFigure = find('metrics.altura_base_pisos') || find('metrics.altura_maxima_pisos') || find('edificabilidad');
+    if (areaFigure || find('edificabilidad')) areaCell = AinmoFigures.card(areaFigure || find('edificabilidad'), true);
+    if (heightFigure) pisosCell = AinmoFigures.card(heightFigure, true);
+  }
 
   return `<div class="kpi-strip" id="kpi-strip">
     ${areaCell}
@@ -2373,9 +2392,9 @@ async function _fetchKpiFinancials(d) {
     const pfResDiv = document.getElementById('pf-result');
     if (pfResDiv) pfResDiv.innerHTML = renderProformaResult(pf);
   } else {
-    const finReason = pfBlocked ? 'ingrese precio de venta' : 'sin datos';
+    const finReason = pfBlocked ? 'Ingrese precio de venta de referencia para calcular.' : 'No se pudo cargar el escenario financiero. Reintente.';
     ['kpi-ingresos-cell','kpi-costos-cell','kpi-residual-cell'].forEach(id =>
-      setCell(id, _kpiNull(id.includes('residual') ? 'VALOR RESIDUAL' : id.includes('ingresos') ? 'INGRESOS EST.' : 'COSTO EST.', finReason, true))
+      setCell(id, _kpiNull(id.includes('residual') ? 'VALOR RESIDUAL' : id.includes('ingresos') ? 'INGRESOS EST.' : 'COSTO EST.', finReason, true, pfBlocked ? 'insuficiente' : 'error'))
     );
     const pfResDiv = document.getElementById('pf-result');
     if (pfResDiv && pfResDiv.textContent.includes('Cargando'))
@@ -2386,12 +2405,13 @@ async function _fetchKpiFinancials(d) {
 
   // Update units cell
   const un = unResp.status === 'fulfilled' && unResp.value.ok ? unResp.value.data : null;
-  if (un?.total_unidades) {
+  if (un?.total_unidades != null) {
     setCell('kpi-units-cell', _kpiCell('UNIDADES', un.total_unidades,
       areaSource.estimated ? 'aprox. · área estimada' : 'aprox.'));
   } else {
-    setCell('kpi-units-cell', _kpiNull('UNIDADES', 'sin datos'));
+    setCell('kpi-units-cell', _kpiNull('UNIDADES', 'No se pudo obtener el escenario de unidades. Reintente el cálculo.', false, 'error'));
   }
+  if (d.figuras) AinmoFigures.applyFilter();
 }
 
 /* ── Verdict banner ──────────────────────────────────────────────────────── */
@@ -2581,6 +2601,7 @@ function antejardínCard(ant) {
 
 /* ── Metrics grid ────────────────────────────────────────────────────────── */
 function metricsSection(d) {
+  if (d.figuras) return AinmoFigures.grid(d);
   const m = d.metrics || {};
   const bc = d.binding_constraint;
   const cards = [];
@@ -2635,7 +2656,7 @@ function metricsSection(d) {
     if (m.aislamiento_lateral_m != null) {
       const lat_m = m.aislamiento_lateral_m;
       if (lat_m.valor === 0) {
-        cards.push(metricCard('Aislamiento lateral', '—', '', 'alta', 'Tipología continua: no exigido'));
+        cards.push(metricCard('Aislamiento lateral', '0', 'm', 'alta', 'Tipología continua: no exigido'));
       } else if (lat_m.valor != null) {
         cards.push(metricCard('Aislamiento lateral', lat_m.valor, 'm', lat_m.confianza, lat_m.nota));
       } else {
@@ -2785,7 +2806,7 @@ function derivedAreaCard(estimate) {
     : range ? `${fmt(range[0])}–${fmt(range[1])}` : 'No calculable';
   const footprint = estimate.entradas?.huella_calculada;
   const method = footprint != null
-    ? `Huella ${fmt(footprint)} m² × ${estimate.entradas?.pisos ?? '—'} pisos`
+    ? `Huella ${fmt(footprint)} m² × ${estimate.entradas?.pisos ?? 'Dato no disponible'} pisos`
     : range ? 'Rango por antejardín sin dato' : 'Faltan entradas geométricas';
   const assumptions = (estimate.supuestos || []).map(s => `<li>${escHtml(s)}</li>`).join('');
   return `<div class="metric-card m-derived">
@@ -2903,7 +2924,7 @@ function setbacksCard(d) {
     if (aisl_e) rows.push(setbackRow('Aislamiento entre edificaciones', aisl_e.formula, aisl_e.nota, aisl_e.articulo));
 
     const loteo = ed.loteo_minimo;
-    if (loteo) rows.push(setbackRow('Loteo mínimo', loteo.unifamiliar_area ? `Unifamiliar ≥${loteo.unifamiliar_area} m², frente ≥${loteo.unifamiliar_frente} m` : '—', null, loteo.articulo));
+    if (loteo) rows.push(setbackRow('Loteo mínimo', loteo.unifamiliar_area ? `Unifamiliar ≥${loteo.unifamiliar_area} m², frente ≥${loteo.unifamiliar_frente} m` : 'Dato no disponible', null, loteo.articulo));
   }
 
   if (!rows.length) return '';
@@ -2920,7 +2941,7 @@ function setbackRow(name, val, sub, art) {
       ${sub ? `<div class="sb-sub">${escHtml(sub)}</div>` : ''}
       ${art ? `<div class="sb-sub" style="color:var(--c-link)">${escHtml(art)}</div>` : ''}
     </div>
-    <div class="sb-val">${escHtml(String(val || '—'))}</div>
+    <div class="sb-val">${escHtml(String(val ?? 'Dato requerido: consultar la fuente indicada'))}</div>
   </div>`;
 }
 
@@ -2937,7 +2958,7 @@ function parkingCard(d) {
   let body = '';
   if (pk.min_pct !== null && pk.max_pct !== null) {
     const fmtPct = v => v === 0 ? '0%' : `${v}%`;
-    const fmtArea = v => v !== undefined && v !== null ? `${v.toLocaleString('es-CO')} m²` : '—';
+    const fmtArea = v => v !== undefined && v !== null ? `${v.toLocaleString('es-CO')} m²` : 'Dato no disponible';
     const minArea = pk.min_area_m2 !== undefined ? ` (≈ ${fmtArea(pk.min_area_m2)})` : '';
     const maxArea = pk.max_area_m2 !== undefined ? ` (≈ ${fmtArea(pk.max_area_m2)})` : '';
     const addArea = pk.adicional_area_m2 !== undefined ? ` (≈ ${fmtArea(pk.adicional_area_m2)})` : '';
@@ -2945,7 +2966,7 @@ function parkingCard(d) {
     body = `
       <div class="setback-row">
         <div><div class="sb-name">Área de actividad</div>
-          <div class="sb-sub">${escHtml(pk.area_actividad_label || pk.area_actividad_codigo || '—')}</div>
+          <div class="sb-sub">${escHtml(pk.area_actividad_label || pk.area_actividad_codigo || 'Dato no disponible')}</div>
         </div>
         <div class="sb-val"><span class="badge ${badgeClass}">${escHtml(badgeLabel)}</span></div>
       </div>
@@ -3069,23 +3090,24 @@ async function calcUnits() {
       return;
     }
     resDiv.innerHTML = renderUnitsResult(json.data);
+    AinmoFigures.applyFilter();
   } catch (e) {
     resDiv.innerHTML = `<div class="warn-item">Error de red: ${escHtml(e.message)}</div>`;
   }
 }
 
 function renderUnitsResult(data) {
-  const fmt = n => n?.toLocaleString('es-CO') ?? '—';
+  const fmt = n => Number.isFinite(n) ? n.toLocaleString('es-CO') : 'Falta una entrada de área o mezcla';
   const rows = Object.entries(data.unidades_por_tipo || {}).map(([tipo, u]) =>
     `<div class="setback-row">
       <div><div class="sb-name">${escHtml(u.label)}</div>
         <div class="sb-sub">${u.pct_mezcla}% · ${u.m2_neta_por_unidad} m²/und · ${fmt(u.area_asignada_m2)} m² asignados</div>
       </div>
-      <div class="sb-val">${u.unidades} unds</div>
+      <div class="sb-val">${fmt(u.unidades)} unds</div>
     </div>`
   ).join('');
 
-  return `
+  return `<div data-estado="derivado">${AinmoFigures.badge('derivado')} Escenario de unidades según área y mezcla; no es densidad autorizada.
     <div class="setback-row" style="background:var(--c-accent-soft,#e8f0fe);border-radius:6px;padding:8px 12px">
       <div><div class="sb-name">Área construible (bruta)</div></div>
       <div class="sb-val">${fmt(data.area_construible_m2)} m²</div>
@@ -3101,10 +3123,10 @@ function renderUnitsResult(data) {
     ${rows}
     <div class="setback-row" style="background:var(--c-green-soft,#e6f4ea);border-radius:6px;padding:8px 12px;margin-top:4px">
       <div><div class="sb-name" style="font-weight:700">Total unidades estimadas</div></div>
-      <div class="sb-val" style="font-weight:700;font-size:18px">${data.total_unidades}</div>
+      <div class="sb-val" style="font-weight:700;font-size:18px">${fmt(data.total_unidades)}</div>
     </div>
     <div class="ts-note" style="margin-top:8px">${escHtml(data.disclaimer)}</div>
-    ${formulaTrace(data.formula_trace || [])}
+    ${formulaTrace(data.formula_trace || [])}</div>
   `;
 }
 
@@ -3249,6 +3271,7 @@ async function calcProforma() {
     if (!json.ok) { if (resDiv) resDiv.innerHTML = `<div class="warn-item">${escHtml(json.message || 'Error')}</div>`; return; }
     if (!_proformaDefaults && json.data.defaults_meta) { _proformaDefaults = json.data.defaults_meta; _applyProformaSources(_proformaDefaults); }
     if (resDiv) resDiv.innerHTML = renderProformaResult(json.data);
+    AinmoFigures.applyFilter();
   } catch (e) {
     if (resDiv) resDiv.innerHTML = `<div class="warn-item">Error de red: ${escHtml(e.message)}</div>`;
   }
@@ -3268,6 +3291,7 @@ async function calcProformaManual() {
     if (!json.ok) { if (resDiv) resDiv.innerHTML = `<div class="warn-item">${escHtml(json.message || 'Error')}</div>`; return; }
     _proformaDefaults = json.data.defaults_meta || null;
     if (resDiv) resDiv.innerHTML = renderProformaResult(json.data);
+    AinmoFigures.applyFilter();
   } catch (e) {
     if (resDiv) resDiv.innerHTML = `<div class="warn-item">Error de red: ${escHtml(e.message)}</div>`;
   }
@@ -3317,7 +3341,7 @@ function _fmtK(v) {
 
 function renderProformaResult(d) {
   const fmtCOP = v => {
-    if (v == null) return '—';
+    if (v == null || !Number.isFinite(v)) return `${AinmoFigures.badge('insuficiente')} Falta una entrada del modelo financiero; revise los supuestos.`;
     const abs = Math.abs(v);
     return (v < 0 ? '−' : '') + '$ ' + abs.toLocaleString('es-CO');
   };
@@ -3367,13 +3391,14 @@ function renderProformaResult(d) {
     ? `<div class="pf-estimated-flag"><strong>Basado en área estimada.</strong> Tanto el valor residual del lote como toda la matriz de sensibilidad dependen de esta cabida derivada; no es un ICe/IO normativo.</div>`
     : '';
 
-  return `
+  return `<div data-estado="derivado" class="financial-figures">
+    ${AinmoFigures.badge('derivado')} <span class="m-note">Escenario calculado con precios, costos y supuestos; no es un valor del decreto.</span>
     ${estimatedFlag}
     ${veredictoHtml}
     <table class="proforma-table">
       <tbody>
         <tr class="pf-section"><td colspan="2">Ingresos</td></tr>
-        <tr><td>Área vendible (${efPct}% de bruta)${efOrigen}</td><td>${(aVend ?? 0).toLocaleString('es-CO')} m²</td></tr>
+        <tr><td>Área vendible (${efPct}% de bruta)${efOrigen}</td><td>${fmt(aVend)} m²</td></tr>
         <tr><td>Ingresos totales de ventas</td><td>${green(d.ingresos_totales_cop)}${pvOrigen}</td></tr>
         <tr class="pf-section"><td colspan="2">Costos de construcción (sin terreno)</td></tr>
         <tr><td>Costos duros (área bruta)${ccOrigen}</td><td>${red(d.costos_duros_cop)}</td></tr>
@@ -3387,9 +3412,9 @@ function renderProformaResult(d) {
     </table>
     ${sensitivityHtml}
     <p class="units-disclaimer" style="margin-top:8px">
-      Área bruta: ${(d.area_construible_m2 || 0).toLocaleString('es-CO')} m² · Área vendible: ${(aVend || 0).toLocaleString('es-CO')} m² (${efPct}% eficiencia).
+      Área bruta: ${fmt(d.area_construible_m2)} m² · Área vendible: ${fmt(aVend)} m² (${efPct}% eficiencia).
       Precio de venta y costo de construcción: referencias de mercado — verifique antes de tomar decisiones.
-    </p>
+    </p></div>
   `;
 }
 
@@ -3399,11 +3424,12 @@ function formulaTrace(steps) {
   const stepsHtml = steps.map(s => {
     const isErr = !!s.error;
     const valStr = s.valores && Object.keys(s.valores).length
-      ? JSON.stringify(s.valores, null, 2) : '';
+      ? JSON.stringify(s.valores, (k,v)=>v===null?'Dato no disponible':v, 2) : '';
     const resStr = s.resultado !== null && s.resultado !== undefined
-      ? `<div class="ts-res">= ${s.resultado} ${escHtml(s.unidad || '')}</div>` : '';
-    return `<div class="trace-step${isErr ? ' step-error' : ''}">
+      ? `<div class="ts-res">= ${typeof s.resultado==='number'?fmt(s.resultado):escHtml(s.resultado)} ${escHtml(s.unidad || '')}</div>` : `<div class="ts-res">${escHtml(s.motivo || s.error || s.nota || 'Falta una entrada para resolver este paso.')}</div>`;
+    return `<div class="trace-step${isErr ? ' step-error' : ''}" data-estado="${escHtml(s.estado || (isErr?'error':'derivado'))}">
       <div class="ts-n">Paso ${s.paso}</div>
+      ${AinmoFigures.badge(s.estado || (isErr?'error':'derivado'))}
       <div class="ts-desc">${escHtml(s.descripcion || '')}</div>
       ${s.expresion ? `<div class="ts-expr">${escHtml(s.expresion)}</div>` : ''}
       ${valStr ? `<div class="ts-vals">${escHtml(valStr)}</div>` : ''}
@@ -3488,6 +3514,16 @@ async function initMassing(calcData) {
 
   const container = document.getElementById('massing-container');
   if (!container) return;
+  const modelState = (estado, motivo) => {
+    const section = document.getElementById('result-modelo-3d');
+    if (section) {
+      section.dataset.estado = estado;
+      const badge = section.querySelector('.figure-badge');
+      if (badge) badge.outerHTML = AinmoFigures.badge(estado);
+    }
+    container.innerHTML = `<div class="massing-no-data">${escHtml(motivo)}</div>`;
+    AinmoFigures.applyFilter();
+  };
   container.innerHTML = '';
 
   // Dynamically import the module (it was already pre-parsed by the browser)
@@ -3496,24 +3532,24 @@ async function initMassing(calcData) {
     const mod = await import('/static/massing3d.js');
     buildFn = mod.buildMassing;
   } catch (e) {
-    container.innerHTML = `<div class="massing-no-data">Vista 3D no disponible</div>`;
+    modelState('error', 'No se pudo cargar el módulo 3D. Recargue la página para reintentar.');
     return;
   }
 
   if (!calcData?.lote?.geojson_polygon) {
-    container.innerHTML = `<div class="massing-no-data">Sin polígono de lote — vista 3D no disponible</div>`;
+    modelState('insuficiente', 'Falta el polígono catastral del lote para generar la vista 3D.');
     return;
   }
 
   try {
     _massingInst = buildFn(calcData, container);
   } catch (e) {
-    container.innerHTML = `<div class="massing-no-data">Error al cargar vista 3D</div>`;
+    modelState('error', 'El motor 3D falló al generar la vista. Recargue o reporte el error a Ainmo.');
     return;
   }
 
   if (!_massingInst) {
-    container.innerHTML = `<div class="massing-no-data">Sin datos de polígono para renderizar</div>`;
+    modelState('insuficiente', 'Faltan datos geométricos válidos para generar la vista 3D.');
     return;
   }
 
@@ -3529,12 +3565,12 @@ function _renderMassingInfo(m, footprintM2 = null) {
   if (!el || !m) return;
   const parts = [];
   if (m.pisos)          parts.push(`<span>${m.pisos} pisos × 3 m = ${(m.pisos * 3).toFixed(0)} m</span>`);
-  if (m.uniformInset > 0) parts.push(`<span>Aislamientos (conservador): ${m.uniformInset.toFixed(1)} m</span>`);
+  if (m.uniformInset != null) parts.push(`<span>Aislamientos (conservador): ${fmt(m.uniformInset)} m</span>`);
   // Use the corrected _computeLotFootprint result (same source as KPI strip).
   // footprintM2 is passed in by the caller; fall back to 3D geometry only when absent.
   const fp = footprintM2 ?? m.areaFootprint;
   if (fp && fp > 0) parts.push(`<span>Huella libre aprox.: ${Math.round(fp).toLocaleString('es-CO')} m²</span>`);
-  if (m.facadeAm)       parts.push(`<span>Fachada máx A: ${m.facadeAm.toFixed(1)} m</span>`);
+  if (m.facadeAm != null) parts.push(`<span>Fachada máx A: ${fmt(m.facadeAm)} m</span>`);
   if (m.anyMissing)     parts.push(`<span class="mi-warn">⚠ Algunos aislamientos sin datos — zona de retroceso estimada</span>`);
   el.innerHTML = parts.join('') || '<span>Sin datos de altura</span>';
 }
@@ -4105,7 +4141,7 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function fmt(n) {
-  if (n == null) return '—';
+  if (n == null || !Number.isFinite(Number(n))) return 'Dato no disponible: revise las entradas';
   return Number(n).toLocaleString('es-CO', { maximumFractionDigits: 1 });
 }
 function confianzaBadge(c) {

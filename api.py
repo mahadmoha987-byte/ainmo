@@ -473,6 +473,8 @@ async def calc_endpoint(
         field = _detect_missing_field(str(exc))
         return JSONResponse(status_code=200, content={
             "ok": False, "error": "input_required",
+            "estado": "insuficiente", "motivo": str(exc),
+            "que_se_necesita": f"Aportar {field} según el mensaje del cálculo.", "quien_lo_resuelve": "arquitecto / SDP",
             "field": field, "message": str(exc),
         })
     except p2_lookup.ZeroFeaturesError as exc:
@@ -481,6 +483,8 @@ async def calc_endpoint(
             return JSONResponse(status_code=200, content={
                 "ok": False,
                 "error": "layer_zero_features",
+                "estado": "insuficiente", "motivo": "La capa consultada no contiene un registro aplicable; es SIN_DATO.",
+                "que_se_necesita": "Confirmar el dato en la cartografía oficial.", "quien_lo_resuelve": "SDP",
                 "layer_name": layer_info["name"],
                 "layer_id": layer_info["id"],
                 "message": (
@@ -490,12 +494,16 @@ async def calc_endpoint(
             })
         return JSONResponse(status_code=200, content={
             "ok": False, "error": "zero_features",
+            "estado": "insuficiente", "motivo": "No se identificó un predio catastral en la coordenada.",
+            "que_se_necesita": "Confirmar ubicación y polígono catastral.", "quien_lo_resuelve": "Catastro",
             "message": "La coordenada no cae sobre ningún predio catastral registrado en Bogotá.",
         })
     except p2_lookup.ParseError as exc:
         layer_info = _extract_layer_info(str(exc))
         return JSONResponse(status_code=200, content={
             "ok": False, "error": "layer_parse_error",
+            "estado": "error", "motivo": "No fue posible interpretar la respuesta de la capa GIS.",
+            "que_se_necesita": "Reintentar y reportar el predio a soporte Ainmo si persiste.", "quien_lo_resuelve": None,
             "layer_name": layer_info["name"], "layer_id": layer_info["id"],
             "message": f"{layer_info['name']} devolvió datos inesperados. Intente de nuevo o reporte el lote si el problema persiste.",
         })
@@ -503,6 +511,8 @@ async def calc_endpoint(
         return JSONResponse(status_code=200, content={
             "ok": False,
             "error": "ambiguous_regulation",
+            "estado": "requiere_concepto", "motivo": "La cartografía devuelve normas contradictorias para el predio.",
+            "que_se_necesita": "Concepto sobre la norma aplicable.", "quien_lo_resuelve": "SDP / curaduría",
             "layer_name": "Edificabilidad POT",
             "layer_id": p2_lookup.L_EDIFICABILIDAD,
             "options": exc.options,
@@ -516,12 +526,16 @@ async def calc_endpoint(
         layer_info = _extract_layer_info(str(exc))
         return JSONResponse(status_code=200, content={
             "ok": False, "error": "layer_error",
+            "estado": "error", "motivo": "Falló la consulta de una capa GIS.",
+            "que_se_necesita": "Reintentar la consulta; reportar a soporte Ainmo si persiste.", "quien_lo_resuelve": None,
             "layer_name": layer_info["name"], "layer_id": layer_info["id"],
             "message": f"{layer_info['name']} no devolvió información para este lote. {layer_info['action']}",
         })
     except Exception:
         return JSONResponse(status_code=500, content={
             "ok": False, "error": "internal",
+            "estado": "error", "motivo": "El motor no pudo completar el cálculo por un error interno.",
+            "que_se_necesita": "Reintentar y reportar el error a soporte Ainmo.", "quien_lo_resuelve": None,
             "message": "Error interno del servidor. Intente de nuevo en unos momentos.",
         })
 

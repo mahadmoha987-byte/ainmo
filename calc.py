@@ -22,6 +22,7 @@ import sys
 from typing import Any
 
 import p2_lookup
+from figure_status import annotate_result
 from p2_lookup import BuildabilityLookupError, ZeroFeaturesError
 
 
@@ -1218,7 +1219,7 @@ def calculate(
         footprint_m2=footprint_val,
     )
 
-    return result
+    return annotate_result(result, lookup)
 
 
 # ── DESARROLLO calculator ─────────────────────────────────────────────────────
