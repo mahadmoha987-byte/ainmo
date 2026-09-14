@@ -174,7 +174,7 @@ def _normative_shell(title: str, description: str, body: str, canonical: str) ->
         "inLanguage": "es-CO",
     }, ensure_ascii=False).replace("</", "<\\/")
     return f"""<!doctype html><html lang='es-CO'><head><meta charset='utf-8'>
-<meta name='viewport' content='width=device-width,initial-scale=1'><title>{title_esc} · Ainmo</title>
+<meta name='viewport' content='width=device-width,initial-scale=1'><title>{title_esc} · Ainmo</title><link rel='icon' href='/static/favicon.svg' type='image/svg+xml'>
 <meta name='description' content='{desc_esc}'><link rel='canonical' href='{canonical_esc}'>
 <meta property='og:title' content='{title_esc} · Ainmo'><meta property='og:description' content='{desc_esc}'>
 <meta property='og:type' content='article'><script type='application/ld+json'>{structured}</script>
