@@ -18,6 +18,7 @@ import html as _html
 import httpx
 import p2_lookup, calc, geocode, pdf_report, dxf_export
 import db, auth
+import home_news
 from cabida import proforma as proforma_mod
 from cabida.market_defaults import MARKET_DEFAULTS, get_sale_price_default
 from regulatory import context as regulatory_context
@@ -103,6 +104,11 @@ async def landing():
 @app.get("/app", include_in_schema=False)
 async def app_tool():
     return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))
+
+
+@app.get("/api/home-news")
+async def homepage_news():
+    return JSONResponse(await home_news.get_news(), headers={"Cache-Control": "public, max-age=300"})
 
 
 @app.get("/dashboard", include_in_schema=False)
