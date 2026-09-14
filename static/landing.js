@@ -53,10 +53,16 @@
   document.getElementById('featureNext').addEventListener('click', () => go(1));
   document.getElementById('featurePrev').addEventListener('click', () => go(-1));
   track.addEventListener('keydown', e => { if (e.target === track && ['ArrowLeft','ArrowRight'].includes(e.key)) { e.preventDefault(); go(e.key === 'ArrowRight' ? 1 : -1); } });
-  track.addEventListener('scroll', () => {
-    const selected = cards.reduce((best, card, i) => Math.abs(cardLeft(card) - track.scrollLeft) < Math.abs(cardLeft(cards[best]) - track.scrollLeft) ? i : best, 0);
-    position.textContent = `${selected + 1} / ${cards.length}`;
-  }, {passive:true});
+  function updatePosition() {
+    const visible = cards.map((card, i) => ({i, left:cardLeft(card) - track.scrollLeft, width:card.offsetWidth}))
+      .filter(card => card.left >= -2 && card.left + card.width <= track.clientWidth + 2);
+    if (!visible.length) return;
+    const first = visible[0].i + 1, last = visible[visible.length - 1].i + 1;
+    position.textContent = `${first === last ? first : `${first}–${last}`} / ${cards.length}`;
+  }
+  track.addEventListener('scroll', updatePosition, {passive:true});
+  window.addEventListener('resize', updatePosition, {passive:true});
+  updatePosition();
   function safeUrl(value, image = false) {
     try { const u = new URL(value, location.origin); return u.protocol === 'https:' && ['bogota.gov.co','www.bogota.gov.co'].includes(u.hostname) && (!image || u.pathname.startsWith('/sites/default/')) ? u.href : null; } catch { return null; }
   }
