@@ -7,6 +7,19 @@
   const num=v=>Number.isFinite(v)?v.toLocaleString('es-CO',{maximumFractionDigits:1}):null;
   let selected='todos',corpusPromise;
   const badge=s=>`<span class="figure-badge status-${esc(s)}">${esc(labels[s]||labels.insuficiente)}</span>`;
+  const action=f=>f.que_se_necesita
+    ? `<p class="figure-action"><strong>Se necesita:</strong> ${esc(f.que_se_necesita)}${f.quien_lo_resuelve?` — ${esc(f.quien_lo_resuelve)}`:''}</p>`
+    : '';
+  function metricFigures(d){
+    const figuresById=new Map((d.figuras||[]).map(f=>[f.id,f]));
+    const entries=Object.entries(d.metrics||{});
+    if(!entries.length)return [...new Map((d.figuras||[]).map(f=>[f.id,f])).values()];
+    return entries.map(([key,metric])=>{
+      const id=`metrics.${key}`;
+      const figure=figuresById.get(id)||{};
+      return Object.assign({id,etiqueta:key.replaceAll('_',' '),seccion:'volumetria'},metric,figure);
+    });
+  }
   function display(f){
     const v=f.valor??f.valor_m2??f.dimension_m;
     if(num(v)!==null)return num(v);
@@ -23,15 +36,16 @@
     if(compact) return `<div class="kpi-cell figure-card figure-compact" data-figure-id="${esc(f.id)}" data-estado="${esc(f.estado)}">
       <div class="kpi-label">${esc(f.etiqueta)}</div>${badge(f.estado)}<div class="kpi-value ${numeric?'':'figure-text-value'}">${display(f)}</div>
       ${numeric&&f.unidad?`<div class="m-unit">${esc(f.unidad)}</div>`:''}
-      <p class="m-note">${f.estado==='derivado'?'Área estimada; no es un tope normativo.':numeric?esc(f.articulo||f.articulo_id||'Ver fuente'):esc(f.motivo)}</p>
+      <p class="m-note">${esc(f.motivo||'Estado informado por el motor de cálculo.')}</p>
+      ${action(f)}
       <details class="figure-article" data-article-id="${esc(f.articulo_id||'')}"><summary>Ver el texto del artículo ▾</summary><div class="article-text">${f.articulo_id?'Cargando corpus local…':'Transcripción no disponible; consulte el instrumento específico.'}</div>
       <p><strong>Aplicado a este predio:</strong> ${display(f)}${numeric?' '+esc(f.unidad):''}. ${esc(f.motivo)}</p><p>${esc(f.advertencia||'')}</p><p>${esc(f.que_se_necesita||'')}</p><p>${esc(f.fuente_dato)} · ${esc(f.fecha_consulta||'Fecha no disponible')}</p></details></div>`;
     return `<div class="${compact?'kpi-cell':'metric-card'} figure-card" data-figure-id="${esc(f.id)}" data-estado="${esc(f.estado)}">
       <div class="${compact?'kpi-label':'m-label'}">${esc(f.etiqueta)}</div>${badge(f.estado)}
       <div class="${compact?'kpi-value':'m-value'} ${numeric?'':'figure-text-value'}">${display(f)}</div>
       ${numeric&&f.unidad?`<div class="m-unit">${esc(f.unidad)}</div>`:''}
-      <p class="m-note">${esc(f.motivo)}</p>
-      ${f.que_se_necesita?`<p class="m-note"><strong>Qué se necesita:</strong> ${esc(f.que_se_necesita)}${f.quien_lo_resuelve?' · '+esc(f.quien_lo_resuelve):''}</p>`:''}
+      <p class="m-note">${esc(f.motivo||'Estado informado por el motor de cálculo.')}</p>
+      ${action(f)}
       ${f.condicion?`<p class="m-note"><strong>Condición:</strong> ${esc(f.condicion)}</p>`:''}
       ${f.advertencia?`<p class="derived-warning">${esc(f.advertencia)}</p>`:''}
       ${f.metodo?`<p class="m-note">Método: ${esc(f.metodo)} · confianza ${esc(f.confianza)}</p>`:''}
@@ -44,9 +58,11 @@
   }
   function summary(d){
     const counts=Object.fromEntries(Object.keys(labels).map(k=>[k,0]));
-    const unique=[...new Map((d.figuras||[]).map(f=>[f.id,f])).values()];
-    unique.forEach(f=>{if(f.estado in counts)counts[f.estado]++;});
-    return `<div class="figure-summary" aria-label="Filtrar variables por estado"><button type="button" data-status-filter="todos" aria-pressed="true">Todas (${unique.length})</button>${Object.keys(labels).filter(k=>counts[k]).map(k=>`<button type="button" data-status-filter="${k}" aria-pressed="false">${k==='resuelto'?`${counts[k]} de ${unique.length} variables resueltas`:`${counts[k]} ${plural[k]}`}</button>`).join('')}<p>Variables del cálculo normativo. Los escenarios financieros y la maqueta se identifican por separado; resuelto no significa licencia.</p></div><p id="figure-filter-feedback" class="figure-filter-feedback" role="status" hidden></p>`;
+    const metrics=metricFigures(d);
+    metrics.forEach(f=>{if(f.estado in counts)counts[f.estado]++;});
+    const statusOrder=['resuelto','derivado','insuficiente','requiere_concepto','no_aplica','error'];
+    const countLabel=k=>counts[k]===1?({derivado:'derivada',insuficiente:'con datos insuficientes',requiere_concepto:'requiere concepto',no_aplica:'no aplica',error:'con error'}[k]||plural[k]):plural[k];
+    return `<div class="figure-summary" aria-label="Resumen y filtros de las métricas"><div class="figure-summary-line"><button type="button" data-status-filter="todos" aria-pressed="true">${counts.resuelto} de ${metrics.length} ${metrics.length===1?'resuelta':'resueltas'}</button>${statusOrder.filter(k=>k!=='resuelto'&&counts[k]).map(k=>`<span aria-hidden="true">·</span><button type="button" data-status-filter="${k}" aria-pressed="false">${counts[k]} ${countLabel(k)}</button>`).join('')}</div><p>Estado de las ${metrics.length} métricas del cálculo. Seleccione un estado para filtrar el informe; “resuelto” no significa licencia.</p></div><p id="figure-filter-feedback" class="figure-filter-feedback" role="status" hidden></p>`;
   }
   function applyFilter(){
     const results=document.getElementById('results');if(!results)return;
@@ -80,6 +96,6 @@
     results.querySelectorAll('.figure-article').forEach(el=>el.addEventListener('toggle',()=>loadArticle(el)));
     applyFilter();
   }
-  root.AinmoFigures={card,summary,badge,display,init,applyFilter,grid:(d,section='volumetria')=>`<div class="metrics-grid">${(d.figuras||[]).filter(f=>f.seccion===section||(!f.seccion&&section==='volumetria')).map(f=>card(f)).join('')}</div>`};
+  root.AinmoFigures={card,summary,badge,display,metricFigures,init,applyFilter,grid:(d,section='volumetria')=>`<div class="metrics-grid">${(d.figuras||[]).filter(f=>f.seccion===section||(!f.seccion&&section==='volumetria')).map(f=>card(f)).join('')}</div>`};
   if(typeof module!=='undefined')module.exports=root.AinmoFigures;
 })(typeof window==='undefined'?globalThis:window);
