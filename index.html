@@ -518,6 +518,23 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
 .massing-no-data{display:flex;align-items:center;justify-content:center;height:120px;color:var(--ink-4);font-size:var(--ts-sm);font-family:var(--ff-ui)}
 @media print{.massing-wrap{display:none!important}}
 
+/* ── Result wayfinding ─────────────────────────────────────────────────────── */
+.result-context{margin-bottom:var(--sp-3);padding-bottom:var(--sp-3);border-bottom:var(--rule-heavy)}
+.result-context-kicker{font-family:var(--ff-mono);font-size:var(--ts-2xs);text-transform:uppercase;letter-spacing:.55px;color:var(--ink-4);margin-bottom:3px}
+.result-context h1{font-size:var(--ts-2xl);line-height:1.15;letter-spacing:-.025em;margin:0 0 var(--sp-2);word-break:break-word}
+.result-context-meta{display:flex;flex-wrap:wrap;gap:var(--sp-1)}
+.result-context-pill{display:inline-flex;align-items:center;padding:2px 7px;background:var(--paper-1);border:var(--rule);font-family:var(--ff-mono);font-size:var(--ts-2xs);color:var(--ink-3)}
+.result-anchor-rail{position:sticky;top:0;z-index:80;display:flex;gap:0;overflow-x:auto;margin:0 0 var(--sp-4);background:rgba(250,250,248,.97);border:var(--rule);box-shadow:0 6px 16px rgba(17,19,24,.07);scrollbar-width:thin;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.result-anchor-rail a{display:flex;align-items:center;min-height:42px;padding:0 11px;border-right:var(--rule);color:var(--ink-3);font-size:var(--ts-xs);font-weight:var(--fw-6);white-space:nowrap;text-decoration:none}
+.result-anchor-rail a:last-child{border-right:0}.result-anchor-rail a:hover{background:var(--paper-1);color:var(--ink-0)}
+.result-anchor-rail a.is-active{background:var(--ink-0);color:var(--paper)}
+.result-anchor-section,.result-anchor-target{scroll-margin-top:56px}
+.result-section-label{display:flex;align-items:center;gap:var(--sp-2);margin:var(--sp-5) 0 var(--sp-3);font-family:var(--ff-mono);font-size:var(--ts-xs);font-weight:var(--fw-6);text-transform:uppercase;letter-spacing:.45px;color:var(--ink-4)}
+.result-section-label::after{content:"";height:1px;background:var(--ink-7);flex:1}
+#result-resumen>.result-section-label{margin-top:0}
+@media(max-width:700px){.result-anchor-rail{top:0;margin-inline:calc(-1 * var(--sp-5));padding-left:var(--sp-2);border-left:0;border-right:0}.result-context h1{font-size:var(--ts-xl)}.proforma-grid-3{grid-template-columns:1fr}.proforma-grid-3 label{min-width:0}.pf-const-row input{width:min(140px,55vw)}}
+@media print{.result-anchor-rail{display:none!important}.result-anchor-section,.result-anchor-target{scroll-margin-top:0}}
+
 </style>
 </head>
 <body>
@@ -734,6 +751,7 @@ let _suggestAbortCtrl = null;   // cancels superseded suggestion requests
 let _suggestSeq = 0;            // prevents out-of-order dropdown renders
 let _addressSuggestions = [];
 let _suggestActiveIndex = -1;
+let _resultNavObserver = null;  // scroll-spy for result-section navigation
 
 function _authHeaders() {
   if (_session?.access_token) {
@@ -1629,6 +1647,27 @@ function showResult(d, lat, lng, vis, anu) {
   const isPro = _currentUser && _currentUser.plan === 'pro';
   const _tratUpper = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
   const _isRenov = _tratUpper.includes('RENOVACION');
+  const resultAddress = document.getElementById('addr-input')?.value?.trim() || `Predio ${d.lote?.lotcodigo || 'consultado'}`;
+  const consultedAt = d.consulta?.fecha || d.contexto_regulatorio?.corte_normativo || 'sin fecha';
+
+  parts.push(`<header class="result-context">
+    <div class="result-context-kicker">Informe de prefactibilidad · consulta ${escHtml(consultedAt)}</div>
+    <h1>${escHtml(resultAddress)}</h1>
+    <div class="result-context-meta">
+      <span class="result-context-pill">${escHtml(d.tratamiento || 'Tratamiento SIN_DATO')}</span>
+      <span class="result-context-pill">Lote ${escHtml(d.lote?.lotcodigo || 'SIN_DATO')}</span>
+      <span class="result-context-pill">${d.lote?.area_m2?.valor != null ? `${fmt(d.lote.area_m2.valor)} m²` : 'Área SIN_DATO'}</span>
+    </div>
+  </header>`);
+  parts.push(`<nav class="result-anchor-rail" aria-label="Secciones del resultado">
+    <a class="is-active" href="#result-resumen">Resumen</a>
+    <a href="#result-volumetria">Norma y volumen</a>
+    <a href="#result-modelo-3d">Modelo 3D</a>
+    <a href="#result-restricciones">Restricciones</a>
+    <a href="#result-financieros">Financieros</a>
+    <a href="#result-trazabilidad">Trazabilidad</a>
+  </nav>`);
+  parts.push(`<section class="result-anchor-section" id="result-resumen"><div class="result-section-label">Resumen ejecutivo</div>`);
 
   // Verdict banner — first element, highest prominence
   parts.push(verdictBanner(d));
@@ -1639,6 +1678,7 @@ function showResult(d, lat, lng, vis, anu) {
   // Acquisition-facing summary of what is decision-ready and what still
   // requires diligence. Built exclusively from the cited calculation result.
   parts.push(acquisitionBrief(d));
+  parts.push(`</section><section class="result-anchor-section" id="result-restricciones"><div class="result-section-label">Restricciones y condiciones</div>`);
 
   const eq253 = d.equipamiento_decreto_253;
   if (eq253) {
@@ -1705,8 +1745,7 @@ function showResult(d, lat, lng, vis, anu) {
     </div>`);
   }
 
-  // Pro-forma — always rendered, directly under KPI strip
-  parts.push(proformaPanel(d));
+  parts.push(`</section>`);
 
   // Export buttons — PDF is available to all users
   const pdfBtn = `<button class="btn btn-primary btn-sm" onclick="downloadPdf(${lat},${lng},${vis})">⬇ Descargar PDF</button>`;
@@ -1723,6 +1762,7 @@ function showResult(d, lat, lng, vis, anu) {
   // Normative detail — collapsible, collapsed by default
   const normParts = [];
 
+  normParts.push(`<section class="result-anchor-section" id="result-volumetria"><div class="result-section-label">Norma y volumetría</div>`);
   normParts.push(lotIdFull(d, lat, lng));
   normParts.push(bindingBanner(d.binding_constraint, d));
   normParts.push(buildingProfile(d));
@@ -1732,7 +1772,8 @@ function showResult(d, lat, lng, vis, anu) {
     normParts.push(_frenteInputCard(lat, lng, vis, anu ?? d.input?.anu_m2_supplied ?? null));
   }
 
-  normParts.push(`<div class="massing-wrap" id="massing-wrap">
+  normParts.push(`<div class="result-anchor-target" id="result-modelo-3d"><div class="result-section-label">Modelo tridimensional</div>
+  <div class="massing-wrap" id="massing-wrap">
     <div class="massing-toolbar">
       <span class="mtb-label">Vista 3D — maqueta normativa</span>
       <button class="massing-btn active" id="btn-view-3d" onclick="setMassingView('3d')" aria-pressed="true">3D</button>
@@ -1740,7 +1781,7 @@ function showResult(d, lat, lng, vis, anu) {
     </div>
     <div id="massing-container"><div class="massing-no-data">Cargando vista 3D…</div></div>
     <div class="massing-info" id="massing-info"></div>
-  </div>`);
+  </div></div>`);
 
   if (d.warnings?.length) {
     const filteredWarnings = d.warnings.filter(w => {
@@ -1758,15 +1799,18 @@ function showResult(d, lat, lng, vis, anu) {
   normParts.push(setbacksCard(d));
   normParts.push(parkingCard(d));
   normParts.push(unitsPanel(d));
+  normParts.push(`</section>`);
 
   if (d.formula_trace) {
-    normParts.push(formulaTrace(d.formula_trace));
+    normParts.push(`<section class="result-anchor-section" id="result-trazabilidad"><div class="result-section-label">Trazabilidad del cálculo</div>${formulaTrace(d.formula_trace)}</section>`);
   } else if (_currentUser && !isPro) {
-    normParts.push(`<div class="card" style="opacity:.7;text-align:center;padding:20px">
+    normParts.push(`<section class="result-anchor-section" id="result-trazabilidad"><div class="result-section-label">Trazabilidad del cálculo</div><div class="card" style="opacity:.7;text-align:center;padding:20px">
       <p style="color:var(--c-muted);font-size:14px">Traza de cálculo completa disponible en
         <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick="showUpgradeModal()">Plan Pro</button>
       </p>
-    </div>`);
+    </div></section>`);
+  } else {
+    normParts.push(`<section class="result-anchor-section" id="result-trazabilidad"><div class="result-section-label">Trazabilidad del cálculo</div><div class="notice-bar">La traza detallada no está incluida en este resultado.</div></section>`);
   }
 
   if (isPro && _currentAnalysisId) {
@@ -1784,6 +1828,8 @@ function showResult(d, lat, lng, vis, anu) {
     <div class="normative-body">${normParts.join('')}</div>
   </details>`);
 
+  parts.push(`<section class="result-anchor-section" id="result-financieros"><div class="result-section-label">Escenario financiero</div>${proformaPanel(d)}</section>`);
+
   parts.push(`<div class="print-disclaimer">
     <strong>ainmo · Estimación de prefactibilidad</strong> — D.555/2021 · D.670/2025 · D.676/2025 · D.253-254/2026 · Res.962/2026.
     No constituye norma urbanística certificada ni licencia de construcción.
@@ -1792,6 +1838,7 @@ function showResult(d, lat, lng, vis, anu) {
   </div>`);
 
   set(parts.join(''));
+  _initResultAnchors();
   // Financial KPIs consume the server-labelled area source. A derived area is
   // never substituted into area_construible_max_m2.
   _fetchKpiFinancials(d);
@@ -1800,6 +1847,52 @@ function showResult(d, lat, lng, vis, anu) {
     _massingInitDone = true;
     setTimeout(() => initMassing(_lastCalcData), 0);
   }
+}
+
+function _initResultAnchors() {
+  if (_resultNavObserver) {
+    _resultNavObserver.disconnect();
+    _resultNavObserver = null;
+  }
+  const rail = document.querySelector('.result-anchor-rail');
+  if (!rail) return;
+  const links = [...rail.querySelectorAll('a[href^="#result-"]')];
+  const targets = links.map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+
+  function activate(id) {
+    links.forEach(link => link.classList.toggle('is-active', link.getAttribute('href') === `#${id}`));
+    const active = rail.querySelector('.is-active');
+    if (active) rail.scrollTo({ left:active.offsetLeft - (rail.clientWidth - active.offsetWidth) / 2, behavior:'smooth' });
+  }
+
+  const mobile = window.matchMedia('(max-width:700px)').matches;
+  const root = mobile ? null : document.getElementById('result-col');
+  rail.addEventListener('click', event => {
+    const link = event.target.closest('a[href^="#result-"]');
+    if (!link) return;
+    const target = document.querySelector(link.getAttribute('href'));
+    if (!target) return;
+    event.preventDefault();
+    const detail = target.closest('details');
+    if (detail && !detail.open) detail.open = true;
+    activate(target.id);
+    requestAnimationFrame(() => {
+      if (mobile) {
+        const top = target.getBoundingClientRect().top + window.scrollY - 52;
+        window.scrollTo({ top, behavior:'smooth' });
+      } else if (root) {
+        const top = target.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 52;
+        root.scrollTo({ top, behavior:'smooth' });
+      }
+    });
+  });
+
+  _resultNavObserver = new IntersectionObserver(entries => {
+    const visible = entries.filter(entry => entry.isIntersecting)
+      .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (visible[0]) activate(visible[0].target.id);
+  }, { root, rootMargin:'-56px 0px -65% 0px', threshold:[0, .05] });
+  targets.forEach(target => _resultNavObserver.observe(target));
 }
 
 /**

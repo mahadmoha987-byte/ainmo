@@ -3,7 +3,7 @@
 api.py — FastAPI backend for the Bogotá buildability tool
 Run: uvicorn api:app --reload --port 8765
 """
-import os, sys
+import os, sys, json
 sys.path.insert(0, os.path.dirname(__file__))
 
 from contextlib import asynccontextmanager
@@ -108,6 +108,125 @@ async def app_tool():
 @app.get("/dashboard", include_in_schema=False)
 async def dashboard():
     return FileResponse(os.path.join(os.path.dirname(__file__), "dashboard.html"))
+
+
+# ── Normative update pages (public, server-rendered for SEO) ─────────────────
+
+_NORMATIVE_ARTICLES = {
+    "decreto-253-2026": {
+        "title": "Decreto 253 de 2026: altura de equipamientos en Consolidación",
+        "date": "2 de julio de 2026",
+        "kind": "Decreto Distrital",
+        "summary": (
+            "Adiciona al Decreto Único 670 de 2025 reglas de altura máxima en pisos "
+            "para predios identificados como Equipamientos en tratamiento de Consolidación."
+        ),
+        "sections": [
+            ("Qué cambia", "El acto asigna alturas a los polígonos y predios señalados en los mapas CU-5.4.2 a CU-5.4.33 y sus anexos. No es una altura general para cualquier equipamiento de Bogotá."),
+            ("Cómo lo usa Ainmo", "Ainmo cruza el código catastral del lote con el Anexo 36.1. Cuando un código aparece ligado a decisiones distintas, o la tabla indica N/A, devuelve SIN_DATO y exige confirmar el polígono en el Anexo 36.2."),
+            ("Qué todavía debe verificarse", "Instrumentos previos, régimen de transición, bienes de interés cultural, Actuaciones Estratégicas, Franja de Adecuación y demás reglas volumétricas que puedan prevalecer para el predio."),
+        ],
+        "source": "https://www.alcaldiabogota.gov.co/sisjur/normas/Norma1.jsp?i=193583",
+    },
+    "resolucion-962-2026": {
+        "title": "Resolución SDP 962 de 2026: actualización cartográfica del sistema hídrico",
+        "date": "8 de mayo de 2026 · publicada en Registro Distrital 8614 de julio de 2026",
+        "kind": "Resolución SDP",
+        "summary": (
+            "Actualiza y precisa mapas POT de suelo de protección, estructura ecológica, sistema "
+            "hídrico, tratamientos urbanísticos y áreas de actividad respecto del sistema hídrico."
+        ),
+        "sections": [
+            ("Qué cambia", "La resolución modifica cartografía oficial asociada al sistema hídrico y su reflejo en varios mapas del Decreto 555 de 2021, incluidos CU-5.1 y CU-5.2."),
+            ("Cómo lo trata Ainmo", "El informe advierte que debe verificarse si las capas ArcGIS consultadas ya incorporan el ajuste aplicable al punto. La ausencia de una respuesta automática nunca se presenta como ausencia de ronda o afectación."),
+            ("Qué todavía debe verificarse", "El mapa oficial vigente, la delimitación aplicable al predio, estudios y conceptos ambientales y cualquier condición de riesgo o manejo exigida por la autoridad competente."),
+        ],
+        "source": "https://www.alcaldiabogota.gov.co/sisjur/normas/Norma1.jsp?i=193584",
+    },
+    "decreto-676-2025": {
+        "title": "Decreto 676 de 2025: incentivos de construcción sostenible",
+        "date": "30 de diciembre de 2025",
+        "kind": "Decreto Distrital",
+        "summary": (
+            "Adiciona al Decreto 670 de 2025 incentivos urbanísticos condicionados al cumplimiento "
+            "de medidas de ecourbanismo, certificación o reconocimiento y documentos de soporte."
+        ),
+        "sections": [
+            ("Qué cambia", "Crea rutas diferenciadas para Desarrollo, Renovación Urbana, Consolidación y Grandes Servicios Metropolitanos. La posibilidad y el tipo de incentivo dependen del tratamiento y del proyecto."),
+            ("Cómo lo usa Ainmo", "Ainmo identifica una oportunidad potencial cuando el tratamiento puede ser elegible. No suma automáticamente área ni pisos: la interfaz exige revisar medidas, planos, certificación, autodeclaración y trámite ante curaduría."),
+            ("Qué todavía debe verificarse", "Uso residencial predominante cuando corresponda, acogimiento expreso, totalidad de las medidas aplicables, pre-certificación o reconocimiento y consistencia con la licencia y el Anexo de Construcción Sostenible."),
+        ],
+        "source": "https://www.alcaldiabogota.gov.co/sisjur/normas/Norma1.jsp?i=191995",
+    },
+}
+
+
+def _normative_shell(title: str, description: str, body: str, canonical: str) -> str:
+    title_esc = _html.escape(title)
+    desc_esc = _html.escape(description)
+    canonical_esc = _html.escape(canonical, quote=True)
+    structured = json.dumps({
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": title,
+        "description": description,
+        "publisher": {"@type": "Organization", "name": "Ainmo"},
+        "inLanguage": "es-CO",
+    }, ensure_ascii=False).replace("</", "<\\/")
+    return f"""<!doctype html><html lang='es-CO'><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'><title>{title_esc} · Ainmo</title>
+<meta name='description' content='{desc_esc}'><link rel='canonical' href='{canonical_esc}'>
+<meta property='og:title' content='{title_esc} · Ainmo'><meta property='og:description' content='{desc_esc}'>
+<meta property='og:type' content='article'><script type='application/ld+json'>{structured}</script>
+<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>
+<link href='https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;500;600&display=swap' rel='stylesheet'>
+<style>:root{{--ink:#101318;--muted:#68707e;--line:#dfe3e8;--soft:#f5f6f7;--blue:#307bea;--rainbow:linear-gradient(90deg,#ff6a35,#ffb21c,#42b768,#20a4b6,#307bea,#7566ea)}}*{{box-sizing:border-box}}body{{margin:0;color:var(--ink);font:18px/1.65 'Source Sans 3',sans-serif}}a{{color:var(--blue)}}nav{{height:70px;border-bottom:1px solid var(--line);display:flex;align-items:center}}.wrap{{width:min(920px,calc(100% - 36px));margin:auto}}.navin{{width:min(1180px,calc(100% - 36px));margin:auto;display:flex;align-items:center;justify-content:space-between}}.logo{{font:800 29px 'Archivo';letter-spacing:-.07em;background:var(--rainbow);-webkit-background-clip:text;color:transparent;text-decoration:none}}.tool{{font:700 13px 'Archivo';color:#fff;background:var(--ink);padding:11px 16px;text-decoration:none}}header{{padding:92px 0 62px;background:var(--soft);border-bottom:1px solid var(--line)}}.crumb,.meta{{font:500 11px 'IBM Plex Mono';text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}}h1{{font:800 clamp(42px,7vw,72px)/1.02 'Archivo';letter-spacing:-.055em;margin:15px 0 22px}}.lead{{font-size:23px;line-height:1.45;max-width:790px}}main{{padding:66px 0 100px}}article section{{padding:27px 0;border-top:1px solid var(--line)}}h2{{font:700 27px 'Archivo';margin:0 0 10px}}.source{{margin-top:40px;padding:25px;border:1px solid var(--line);background:var(--soft)}}.warning{{margin-top:36px;border-left:5px solid #ffb21c;padding:18px 22px;background:#fff8e4;font-size:15px}}footer{{background:var(--ink);color:#aab1bb;padding:30px 0;font-size:13px}}footer a{{color:#fff}}@media(max-width:600px){{header{{padding-top:60px}}h1{{font-size:43px}}.lead{{font-size:20px}}}}</style></head>
+<body><nav><div class='navin'><a class='logo' href='/'>ainmo</a><a class='tool' href='/app'>Consultar lote →</a></div></nav>{body}<footer><div class='wrap'>Ainmo · Prefactibilidad urbanística, no concepto oficial ni licencia. · <a href='/normativa'>Índice normativo</a></div></footer></body></html>"""
+
+
+@app.get("/normativa", include_in_schema=False)
+async def normativa_index():
+    cards = []
+    for slug, item in _NORMATIVE_ARTICLES.items():
+        cards.append(
+            f"<section><div class='meta'>{_html.escape(item['kind'])} · {_html.escape(item['date'])}</div>"
+            f"<h2><a href='/normativa/{slug}'>{_html.escape(item['title'])}</a></h2>"
+            f"<p>{_html.escape(item['summary'])}</p></section>"
+        )
+    body = (
+        "<header><div class='wrap'><div class='crumb'><a href='/'>Inicio</a> / Normativa</div>"
+        "<h1>Actualizaciones normativas que Ainmo rastrea</h1>"
+        "<p class='lead'>Lecturas breves con enlace al acto oficial y una explicación precisa de qué automatiza la herramienta y qué debe seguir verificándose.</p></div></header>"
+        "<main><article class='wrap'>" + "".join(cards) +
+        "<div class='source'><strong>Cadena base:</strong> D.555/2021; Anexo 5 sustituido por D.466/2024; compilación D.670/2025; correcciones formales D.254/2026. El acto oficial prevalece siempre.</div></article></main>"
+    )
+    return Response(content=_normative_shell(
+        "Actualizaciones normativas POT Bogotá",
+        "Índice de cambios normativos distritales rastreados por Ainmo.",
+        body, "https://ainmo.uk/normativa",
+    ), media_type="text/html; charset=utf-8")
+
+
+@app.get("/normativa/{slug}", include_in_schema=False)
+async def normativa_article(slug: str):
+    item = _NORMATIVE_ARTICLES.get(slug)
+    if not item:
+        return Response(content="Página normativa no encontrada", status_code=404)
+    sections = "".join(
+        f"<section><h2>{_html.escape(heading)}</h2><p>{_html.escape(copy)}</p></section>"
+        for heading, copy in item["sections"]
+    )
+    body = (
+        f"<header><div class='wrap'><div class='crumb'><a href='/'>Inicio</a> / <a href='/normativa'>Normativa</a></div>"
+        f"<div class='meta' style='margin-top:45px'>{_html.escape(item['kind'])} · {_html.escape(item['date'])}</div>"
+        f"<h1>{_html.escape(item['title'])}</h1><p class='lead'>{_html.escape(item['summary'])}</p></div></header>"
+        f"<main><article class='wrap'>{sections}<div class='source'><strong>Fuente oficial</strong><br>"
+        f"<a href='{_html.escape(item['source'], quote=True)}' target='_blank' rel='noopener'>Consultar el texto en Bogotá Jurídica ↗</a></div>"
+        "<div class='warning'><strong>Alcance:</strong> esta nota orienta una consulta de prefactibilidad. No reemplaza el texto oficial, un concepto de norma, la licencia ni el análisis profesional del expediente.</div></article></main>"
+    )
+    return Response(content=_normative_shell(
+        item["title"], item["summary"], body, f"https://ainmo.uk/normativa/{slug}"
+    ), media_type="text/html; charset=utf-8")
 
 
 # ── Config (public — anon key only) ───────────────────────────────────────────
