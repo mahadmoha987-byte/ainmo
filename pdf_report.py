@@ -424,12 +424,19 @@ def _param_rows(d: dict, lu: dict) -> list[dict]:
                     ret_note))
 
     # ── Vía ──
-    d_m  = avia.get("D_m") or avia.get("ancho_m")
+    # The value actually used by calc is echoed in the retroceso metric. Read
+    # that first so a manual/shared-calculation input cannot be lost in PDF.
+    d_m = ret_d.get("D_m")
+    if d_m is None:
+        d_m = avia.get("D_m") or avia.get("ancho_m")
+    d_source = ret_d.get("fuente_D")
+    if d_source in (None, "sin_dato"):
+        d_source = avia.get("fuente") or "Layer 38 POT FeatureServer (Calzada)"
     rows.append(row("Vía", "Ancho de calzada (D)",
                     f"{_n(d_m, 2)} m ({avia.get('n_calzadas', '?')} calzada{'s' if (avia.get('n_calzadas') or 1) > 1 else ''})" if d_m else "No encontrado en radio 25 m",
-                    avia.get("fuente") or "Layer 38 POT FeatureServer (Calzada)",
-                    avia.get("confianza") or "sin_dato",
-                    avia.get("nota") or "Andenes y separadores no incluidos — perfil total puede ser mayor."))
+                    d_source,
+                    ret_d.get("confianza") or avia.get("confianza") or "sin_dato",
+                    ret_d.get("motivo") or ret_d.get("nota") or avia.get("nota") or "Andenes y separadores no incluidos — perfil total puede ser mayor."))
 
     # ── Área de actividad ──
     rows.append(row("Actividad", "Área de actividad (Art. 389)",
@@ -518,13 +525,23 @@ def _floor_rows(d: dict, lu: dict) -> list[dict]:
 # ── Unit estimate ─────────────────────────────────────────────────────────────
 
 def _unit_estimate(d: dict) -> dict | None:
-    """Run estimate_units() if area_construible is available, else return None."""
+    """Run the shared unit estimator from the same area shown in the report."""
     area_val = _get(d, "metrics", "area_construible_max_m2", "valor")
+    area_is_derived = False
+    if not area_val:
+        derived = _get(d, "metrics", "area_construible_estimada", default={}) or {}
+        if derived.get("estado") == "derivado":
+            area_val = derived.get("valor_m2")
+            if area_val is None and derived.get("rango_m2"):
+                area_val = derived["rango_m2"][0]
+            area_is_derived = area_val is not None
     if not area_val:
         return None
     try:
         from calc import estimate_units
-        return estimate_units(float(area_val))
+        result = estimate_units(float(area_val))
+        result["basado_en_area_estimada"] = area_is_derived
+        return result
     except Exception:
         return None
 
@@ -613,6 +630,167 @@ def _next_steps(d: dict, lu: dict) -> list[dict]:
             "advertencia")
 
     return steps
+
+
+# ── Due-diligence report helpers ─────────────────────────────────────────────
+
+_VALID_STATES = {
+    "resuelto", "derivado", "insuficiente", "requiere_concepto",
+    "no_aplica", "error",
+}
+
+
+def _state(obj: dict | None, *, value: Any = None, default: str = "insuficiente") -> str:
+    state = (obj or {}).get("estado")
+    if state in _VALID_STATES:
+        return state
+    if value is not None:
+        return "resuelto"
+    return default
+
+
+def _metric_source(obj: dict | None, fallback: str) -> str:
+    obj = obj or {}
+    parts = []
+    for key in ("articulo", "fuente", "fuente_D"):
+        value = obj.get(key)
+        if value and value not in parts and value not in ("usuario", "sin_dato"):
+            parts.append(str(value))
+    return " · ".join(parts) or fallback
+
+
+def _normative_rows(d: dict, lu: dict) -> list[dict]:
+    """Required-vs-result rows. Calculated metrics are always authoritative."""
+    m = d.get("metrics") or {}
+    ed = lu.get("edificabilidad") or {}
+    ant = d.get("antejardin") or {}
+    parking = d.get("parking") or {}
+    rows: list[dict] = []
+
+    def add(parameter: str, required: str, result: str, obj: dict | None,
+            source: str, reason: str = "") -> None:
+        rows.append({
+            "parameter": parameter,
+            "required": required,
+            "result": result,
+            "state": _state(obj, value=None if result in ("Sin dato", "No calculable") else result),
+            "reason": (obj or {}).get("motivo") or (obj or {}).get("nota") or reason,
+            "source": _metric_source(obj, source),
+        })
+
+    height = m.get("altura_base_pisos") or m.get("altura_maxima_pisos") or {}
+    height_v = height.get("valor")
+    height_rule = ed.get("altura_maxima") or {}
+    height_required = height_rule.get("articulo") or "Mapa CU-5.4.x / Art. 310 Decreto 555/2021"
+    add("Altura", height_required,
+        f"{_n(height_v, 0)} pisos" if height_v is not None else "Resultante",
+        height, height_rule.get("fuente") or "Layer 15 POT FeatureServer (ALTURA_MAXIMA)")
+
+    post = m.get("aislamiento_posterior_m") or {}
+    post_v = post.get("valor")
+    add("Aislamiento posterior", "Según altura efectiva y tipología",
+        f"{_n(post_v, 1)} m" if post_v is not None else "Sin dato",
+        post, "Anexo 5 Cap. 2.4.2.A.2 Decreto 555/2021")
+
+    lateral = m.get("aislamiento_lateral_m") or {}
+    lateral_v = lateral.get("valor")
+    lateral_result = (
+        "No exigido" if lateral_v == 0 and _state(lateral, value=0) == "no_aplica"
+        else f"{_n(lateral_v, 1)} m" if lateral_v is not None else "Sin dato"
+    )
+    add("Aislamiento lateral", "Según tipología y altura efectiva", lateral_result,
+        lateral, "Art. 310 Num. 3 / Anexo 5 Cap. 1.2.2.D.2 Decreto 555/2021")
+
+    ant_dim = ant.get("dimension_m")
+    ant_obj = ant_dim if isinstance(ant_dim, dict) else ant
+    ant_v = ant_dim.get("valor") if isinstance(ant_dim, dict) else ant_dim
+    ant_result = "No exigido" if ant_v == 0 else (f"{_n(ant_v, 1)} m" if ant_v is not None else "Sin dato")
+    add("Antejardín", "Mapa CU-5.5 y regla aplicable al predio", ant_result,
+        ant_obj, ant.get("articulo") or ant.get("fuente") or "Layer 22 POT FeatureServer")
+
+    io = m.get("planta_maxima_m2") or {}
+    io_v = io.get("valor")
+    io_rule = ed.get("indice_ocupacion") or {}
+    io_req = (
+        f"IO máximo {_n(io_rule.get('valor'), 2)}" if io_rule.get("valor") is not None
+        else "IO resultante de la norma volumétrica"
+    )
+    add("Índice de ocupación / huella", io_req,
+        f"{_area(io_v)} de huella" if io_v is not None else "No aplica como índice numérico",
+        io, io_rule.get("articulo") or "Art. 310 Decreto 555/2021")
+
+    ic = m.get("area_construible_max_m2") or {}
+    ic_v = ic.get("valor")
+    ic_rule = ed.get("indice_construccion") or {}
+    ic_req = (
+        f"IC máximo {_n(ic_rule.get('valor'), 2)}" if ic_rule.get("valor") is not None
+        else "IC resultante de la norma volumétrica"
+    )
+    add("Índice de construcción", ic_req,
+        _area(ic_v) if ic_v is not None else "No aplica como índice numérico",
+        ic, ic_rule.get("articulo") or "Art. 310 Decreto 555/2021")
+
+    retro = m.get("retroceso_fachada_A_m") or {}
+    retro_v = retro.get("valor")
+    factor = retro.get("factor") or 2.5
+    add("Retroceso de fachada", f"A = {_n(factor, 1)} × D",
+        f"{_n(retro_v, 2)} m" if retro_v is not None else "Sin dato",
+        retro, "Anexo 5 Cap. 1.2.2.E.1.1 Decreto 555/2021")
+
+    # D is deliberately sourced from the calculated metric used for A, not by
+    # re-reading the raw lookup snapshot. This keeps PDF and /api/calc identical.
+    road_v = retro.get("D_m")
+    road_obj = {
+        "estado": "resuelto" if road_v is not None else "insuficiente",
+        "motivo": retro.get("motivo") or retro.get("nota"),
+        "fuente": retro.get("fuente_D"),
+    }
+    add("Ancho de calzada usado (D)", "Dato de entrada para el retroceso",
+        f"{_n(road_v, 2)} m" if road_v is not None else "Sin dato",
+        road_obj, "Layer 38 POT FeatureServer (ANCHO)")
+
+    if parking.get("min_pct") is not None:
+        parking_obj = {
+            "estado": parking.get("estado") or "resuelto",
+            "motivo": parking.get("motivo") or parking.get("nota"),
+            "fuente": parking.get("fuente"),
+        }
+        result = (
+            f"mín. {_n(parking.get('min_pct'), 0)}% · "
+            f"máx. {_n(parking.get('max_pct'), 0)}% · "
+            f"adicional {_n(parking.get('adicional_pct'), 0)}%"
+        )
+        add("Cupos / área de estacionamientos", "Arts. 389, 390 y 390A", result,
+            parking_obj, "Arts. 389, 390 y 390A Decreto 555/2021")
+    else:
+        add("Cupos / área de estacionamientos", "Arts. 389, 390 y 390A", "Sin dato",
+            {"estado": "insuficiente", "motivo": parking.get("nota")},
+            "Arts. 389, 390 y 390A Decreto 555/2021")
+
+    return rows
+
+
+def _used_sources(d: dict, lu: dict, rows: list[dict], param_rows: list[dict]) -> list[str]:
+    """Only sources that actually contributed to this report, deduplicated."""
+    sources: list[str] = []
+
+    def add(value: Any) -> None:
+        if not value:
+            return
+        text = str(value).strip()
+        if text and text not in ("—", "sin_dato", "usuario") and text not in sources:
+            sources.append(text)
+
+    add(_get(d, "lote", "fuente_datos", "fuente"))
+    for row in rows:
+        add(row.get("source"))
+    for row in param_rows:
+        add(row.get("fuente"))
+    derived = _get(d, "metrics", "area_construible_estimada", default={}) or {}
+    for src in derived.get("fuentes") or []:
+        bits = [src.get("fuente"), src.get("articulo")]
+        add(" · ".join(str(bit) for bit in bits if bit))
+    return sources
 
 
 # ── HTML template ─────────────────────────────────────────────────────────────
@@ -1155,6 +1333,284 @@ body {
 """
 
 
+_DUE_DILIGENCE_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+:root {
+  --ink:#15171b; --muted:#61656d; --line:#cfd2d6; --soft:#f3f3f1; --paper:#fff;
+  --green-bg:#e7f3eb; --green:#195d35; --green-b:#71ad88;
+  --amber-bg:#fff1d5; --amber:#724500; --amber-b:#c59024;
+  --grey-bg:#eceeef; --grey:#4f555e; --grey-b:#a8adb4;
+  --neutral-bg:#f5f5f3; --neutral:#55585e; --neutral-b:#c8c9c7;
+  --red-bg:#f9e5e5; --red:#8b1717; --red-b:#c94b4b;
+}
+@page {
+  size:A4; margin:14mm 14mm 18mm 14mm;
+  @bottom-left { content:"Ainmo · prefactibilidad, no licencia"; font:6.5pt Arial; color:#6d7178; }
+  @bottom-center { content:"{{ decree_short }} · {{ timestamp }}"; font:6.5pt Arial; color:#6d7178; }
+  @bottom-right { content:"Página " counter(page) " de " counter(pages); font:7pt Arial; color:#15171b; }
+}
+* { box-sizing:border-box; }
+body { margin:0; color:var(--ink); background:var(--paper); font:8.5pt/1.42 Arial,Helvetica,sans-serif; }
+h1,h2,h3,p { margin:0; }
+h1 { font-size:24pt; line-height:1.08; letter-spacing:-.4pt; }
+h2 { font-size:14pt; margin-bottom:8pt; }
+h3 { font-size:9pt; margin-bottom:5pt; text-transform:uppercase; letter-spacing:.45pt; }
+.mono { font-family:"Courier New",monospace; }
+.page { page-break-before:always; }
+.avoid { page-break-inside:avoid; }
+.eyebrow { font-size:7pt; font-weight:700; letter-spacing:1.1pt; text-transform:uppercase; color:var(--muted); }
+.section-no { float:right; color:var(--muted); font:7pt "Courier New",monospace; }
+.section-head { padding-bottom:5pt; border-bottom:1pt solid var(--ink); margin-bottom:10pt; }
+.note { color:var(--muted); font-size:7.5pt; }
+.source { color:var(--muted); font-size:6.7pt; margin-top:2pt; line-height:1.3; }
+.source::before { content:"Fuente: "; font-weight:700; color:var(--ink); }
+.status { display:inline-block; padding:1.5pt 5pt; border:0.5pt solid; border-radius:8pt; font-size:6.4pt; font-weight:700; text-transform:uppercase; letter-spacing:.3pt; white-space:nowrap; }
+.s-resuelto { background:var(--green-bg); color:var(--green); border-color:var(--green-b); }
+.s-derivado,.s-requiere_concepto { background:var(--amber-bg); color:var(--amber); border-color:var(--amber-b); }
+.s-insuficiente { background:var(--grey-bg); color:var(--grey); border-color:var(--grey-b); }
+.s-no_aplica { background:var(--neutral-bg); color:var(--neutral); border-color:var(--neutral-b); }
+.s-error { background:var(--red-bg); color:var(--red); border-color:var(--red-b); }
+table { width:100%; border-collapse:collapse; }
+th { text-align:left; font-size:6.7pt; text-transform:uppercase; letter-spacing:.35pt; background:var(--soft); border:0.5pt solid var(--line); padding:4pt; }
+td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
+.kv td:first-child { width:37%; color:var(--muted); }
+.kv td:last-child { font-weight:700; }
+
+/* Cover */
+.cover { min-height:245mm; position:relative; padding-top:12mm; }
+.cover-rule { border-top:3pt solid var(--ink); margin-bottom:30mm; }
+.cover .eyebrow { margin-bottom:10pt; }
+.cover h1 { max-width:160mm; }
+.cover-sub { font-size:11pt; color:var(--muted); margin-top:8pt; }
+.cover-kv { width:122mm; margin-top:28mm; }
+.cover-kv td { padding:5pt 0; border:0; border-bottom:.5pt solid var(--line); }
+.cover-kv td:first-child { color:var(--muted); width:42mm; }
+.cover-disclaimer { position:absolute; left:0; right:0; bottom:8mm; padding-top:7pt; border-top:1pt solid var(--ink); font-size:7.5pt; color:var(--muted); }
+
+/* TOC */
+.toc { margin-top:18pt; }
+.toc-row { display:flex; border-bottom:.5pt solid var(--line); padding:7pt 0; }
+.toc-n { width:13mm; font:bold 9pt "Courier New",monospace; }
+.toc-label { flex:1; font-size:10pt; }
+
+/* Summary */
+.summary-grid { display:flex; gap:12pt; }
+.summary-left { flex:1; }
+.summary-right { width:72mm; }
+.map { width:100%; max-height:78mm; object-fit:cover; border:.5pt solid var(--line); }
+.verdict { margin-top:10pt; padding:8pt 10pt; border:1pt solid var(--ink); }
+.verdict strong { display:block; font-size:10pt; margin-bottom:3pt; }
+
+/* Comparison */
+.comparison { table-layout:fixed; }
+.comparison th:nth-child(1) { width:20%; }
+.comparison th:nth-child(2) { width:28%; }
+.comparison th:nth-child(3) { width:31%; }
+.comparison th:nth-child(4) { width:21%; }
+.comparison .result { font:bold 8.5pt "Courier New",monospace; }
+.comparison .reason { color:var(--muted); font-size:6.7pt; margin-top:3pt; }
+.comparison .row-source { color:var(--muted); font-size:6.3pt; margin-top:3pt; }
+.comparison tr { page-break-inside:avoid; }
+
+/* Buildability */
+.callout-grid { display:flex; border:1pt solid var(--ink); margin-bottom:10pt; }
+.callout { flex:1; padding:10pt; border-left:.5pt solid var(--line); }
+.callout:first-child { border-left:0; }
+.callout-label { font-size:6.5pt; text-transform:uppercase; letter-spacing:.5pt; color:var(--muted); }
+.callout-value { font:bold 16pt/1.05 "Courier New",monospace; margin:4pt 0; }
+.warning { padding:6pt 8pt; border-left:2pt solid var(--amber-b); background:var(--amber-bg); color:var(--amber); margin:7pt 0; }
+.data-table tr { page-break-inside:avoid; }
+.data-table .cat td { background:var(--soft); font-weight:700; text-transform:uppercase; letter-spacing:.3pt; font-size:6.7pt; }
+.data-table .value { font-family:"Courier New",monospace; }
+
+/* Profile and actions */
+.profile-wrap { border:.5pt solid var(--line); padding:8pt; }
+.setbacks { display:flex; margin-top:7pt; }
+.setback { flex:1; padding:5pt; border:.5pt solid var(--line); margin-left:-.5pt; }
+.setback:first-child { margin-left:0; }
+.setback b { display:block; font:10pt "Courier New",monospace; }
+.step { padding:6pt 7pt; border:.5pt solid var(--line); border-left:3pt solid var(--grey-b); margin-bottom:5pt; page-break-inside:avoid; }
+.step.alta,.step.advertencia { border-left-color:var(--red-b); }
+.step.media { border-left-color:var(--amber-b); }
+.step.info { border-left-color:var(--green-b); }
+.step b { display:block; margin-bottom:2pt; }
+.alert { padding:5pt 7pt; color:var(--red); background:var(--red-bg); border-left:2pt solid var(--red-b); margin-bottom:4pt; page-break-inside:avoid; }
+
+/* Sources and trace */
+.sources { counter-reset:src; }
+.sources li { margin:0 0 5pt 15pt; padding-left:3pt; }
+.trace { border-left:2pt solid var(--line); padding:4pt 0 4pt 8pt; margin-bottom:6pt; page-break-inside:avoid; }
+.trace-step { font:bold 6.5pt "Courier New",monospace; color:var(--muted); text-transform:uppercase; }
+.trace-expr,.trace-values { font:7pt "Courier New",monospace; background:var(--soft); padding:3pt 5pt; margin-top:3pt; white-space:pre-wrap; }
+.trace-result { font:bold 9pt "Courier New",monospace; margin-top:3pt; }
+</style>
+</head>
+<body>
+
+<!-- 1. Cover -->
+<section class="cover">
+  <div class="cover-rule"></div>
+  <div class="eyebrow">Informe de prefactibilidad urbanística · Bogotá D.C.</div>
+  <h1>{{ address }}</h1>
+  <p class="cover-sub">Análisis de edificabilidad y controles volumétricos</p>
+  <table class="cover-kv">
+    <tr><td>Fecha del informe</td><td>{{ date_label }}</td></tr>
+    <tr><td>Coordenadas</td><td class="mono">{{ lat }}, {{ lng }}</td></tr>
+    <tr><td>CHIP / código de lote</td><td class="mono">{{ lotcodigo }}</td></tr>
+    <tr><td>Tratamiento</td><td>{{ tratamiento }}</td></tr>
+    <tr><td>Área del lote</td><td class="mono">{{ lot_area }}</td></tr>
+  </table>
+  <div class="cover-disclaimer"><strong>Alcance.</strong> {{ disclaimer }}</div>
+</section>
+
+<!-- 2. TOC -->
+<section class="page">
+  <div class="section-head"><span class="section-no">02</span><div class="eyebrow">Contenido</div><h2>Tabla de contenido</h2></div>
+  <div class="toc">
+    {% for item in toc %}<div class="toc-row"><div class="toc-n">{{ "%02d"|format(loop.index) }}</div><div class="toc-label">{{ item }}</div></div>{% endfor %}
+  </div>
+</section>
+
+<!-- 3. Property summary -->
+<section class="page">
+  <div class="section-head"><span class="section-no">03</span><div class="eyebrow">Identificación</div><h2>Resumen del predio</h2></div>
+  <div class="summary-grid">
+    <div class="summary-left">
+      <table class="kv">
+        <tr><td>Dirección</td><td>{{ address }}</td></tr>
+        <tr><td>CHIP / código de lote</td><td class="mono">{{ lotcodigo }}</td></tr>
+        <tr><td>Localidad / UPZ</td><td>{{ locality_upz }}</td></tr>
+        <tr><td>Tratamiento</td><td>{{ tratamiento }}</td></tr>
+        <tr><td>Tipología</td><td>{{ tipologia }}</td></tr>
+        <tr><td>Área de actividad</td><td>{{ area_actividad }}</td></tr>
+        <tr><td>Área catastral</td><td class="mono">{{ lot_area }}</td></tr>
+        <tr><td>Uso actual</td><td>{{ current_use }}</td></tr>
+        {% if anu_usado %}<tr><td>ANU usada</td><td class="mono">{{ anu_usado }}</td></tr>{% endif %}
+      </table>
+      <div class="verdict">
+        <strong>Lectura de prefactibilidad</strong>
+        {{ verdict_sentence }}
+        <div class="source">{{ decree_short }} · consulta GIS {{ consultation_date }}</div>
+      </div>
+    </div>
+    <div class="summary-right">
+      {% if map_img %}<img class="map" src="{{ map_img }}" alt="Polígono catastral del predio">{% else %}<div class="map" style="padding:30mm 8mm;text-align:center;color:var(--muted)">Mapa no disponible</div>{% endif %}
+      <p class="source">Catastro Bogotá · OpenStreetMap como referencia cartográfica</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4. Required vs result -->
+<section class="page">
+  <div class="section-head"><span class="section-no">04</span><div class="eyebrow">Control normativo</div><h2>Normativa aplicable - exigencia vs. resultado</h2></div>
+  <table class="comparison">
+    <thead><tr><th>Parámetro</th><th>Exigido por norma</th><th>Resultado para este predio</th><th>Estado</th></tr></thead>
+    <tbody>
+    {% for row in normative_rows %}
+      <tr>
+        <td><strong>{{ row.parameter }}</strong></td>
+        <td>{{ row.required }}</td>
+        <td><div class="result">{{ row.result }}</div><div class="row-source">{{ row.source }}</div></td>
+        <td><span class="status s-{{ row.state }}">{{ row.state|replace('_',' ') }}</span>{% if row.reason %}<div class="reason">{{ row.reason }}</div>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:12pt">Registro completo de parámetros</h3>
+  <table class="data-table">
+    <thead><tr><th>Campo</th><th>Valor</th><th>Fuente / artículo</th><th>Nota</th></tr></thead>
+    <tbody>
+    {% set ns = namespace(last_cat="") %}
+    {% for row in param_rows %}
+      {% if row.cat != ns.last_cat %}{% set ns.last_cat = row.cat %}<tr class="cat"><td colspan="4">{{ row.cat }}</td></tr>{% endif %}
+      <tr><td>{{ row.campo }}</td><td class="value">{{ row.valor }}</td><td>{{ row.fuente }}</td><td class="note">{{ row.nota }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<!-- 5. Area and units -->
+<section class="page">
+  <div class="section-head"><span class="section-no">05</span><div class="eyebrow">Cabida preliminar</div><h2>Área construible / unidades estimadas</h2></div>
+  <div class="callout-grid avoid">
+    <div class="callout">
+      <div class="callout-label">{{ area_label }}</div>
+      <div class="callout-value">{{ area_max }} {{ area_max_unit }}</div>
+      <span class="status s-{{ area_state }}">{{ area_state|replace('_',' ') }}</span>
+      <div class="source">{{ area_source }}</div>
+    </div>
+    <div class="callout">
+      <div class="callout-label">Unidades estimadas</div>
+      <div class="callout-value">{{ units_est }}</div>
+      <span class="status s-{{ units_state }}">{{ units_state|replace('_',' ') }}</span>
+      <div class="source">{{ units_source }}</div>
+    </div>
+    <div class="callout">
+      <div class="callout-label">Restricción operativa</div>
+      <div class="callout-value" style="font-size:12pt">{{ binding_short }}</div>
+      <div class="note">{{ binding_detail }}</div>
+      <div class="source">{{ decree_short }}</div>
+    </div>
+  </div>
+  {% if area_warning %}<div class="warning"><strong>Advertencia.</strong> {{ area_warning }}</div>{% endif %}
+
+  {% if unit_est %}
+  <table class="data-table avoid">
+    <thead><tr><th>Concepto</th><th>Resultado</th><th>Supuesto / fuente</th></tr></thead>
+    <tbody>
+      <tr><td>Área construible bruta</td><td class="value">{{ unit_est.area_construible_m2|n1 }} m²</td><td>{{ "Área derivada de huella × pisos" if unit_est.basado_en_area_estimada else "Resultado de edificabilidad" }}</td></tr>
+      <tr><td>Circulación y zonas comunes</td><td class="value">{{ unit_est.circ_area_m2|n1 }} m²</td><td>{{ unit_est.circulacion_pct }}% - supuesto del estimador</td></tr>
+      <tr><td>Área vendible neta estimada</td><td class="value"><strong>{{ unit_est.area_vendible_neta_m2|n1 }} m²</strong></td><td>Área bruta menos circulación</td></tr>
+      {% for tipo, info in unit_est.unidades_por_tipo.items() %}<tr><td>{{ info.label }}</td><td class="value">{{ info.unidades }} unidades</td><td>{{ info.pct_mezcla }}% de mezcla · {{ info.m2_neta_por_unidad }} m²/unidad</td></tr>{% endfor %}
+      <tr><td><strong>Total estimado</strong></td><td class="value"><strong>{{ unit_est.total_unidades }} unidades</strong></td><td>No es un parámetro del decreto</td></tr>
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if floor_rows %}
+  <h3 style="margin-top:12pt">Lectura por piso</h3>
+  <table><thead><tr><th>Piso</th><th>Nivel aproximado</th><th>Regla aplicable</th></tr></thead><tbody>{% for row in floor_rows %}<tr><td class="mono">{{ row.piso }}</td><td class="mono">{{ row.nivel }}</td><td>{{ row.regla }}</td></tr>{% endfor %}</tbody></table>
+  <p class="note" style="margin-top:4pt">La equivalencia usa 3,0 m por piso como referencia; el proyecto puede definir alturas distintas.</p>
+  {% endif %}
+</section>
+
+<!-- 6. Profile -->
+<section class="page">
+  <div class="section-head"><span class="section-no">06</span><div class="eyebrow">Forma edificable</div><h2>Perfil volumétrico</h2></div>
+  <div class="profile-wrap">{{ profile_svg|safe }}</div>
+  <div class="setbacks">{% for sb in setbacks %}<div class="setback"><span class="note">{{ sb.label }}</span><b>{{ sb.val }}</b><span class="source">{{ sb.src }}</span></div>{% endfor %}</div>
+  <p class="note" style="margin-top:8pt">Diagrama indicativo, no a escala. La altura en metros supone 3,0 m por piso. Debe verificarse con la geometría y el diseño del proyecto.</p>
+</section>
+
+<!-- 7. Next steps -->
+<section class="page">
+  <div class="section-head"><span class="section-no">07</span><div class="eyebrow">Debida diligencia</div><h2>Próximos pasos</h2></div>
+  {% for step in next_steps %}<div class="step {{ step.priority }}"><b>{{ step.text }}</b>{% if step.note %}<div class="note">{{ step.note }}</div>{% endif %}</div>{% endfor %}
+  <h3 style="margin-top:12pt">Advertencias del cálculo</h3>
+  {% if warnings %}{% for warning in warnings %}<div class="alert">{{ warning }}</div>{% endfor %}{% else %}<p class="note">No se registraron advertencias adicionales.</p>{% endif %}
+</section>
+
+<!-- 8. Sources -->
+<section class="page">
+  <div class="section-head"><span class="section-no">08</span><div class="eyebrow">Verificación independiente</div><h2>Fuentes consultadas</h2></div>
+  <p style="margin-bottom:10pt">Solo se listan las fuentes que aportaron datos o reglas a este predio.</p>
+  <ol class="sources">{% for source in used_sources %}<li>{{ source }}</li>{% endfor %}</ol>
+  <p class="note" style="margin-top:14pt">Fecha de consulta GIS: {{ consultation_date }}. Para una decisión vinculante, confirme la información con la SDP, Catastro Bogotá y la Curaduría Urbana competente.</p>
+</section>
+
+<!-- 9. Trace appendix -->
+<section class="page">
+  <div class="section-head"><span class="section-no">09</span><div class="eyebrow">Apéndice</div><h2>Trazabilidad del cálculo</h2></div>
+  {% if trace %}{% for step in trace %}<div class="trace"><div class="trace-step">Paso {{ step.paso }}</div><strong>{{ step.descripcion }}</strong>{% if step.expresion %}<div class="trace-expr">{{ step.expresion }}</div>{% endif %}{% if step.valores %}<div class="trace-values">{{ step.valores|pretty_kv }}</div>{% endif %}{% if step.resultado is not none %}<div class="trace-result">= {% if step.resultado is mapping %}{% for key,value in step.resultado.items() %}{{ key }}: {{ value }} {% endfor %}{% elif step.resultado is iterable and step.resultado is not string %}{{ step.resultado|join(', ') }}{% else %}{{ step.resultado }}{% endif %} {{ step.unidad or '' }}</div>{% endif %}{% if step.nota %}<div class="note">{{ step.nota }}</div>{% endif %}{% if step.fuente %}<div class="source">{{ step.fuente }}</div>{% endif %}</div>{% endfor %}{% else %}<p class="note">La traza detallada no está incluida en este resultado guardado.</p>{% endif %}
+</section>
+</body>
+</html>"""
+
+
 # ── Jinja2 environment ─────────────────────────────────────────────────────────
 
 def _make_env() -> Environment:
@@ -1260,6 +1716,10 @@ def _render_html(
     aa_code    = _get(lu, "area_actividad", "codigo") or "—"
     aa_name    = _get(lu, "area_actividad", "nombre") or ""
     area_act   = f"{aa_code}" + (f" — {aa_name[:45]}" if aa_name else "")
+    locality   = lu.get("localidad") or _get(lu, "lote", "localidad")
+    upz        = lu.get("upz") or lu.get("upl") or _get(lu, "lote", "upz")
+    locality_upz = " / ".join(str(v) for v in (locality, upz) if v) or "No incluido en las capas consultadas"
+    current_use = lu.get("uso_actual") or _get(lu, "lote", "uso_actual") or "No incluido en las capas consultadas"
     anu_val    = _get(d, "anu", "valor_m2")
     anu_usado  = _area(anu_val) if anu_val else None
     rango      = d.get("rango") or lu.get("rango")
@@ -1267,25 +1727,38 @@ def _render_html(
     lng        = f'{inp.get("lng", 0):.5f}'
 
     # Verdict
-    area_max_val = _get(m, "area_construible_max_m2", "valor")
+    area_max_obj = m.get("area_construible_max_m2") or {}
+    area_max_val = area_max_obj.get("valor")
     derived_area = m.get("area_construible_estimada") or {}
     area_label = "Área construible máx."
-    if area_max_val:
+    area_warning = ""
+    if area_max_val is not None:
         area_max  = _n(area_max_val, 1)
         area_unit = "m²"
+        area_state = _state(area_max_obj, value=area_max_val)
+        area_source = _metric_source(area_max_obj, "Cálculo de edificabilidad Ainmo")
     elif derived_area.get("valor_m2") is not None:
         area_label = "Área estimada · derivada"
         area_max = _n(derived_area["valor_m2"], 1)
         area_unit = "m² · no es tope normativo"
+        area_state = _state(derived_area, value=derived_area.get("valor_m2"), default="derivado")
+        area_source = "Catastro capa 0 · POT capas 15, 22 y 38 · Art. 310 / Anexo 5"
+        area_warning = derived_area.get("advertencia") or derived_area.get("motivo") or ""
     elif derived_area.get("rango_m2"):
         area_label = "Área estimada · rango"
         derived_range = derived_area["rango_m2"]
         area_max = f"{_n(derived_range[0], 1)}–{_n(derived_range[1], 1)}"
         area_unit = "m² · no es tope normativo"
+        area_state = _state(derived_area, value=derived_range, default="derivado")
+        area_source = "Catastro capa 0 · POT capas 15, 22 y 38 · Art. 310 / Anexo 5"
+        area_warning = derived_area.get("advertencia") or derived_area.get("motivo") or ""
     else:
-        nota_ic = _get(m, "area_construible_max_m2", "nota") or ""
+        nota_ic = area_max_obj.get("motivo") or area_max_obj.get("nota") or ""
         area_max  = "IC resultante"
-        area_unit = nota_ic[:55] if nota_ic else "requiere modelado geométrico"
+        area_unit = ""
+        area_state = _state(area_max_obj)
+        area_source = _metric_source(area_max_obj, "Art. 310 Decreto 555/2021")
+        area_warning = nota_ic or "Requiere modelado geométrico."
 
     pisos_val = _get(m, "altura_base_pisos", "valor") or _get(m, "altura_maxima_pisos", "valor")
     bc_short   = _BC_SHORT.get(bc, bc.upper())
@@ -1296,9 +1769,17 @@ def _render_html(
     if unit_est_data:
         units_est = str(unit_est_data["total_unidades"])
         units_sub = "estimación — ver supuestos p.4"
+        units_state = "derivado"
+        units_source = (
+            "Estimador Ainmo sobre área derivada · mezcla y circulación declaradas"
+            if unit_est_data.get("basado_en_area_estimada")
+            else "Estimador Ainmo sobre área construible resuelta"
+        )
     else:
-        units_est = "—"
+        units_est = "No calculable"
         units_sub = "IC resultante — sin área construible"
+        units_state = "insuficiente"
+        units_source = "Requiere un área construible base"
 
     # Profile SVG
     profile_svg = _profile_svg(d)
@@ -1306,7 +1787,7 @@ def _render_html(
     # Setback summary cards
     ant_dim = (d.get("antejardin") or {}).get("dimension_m")
     if isinstance(ant_dim, dict):
-        ant_dim = None
+        ant_dim = ant_dim.get("valor")
     post_v  = _get(m, "aislamiento_posterior_m", "valor")
     lat_v   = _get(m, "aislamiento_lateral_m", "valor")
     ret_v   = _get(m, "retroceso_fachada_A_m", "valor")
@@ -1328,8 +1809,10 @@ def _render_html(
         setbacks.append({"label": "Retiros", "val": "Sin dato",
                           "src": "Verificar con Curaduría"})
 
-    # Param rows, floor rows, unit estimate, next steps
+    # Tables and report sections
     param_rows = _param_rows(d, lu)
+    normative_rows = _normative_rows(d, lu)
+    used_sources = _used_sources(d, lu, normative_rows, param_rows)
     floor_rows = _floor_rows(d, lu)
     next_steps_list = _next_steps(d, lu)
     warnings   = [w for w in (d.get("warnings") or []) if w]
@@ -1341,10 +1824,19 @@ def _render_html(
             "antes de usar este informe."
         ))
     trace      = d.get("formula_trace") or []
+    toc = [
+        "Resumen del predio",
+        "Normativa aplicable - exigencia vs. resultado",
+        "Área construible / unidades estimadas",
+        "Perfil volumétrico",
+        "Próximos pasos",
+        "Fuentes consultadas",
+        "Apéndice: trazabilidad del cálculo",
+    ]
 
     # Render
     env  = _make_env()
-    tmpl = env.from_string(_TEMPLATE)
+    tmpl = env.from_string(_DUE_DILIGENCE_TEMPLATE)
     return tmpl.render(
         disclaimer   = DISCLAIMER,
         decree_short = DECREE_SHORT,
@@ -1357,6 +1849,8 @@ def _render_html(
         tratamiento  = trat,
         tipologia    = tip,
         area_actividad = area_act,
+        locality_upz = locality_upz,
+        current_use = current_use,
         anu_usado    = anu_usado,
         rango        = rango,
         lat          = lat,
@@ -1365,19 +1859,27 @@ def _render_html(
         area_max     = area_max,
         area_label   = area_label,
         area_max_unit = area_unit,
+        area_state   = area_state,
+        area_source  = area_source,
+        area_warning = area_warning,
         units_est    = units_est,
         units_sub    = units_sub,
+        units_state  = units_state,
+        units_source = units_source,
         binding_short  = bc_short,
         binding_detail = bc_detail,
         verdict_sentence = verdict_s,
         profile_svg  = profile_svg,
         setbacks     = setbacks,
         param_rows   = param_rows,
+        normative_rows = normative_rows,
+        used_sources = used_sources,
         floor_rows   = floor_rows,
         unit_est     = unit_est_data,
         next_steps   = next_steps_list,
         warnings     = warnings,
         trace        = trace,
+        toc          = toc,
     )
 
 

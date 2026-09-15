@@ -49,6 +49,35 @@ def _gis_lookup_cached(lng: float, lat: float, vis: bool, expected_lotcodigo: st
     return result
 
 
+class CadastralMismatchError(RuntimeError):
+    def __init__(self, expected: str, resolved: str):
+        self.expected = expected
+        self.resolved = resolved
+        super().__init__(f"Expected lot {expected}, resolved {resolved or 'SIN_DATO'}")
+
+
+async def _calculate_current_lot(
+    *, lng: float, lat: float, vis_en_sitio: bool,
+    anu_m2: float | None, frente_m: float | None, ancho_via_m: float | None,
+    expected_lotcodigo: str | None,
+) -> tuple[dict, dict]:
+    """Single GIS + calculation path shared by JSON, HTML and PDF exports."""
+    expected = str(expected_lotcodigo or "").strip()
+    lookup_snapshot = await asyncio.to_thread(
+        _gis_lookup_cached, lng, lat, vis_en_sitio, expected,
+    )
+    resolved = str((lookup_snapshot.get("lote") or {}).get("lotcodigo") or "").strip()
+    if expected and resolved != expected:
+        raise CadastralMismatchError(expected, resolved)
+    result = calc.calculate(
+        lookup_snapshot,
+        anu_m2=anu_m2,
+        frente_m=frente_m,
+        ancho_via_m=ancho_via_m,
+    )
+    return lookup_snapshot, result
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.init()
@@ -404,26 +433,11 @@ async def calc_endpoint(
             })
 
     try:
-        expected_lotcodigo = str(expected_lotcodigo or "").strip()
-        lu = await asyncio.to_thread(
-            _gis_lookup_cached, lng, lat, vis_en_sitio, expected_lotcodigo,
+        lu, result = await _calculate_current_lot(
+            lng=lng, lat=lat, vis_en_sitio=vis_en_sitio,
+            anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m,
+            expected_lotcodigo=expected_lotcodigo,
         )
-        resolved_lotcodigo = str((lu.get("lote") or {}).get("lotcodigo") or "").strip()
-        if expected_lotcodigo and resolved_lotcodigo != expected_lotcodigo:
-            return JSONResponse(status_code=200, content={
-                "ok": False,
-                "error": "cadastral_mismatch",
-                "message": (
-                    "La placa domiciliaria de Catastro identifica el lote "
-                    f"{expected_lotcodigo}, pero su punto publicado cae dentro del lote "
-                    f"{resolved_lotcodigo or 'SIN_DATO'}. No se calcularon normas para evitar "
-                    "mostrar por error las del predio vecino. Seleccione el polígono correcto "
-                    "en el mapa o verifique el CHIP/código de lote en Catastro."
-                ),
-                "expected_lotcodigo": expected_lotcodigo,
-                "resolved_lotcodigo": resolved_lotcodigo or None,
-            })
-        result = calc.calculate(lu, anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m)
 
         analysis_id = None
         usage_this_month = 0
@@ -473,6 +487,20 @@ async def calc_endpoint(
             },
         }
 
+    except CadastralMismatchError as exc:
+        return JSONResponse(status_code=200, content={
+            "ok": False,
+            "error": "cadastral_mismatch",
+            "message": (
+                "La placa domiciliaria de Catastro identifica el lote "
+                f"{exc.expected}, pero su punto publicado cae dentro del lote "
+                f"{exc.resolved or 'SIN_DATO'}. No se calcularon normas para evitar "
+                "mostrar por error las del predio vecino. Seleccione el polígono correcto "
+                "en el mapa o verifique el CHIP/código de lote en Catastro."
+            ),
+            "expected_lotcodigo": exc.expected,
+            "resolved_lotcodigo": exc.resolved or None,
+        })
     except calc.InputRequired as exc:
         field = _detect_missing_field(str(exc))
         return JSONResponse(status_code=200, content={
@@ -736,9 +764,11 @@ async def report_endpoint(
     # The current-analysis PDF is a public product export. Saved-history PDFs
     # remain protected by ownership checks on /api/analyses/{id}/report.
     try:
-        expected_lotcodigo = str(expected_lotcodigo or "").strip()
-        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio, expected_lotcodigo)
-        result = calc.calculate(lu, anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m)
+        lu, result = await _calculate_current_lot(
+            lng=lng, lat=lat, vis_en_sitio=vis_en_sitio,
+            anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m,
+            expected_lotcodigo=expected_lotcodigo,
+        )
         loop = asyncio.get_event_loop()
         pdf_bytes = await loop.run_in_executor(
             None, lambda: pdf_report.generate_pdf(calc_result=result, lookup_snapshot=lu, address=address)
@@ -747,6 +777,13 @@ async def report_endpoint(
         from fastapi.responses import Response
         return Response(content=pdf_bytes, media_type="application/pdf",
                         headers={"Content-Disposition": disposition})
+    except CadastralMismatchError as exc:
+        return JSONResponse(status_code=200, content={
+            "ok": False, "error": "cadastral_mismatch",
+            "expected_lotcodigo": exc.expected,
+            "resolved_lotcodigo": exc.resolved or None,
+            "message": "El punto no corresponde al lote esperado; no se generó el informe.",
+        })
     except calc.InputRequired as exc:
         return JSONResponse(status_code=200, content={
             "ok": False, "error": "input_required",
@@ -770,12 +807,21 @@ async def report_html_endpoint(
     expected_lotcodigo: str | None = Query(None),
 ):
     try:
-        expected_lotcodigo = str(expected_lotcodigo or "").strip()
-        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio, expected_lotcodigo)
-        result = calc.calculate(lu, anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m)
+        lu, result = await _calculate_current_lot(
+            lng=lng, lat=lat, vis_en_sitio=vis_en_sitio,
+            anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m,
+            expected_lotcodigo=expected_lotcodigo,
+        )
         html_str = pdf_report.generate_html_preview(calc_result=result, lookup_snapshot=lu, address=address)
         from fastapi.responses import Response
         return Response(content=html_str, media_type="text/html; charset=utf-8")
+    except CadastralMismatchError as exc:
+        return JSONResponse(status_code=200, content={
+            "ok": False, "error": "cadastral_mismatch",
+            "expected_lotcodigo": exc.expected,
+            "resolved_lotcodigo": exc.resolved or None,
+            "message": "El punto no corresponde al lote esperado; no se generó la vista previa.",
+        })
     except Exception as exc:
         return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": str(exc)})
 
