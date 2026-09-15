@@ -44,14 +44,14 @@ MARKET_DEFAULTS: dict = {
         "avalúo comercial. Los valores son estimados basados en fuentes públicas y de "
         "industria; la microubicación, el estrato, el estado del inmueble y las "
         "condiciones del mercado local pueden diferir significativamente de estos rangos. "
-        "Actualice este archivo si la fecha_actualizacion supera 6 meses."
+        "Verifique que la fecha de actualización no supere seis meses."
     ),
 
     "fuente_general": (
         "Galería Inmobiliaria (Colombia), Habi.co, Mubrick Inmobiliaria, "
         "Goodsyservices Consulting, Portafolio / Metrocuadrado, DANE ICOCED, "
         "Camacol, Banco de la República (IBR), vivienda.com.co, oneestimate.ai. "
-        "Ver market_defaults_SOURCES.md para URLs y fechas completas."
+        "Consulte la ficha de referencias de Ainmo para las URLs y fechas completas."
     ),
 
     "fecha_actualizacion": "2026-08",
@@ -450,8 +450,8 @@ MARKET_DEFAULTS: dict = {
             "para este indicador. Rango 75-90% basado en tipologías residenciales colombianas: "
             "torres de 8+ pisos con doble núcleo de ascensores tienden a 78-82%; proyectos "
             "compactos de 4-6 pisos pueden alcanzar 85-90% al tener menos circulación vertical. "
-            "El default 82% corresponde a 1 − 18% circulación (mismo supuesto del estimador "
-            "de unidades en calc.py). Validar contra planos reales del proyecto."
+            "El valor inicial de 82% corresponde a descontar 18% de circulación, el mismo "
+            "supuesto utilizado en el estimador de unidades. Valide contra planos reales del proyecto."
         ),
         "fecha": "2026",
         "nota": (

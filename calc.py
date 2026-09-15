@@ -898,10 +898,10 @@ def _calc_parking(
             "confianza": aa_confianza,
             "fuente": fuente,
             "nota": (
-                "Porcentajes sobre base Art. 390 (área cubierta total excluye "
-                "estacionamientos, sótanos y semisótanos). "
-                "Área estimada usa área_construible_max como proxy — sobreestima en "
-                f"≈{min_pct:.0f}% por circularidad. Verificar con área real del proyecto."
+                "Los porcentajes se aplican al área cubierta total definida por el Art. 390, "
+                "excluyendo estacionamientos, sótanos y semisótanos. Los metros cuadrados "
+                "solo pueden calcularse cuando el proyecto define esa área cubierta; "
+                "verifique la base antes de usar el resultado."
             ),
         }
 

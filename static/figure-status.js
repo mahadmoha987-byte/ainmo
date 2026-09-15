@@ -5,10 +5,25 @@
   const plural={resuelto:'resueltas',derivado:'derivadas',insuficiente:'con datos insuficientes',requiere_concepto:'requieren concepto',no_aplica:'no aplican',error:'con error'};
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const num=v=>Number.isFinite(v)?v.toLocaleString('es-CO',{maximumFractionDigits:1}):null;
+  const plain=v=>String(v??'')
+    .replace(/área_construible_max(?:_m2)?/gi,'área construible usada como base')
+    .replace(/huella_x_pisos/gi,'huella edificable × pisos permitidos')
+    .replace(/sin_fuente_configurada/gi,'sin fuente automatizada')
+    .replace(/ancho_via_m/gi,'ancho total de la vía')
+    .replace(/frente_m/gi,'frente del lote')
+    .replace(/altura_m/gi,'altura en metros')
+    .replace(/\b([a-záéíóúñ]+(?:_[a-záéíóúñ0-9]+)+)\b/gi,match=>match.replaceAll('_',' '));
+  const sourceText=value=>value==='sin_dato'?'Fuente no disponible':value;
+  const humanKey=key=>({
+    area_lote:'Área del lote',huella_calculada:'Huella calculada',rango_huella_m2:'Rango de huella',
+    pisos:'Pisos',aislamientos_aplicados:'Aislamientos aplicados',antejardin_m:'Antejardín',
+    retroceso_m:'Retroceso de fachada',retroceso_aplicado_a_huella:'Retroceso aplicado a la huella',
+    polygon_used:'Polígono catastral utilizado',snap_fallback_used:'Selección aproximada utilizada'
+  }[key]||plain(key).replace(/^./,c=>c.toUpperCase()));
   let selected='todos',corpusPromise;
   const badge=s=>`<span class="figure-badge status-${esc(s)}">${esc(labels[s]||labels.insuficiente)}</span>`;
   const action=f=>f.que_se_necesita
-    ? `<p class="figure-action"><strong>Se necesita:</strong> ${esc(f.que_se_necesita)}${f.quien_lo_resuelve?` — ${esc(f.quien_lo_resuelve)}`:''}</p>`
+    ? `<p class="figure-action"><strong>Se necesita:</strong> ${esc(plain(f.que_se_necesita))}${f.quien_lo_resuelve?` — ${esc(plain(f.quien_lo_resuelve))}`:''}</p>`
     : '';
   function metricFigures(d){
     const figuresById=new Map((d.figuras||[]).map(f=>[f.id,f]));
@@ -34,10 +49,10 @@
     if(f.estado==='insuficiente')return 'Dato pendiente';
     if(f.estado==='error')return 'Cálculo fallido';
     if(f.estado==='derivado')return 'Estimación no disponible';
-    if(f.formula)return esc(f.formula);
+    if(f.formula)return esc(plain(f.formula));
     if(f.requerido===true)return 'Requerido';
     if(f.aplica===true)return 'Aplica con condiciones';
-    if(f.nivel&&!f.nivel.startsWith('no_aplica'))return esc(f.nivel.replaceAll('_',' '));
+    if(f.nivel&&!f.nivel.startsWith('no_aplica'))return esc(plain(f.nivel));
     return 'Dato no disponible';
   }
   function numericFigure(f){
@@ -45,30 +60,99 @@
     return num(f.valor??f.valor_m2??f.dimension_m)!==null
       ||(Array.isArray(f.rango_m2)&&f.rango_m2.length===2&&f.rango_m2.every(Number.isFinite));
   }
-  function card(f,compact=false){
+  function renderEntries(value){
+    if(value===null||value===undefined)return '<span>Dato no disponible</span>';
+    if(Array.isArray(value))return `<ul>${value.map(item=>`<li>${typeof item==='object'?renderEntries(item):esc(plain(item))}</li>`).join('')}</ul>`;
+    if(typeof value==='object')return `<dl class="figure-inputs">${Object.entries(value).map(([key,item])=>`<div><dt>${esc(humanKey(key))}</dt><dd>${typeof item==='object'?renderEntries(item):esc(typeof item==='boolean'?(item?'Sí':'No'):plain(item))}</dd></div>`).join('')}</dl>`;
+    return esc(plain(value));
+  }
+  function valueRows(f){
+    if(!f.valores_resumen)return '';
+    return `<dl class="figure-values">${f.valores_resumen.map(item=>{
+      const itemNumeric=numericFigure(item);
+      return `<div><dt>${esc(item.etiqueta)}</dt><dd class="${itemNumeric?'':'figure-text-value'}">${display(item)}${itemNumeric&&item.unidad?` <small>${esc(item.unidad)}</small>`:''}</dd></div>`;
+    }).join('')}</dl>`;
+  }
+  function card(f,compact=false,headingLevel=3,primary=false){
     const numeric=numericFigure(f);
-    if(compact) return `<div class="kpi-cell figure-card figure-compact" data-figure-id="${esc(f.id)}" data-estado="${esc(f.estado)}">
-      <div class="kpi-label">${esc(f.etiqueta)}</div>${badge(f.estado)}<div class="kpi-value ${numeric?'':'figure-text-value'}">${display(f)}</div>
-      ${numeric&&f.unidad?`<div class="m-unit">${esc(f.unidad)}</div>`:''}
-      <p class="m-note">${esc(f.motivo||'Estado informado por el motor de cálculo.')}</p>
+    const heading=`h${Math.min(6,Math.max(2,headingLevel))}`;
+    const members=f.valores_resumen?.length||1;
+    const applied=f.valores_resumen
+      ? f.valores_resumen.map(item=>`${esc(item.etiqueta)}: ${display(item)}`).join(' · ')
+      : `${display(f)}${numeric&&f.unidad?' '+esc(f.unidad):''}`;
+    if(compact) return `<div class="kpi-cell figure-card figure-compact${primary?' is-primary':''}" data-figure-id="${esc(f.id)}" data-figure-members="${members}" data-estado="${esc(f.estado)}">
+      <${heading} class="kpi-label">${esc(f.etiqueta)}</${heading}>${badge(f.estado)}${f.valores_resumen?valueRows(f):`<div class="kpi-value ${numeric?'':'figure-text-value'}">${display(f)}</div>`}
+      ${!f.valores_resumen&&numeric&&f.unidad?`<div class="m-unit">${esc(f.unidad)}</div>`:''}
+      <p class="m-note">${esc(plain(f.motivo||'Estado informado por el motor de cálculo.'))}</p>
       ${action(f)}
       <details class="figure-article" data-article-id="${esc(f.articulo_id||'')}"><summary>Ver el texto del artículo ▾</summary><div class="article-text">${f.articulo_id?'Cargando corpus local…':'Transcripción no disponible; consulte el instrumento específico.'}</div>
-      <p><strong>Aplicado a este predio:</strong> ${display(f)}${numeric?' '+esc(f.unidad):''}. ${esc(f.motivo)}</p><p>${esc(f.advertencia||'')}</p><p>${esc(f.que_se_necesita||'')}</p><p>${esc(f.fuente_dato)} · ${esc(f.fecha_consulta||'Fecha no disponible')}</p></details></div>`;
-    return `<div class="${compact?'kpi-cell':'metric-card'} figure-card" data-figure-id="${esc(f.id)}" data-estado="${esc(f.estado)}">
-      <div class="${compact?'kpi-label':'m-label'}">${esc(f.etiqueta)}</div>${badge(f.estado)}
-      <div class="${compact?'kpi-value':'m-value'} ${numeric?'':'figure-text-value'}">${display(f)}</div>
-      ${numeric&&f.unidad?`<div class="m-unit">${esc(f.unidad)}</div>`:''}
-      <p class="m-note">${esc(f.motivo||'Estado informado por el motor de cálculo.')}</p>
+      <p><strong>Aplicado a este predio:</strong> ${applied}. ${esc(plain(f.motivo))}</p><p>${esc(plain(f.advertencia||''))}</p><p>${esc(plain(f.que_se_necesita||''))}</p><p>${esc(sourceText(f.fuente_dato))} · ${esc(f.fecha_consulta||'Fecha no disponible')}</p></details></div>`;
+    return `<article class="${compact?'kpi-cell':'metric-card'} figure-card${primary?' is-primary':''}" data-figure-id="${esc(f.id)}" data-figure-members="${members}" data-estado="${esc(f.estado)}">
+      <${heading} class="${compact?'kpi-label':'m-label'}">${esc(f.etiqueta)}</${heading}>${badge(f.estado)}
+      ${f.valores_resumen?valueRows(f):`<div class="${compact?'kpi-value':'m-value'} ${numeric?'':'figure-text-value'}">${display(f)}</div>`}
+      ${!f.valores_resumen&&numeric&&f.unidad?`<div class="m-unit">${esc(f.unidad)}</div>`:''}
+      <p class="m-note">${esc(plain(f.motivo||'Estado informado por el motor de cálculo.'))}</p>
       ${action(f)}
-      ${f.condicion?`<p class="m-note"><strong>Condición:</strong> ${esc(f.condicion)}</p>`:''}
-      ${f.advertencia?`<p class="derived-warning">${esc(f.advertencia)}</p>`:''}
-      ${f.metodo?`<p class="m-note">Método: ${esc(f.metodo)} · confianza ${esc(f.confianza)}</p>`:''}
-      ${f.supuestos?.length?`<details><summary>Supuestos y entradas</summary><ul>${f.supuestos.map(x=>`<li>${esc(x)}</li>`).join('')}</ul><pre>${esc(JSON.stringify(f.entradas??{},(k,v)=>v===null?'Dato no disponible':v,2))}</pre></details>`:''}
-      <p class="figure-source">${esc(f.fuente_verificada||f.articulo||f.fuente||f.articulo_id||'Fuente del dato')} · ${esc(f.fuente_dato||'Fuente pendiente de individualizar')} · consulta ${esc(f.fecha_consulta||'fecha no disponible')}</p>
+      ${f.condicion?`<p class="m-note"><strong>Condición:</strong> ${esc(plain(f.condicion))}</p>`:''}
+      ${f.advertencia?`<p class="derived-warning">${esc(plain(f.advertencia))}</p>`:''}
+      ${f.metodo?`<p class="m-note">Método: ${esc(plain(f.metodo))} · confianza ${esc(plain(f.confianza))}</p>`:''}
+      ${f.supuestos?.length?`<details><summary>Supuestos y entradas</summary><ul>${f.supuestos.map(x=>`<li>${esc(plain(x))}</li>`).join('')}</ul>${renderEntries(f.entradas??{})}</details>`:''}
+      <p class="figure-source">${esc(f.fuente_verificada||f.articulo||f.fuente||f.articulo_id||'Fuente del dato')} · ${esc(sourceText(f.fuente_dato||'Fuente pendiente de individualizar'))} · consulta ${esc(f.fecha_consulta||'fecha no disponible')}</p>
       <details class="figure-article" data-article-id="${esc(f.articulo_id||'')}"><summary>Ver el texto del artículo ▾</summary>
         <div class="article-text">${f.articulo_id?'Abra para consultar el corpus local.':'No hay una transcripción normativa cotejada para esta figura. Los datos catastrales y las estimaciones no son cifras literales del decreto; las referencias pendientes deben verificarse en la fuente.'}</div>
-        <p><strong>Aplicado a este predio:</strong> ${esc(f.etiqueta)}: ${display(f)}${numeric&&f.unidad?' '+esc(f.unidad):''}. ${esc(f.motivo)}</p>
-      </details></div>`;
+        <p><strong>Aplicado a este predio:</strong> ${esc(f.etiqueta)}: ${applied}. ${esc(plain(f.motivo))}</p>
+      </details></article>`;
+  }
+  function sameExplanation(a,b){
+    return a.estado===b.estado&&plain(a.motivo)===plain(b.motivo)&&
+      (a.articulo_id||'')===(b.articulo_id||'')&&(a.fuente_dato||'')===(b.fuente_dato||'');
+  }
+  function mergedFigure(figures,label,id){
+    const first=figures[0];
+    return Object.assign({},first,{id,etiqueta:label,valores_resumen:figures.map(item=>Object.assign({},item))});
+  }
+  function mergeVolumetricFigures(figures){
+    const remaining=[...figures],merged=[];
+    function take(ids,label,id){
+      const found=ids.map(itemId=>remaining.find(item=>item.id===itemId)).filter(Boolean);
+      if(found.length<2||!found.every(item=>sameExplanation(found[0],item)))return;
+      found.forEach(item=>remaining.splice(remaining.indexOf(item),1));
+      merged.push(mergedFigure(found,label,id));
+    }
+    take(['parking.min_pct','parking.max_pct','parking.adicional_pct'],'Régimen de estacionamientos','parking.porcentajes');
+    take(['parking.min_area_m2','parking.max_area_m2','parking.adicional_area_m2'],'Áreas de estacionamiento','parking.areas');
+    take(['metrics.area_construible_max_m2','metrics.planta_maxima_m2'],'Área construible y huella normativas','metrics.area_y_huella_normativas');
+    const metrics=remaining.filter(item=>item.id?.startsWith('metrics.'));
+    const seen=new Set();
+    metrics.forEach(item=>{
+      if(seen.has(item.id))return;
+      const family=metrics.filter(other=>!seen.has(other.id)&&sameExplanation(item,other));
+      if(family.length<2)return;
+      family.forEach(other=>{seen.add(other.id);remaining.splice(remaining.indexOf(other),1);});
+      merged.push(mergedFigure(family,'Valores volumétricos relacionados',`group.${family.map(other=>other.id.split('.').pop()).join('.')}`));
+    });
+    return remaining.concat(merged);
+  }
+  const groupDefinitions=[
+    {id:'lote',title:'Lote y área',match:f=>f.id==='lote.area_m2'||f.id==='anu',priority:['lote.area_m2','anu']},
+    {id:'edificabilidad',title:'Edificabilidad (ICe)',match:f=>!/^parking\./.test(f.id)&&!/antejardin|aislamiento|retroceso/.test(f.id)&&f.id!=='lote.area_m2'&&f.id!=='anu',priority:['metrics.area_construible_max_m2','metrics.area_y_huella_normativas','metrics.area_construible_estimada','edificabilidad.indice_construccion','metrics.altura_base_pisos']},
+    {id:'aislamientos',title:'Aislamientos y retrocesos',match:f=>/antejardin|aislamiento|retroceso/.test(f.id),priority:['antejardin','metrics.aislamiento_posterior_m','metrics.retroceso_fachada_A_m']},
+    {id:'estacionamientos',title:'Estacionamientos',match:f=>/^parking\./.test(f.id),priority:['parking.porcentajes','parking.min_pct','parking.areas','parking.min_area_m2']}
+  ];
+  function groupedVolumetry(d){
+    const figures=mergeVolumetricFigures((d.figuras||[]).filter(f=>f.seccion==='volumetria'||!f.seccion));
+    return `<div class="figure-groups">${groupDefinitions.map(group=>{
+      const items=figures.filter(group.match);
+      if(!items.length)return '';
+      const rank=item=>{
+        const ids=[item.id,...(item.valores_resumen||[]).map(value=>value.id)];
+        const positions=ids.map(id=>group.priority.indexOf(id)).filter(index=>index>=0);
+        const hasNumber=item.valores_resumen?.some(numericFigure)||numericFigure(item);
+        return (hasNumber?0:100)+(positions.length?Math.min(...positions):99);
+      };
+      items.sort((a,b)=>rank(a)-rank(b));
+      return `<section class="figure-group" aria-labelledby="figure-group-${group.id}"><h3 id="figure-group-${group.id}" class="figure-group-title">${group.title}</h3><div class="figure-group-grid">${items.map((item,index)=>card(item,false,4,index===0)).join('')}</div></section>`;
+    }).join('')}</div>`;
   }
   function summary(d){
     const fallbackCounts=Object.fromEntries(Object.keys(labels).map(k=>[k,0]));
@@ -89,6 +173,9 @@
     const results=document.getElementById('results');if(!results)return;
     results.dataset.figureFilter=selected;
     results.querySelectorAll('[data-estado]').forEach(el=>{el.hidden=selected!=='todos'&&el.dataset.estado!==selected;});
+    results.querySelectorAll('.figure-group').forEach(group=>{
+      group.hidden=selected!=='todos'&&![...group.querySelectorAll('[data-estado]')].some(card=>!card.hidden);
+    });
     results.querySelectorAll('[data-status-filter]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.statusFilter===selected)));
     results.querySelectorAll('.result-anchor-section').forEach(section=>{
       section.querySelectorAll(':scope > :not([data-estado]):not(.result-section-label):not(.figure-section-empty)').forEach(el=>{
@@ -121,6 +208,6 @@
     results.querySelectorAll('.figure-article').forEach(el=>el.addEventListener('toggle',()=>loadArticle(el)));
     applyFilter();
   }
-  root.AinmoFigures={card,summary,badge,display,metricFigures,init,applyFilter,grid:(d,section='volumetria')=>`<div class="metrics-grid">${(d.figuras||[]).filter(f=>f.seccion===section||(!f.seccion&&section==='volumetria')).map(f=>card(f)).join('')}</div>`};
+  root.AinmoFigures={card,summary,badge,display,metricFigures,init,applyFilter,grid:(d,section='volumetria')=>section==='volumetria'?groupedVolumetry(d):`<div class="metrics-grid">${(d.figuras||[]).filter(f=>f.seccion===section).map(f=>card(f,false,3)).join('')}</div>`};
   if(typeof module!=='undefined')module.exports=root.AinmoFigures;
 })(typeof window==='undefined'?globalThis:window);

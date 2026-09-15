@@ -544,8 +544,8 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
 @media print{.result-anchor-rail{display:none!important}.result-anchor-section,.result-anchor-target{scroll-margin-top:0}}
 
 </style>
-<link rel="stylesheet" href="/static/figure-status.css?v=20260914-ui2">
-<script src="/static/figure-status.js?v=20260915-ui4"></script>
+<link rel="stylesheet" href="/static/figure-status.css?v=20260915-ui3">
+<script src="/static/figure-status.js?v=20260915-ui5"></script>
 </head>
 <body>
 
@@ -1689,15 +1689,15 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
     </div>
   </header>`);
   if (d.figuras) parts.push(AinmoFigures.summary(d));
-  parts.push(`<nav class="result-anchor-rail" aria-label="Secciones del resultado">
-    <a class="is-active" href="#result-resumen">Resumen</a>
-    <a href="#result-volumetria">Norma y volumen</a>
-    <a href="#result-modelo-3d">Modelo 3D</a>
-    <a href="#result-restricciones">Restricciones</a>
-    <a href="#result-financieros">Financieros</a>
-    <a href="#result-trazabilidad">Trazabilidad</a>
+  parts.push(`<nav class="result-anchor-rail" aria-label="Secciones del resultado" role="tablist">
+    <a class="is-active" id="tab-resumen" role="tab" aria-selected="true" aria-controls="result-resumen" tabindex="0" href="#result-resumen">Resumen</a>
+    <a id="tab-volumetria" role="tab" aria-selected="false" aria-controls="result-volumetria" tabindex="-1" href="#result-volumetria">Norma y volumen</a>
+    <a id="tab-modelo-3d" role="tab" aria-selected="false" aria-controls="result-modelo-3d" tabindex="-1" href="#result-modelo-3d">Modelo 3D</a>
+    <a id="tab-restricciones" role="tab" aria-selected="false" aria-controls="result-restricciones" tabindex="-1" href="#result-restricciones">Restricciones</a>
+    <a id="tab-financieros" role="tab" aria-selected="false" aria-controls="result-financieros" tabindex="-1" href="#result-financieros">Financieros</a>
+    <a id="tab-trazabilidad" role="tab" aria-selected="false" aria-controls="result-trazabilidad" tabindex="-1" href="#result-trazabilidad">Trazabilidad</a>
   </nav>`);
-  parts.push(`<section class="result-anchor-section" id="result-resumen"><div class="result-section-label">Resumen ejecutivo</div>`);
+  parts.push(`<section class="result-anchor-section" id="result-resumen" role="tabpanel" aria-labelledby="tab-resumen" tabindex="0"><h2 class="result-section-label">Resumen ejecutivo</h2>`);
 
   // Verdict banner — first element, highest prominence
   parts.push(verdictBanner(d));
@@ -1805,7 +1805,7 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
     normParts.push(_frenteInputCard(lat, lng, vis, anu ?? d.input?.anu_m2_supplied ?? null));
   }
 
-  const modelSection = `<section class="result-anchor-section" id="result-modelo-3d" data-estado="derivado"><div class="result-section-label">Modelo tridimensional</div>
+  const modelSection = `<section class="result-anchor-section" id="result-modelo-3d" role="tabpanel" aria-labelledby="tab-modelo-3d" tabindex="0" data-estado="derivado"><h2 class="result-section-label">Modelo tridimensional</h2>
   ${AinmoFigures.badge('derivado')} <span class="m-note">Maqueta aproximada con supuestos propios; no sustituye la modelación del proyecto ni necesariamente reproduce la huella estimada del resumen.</span>
   <div class="massing-wrap" id="massing-wrap">
     <div class="massing-toolbar">
@@ -1823,7 +1823,7 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
       return !wl.includes('antejardin') && !wl.includes('antejardín');
     });
     if (filteredWarnings.length) {
-      const whtml = filteredWarnings.map(w => `<div class="warn-item">${escHtml(w)}</div>`).join('');
+      const whtml = filteredWarnings.map(w => `<div class="warn-item">${escHtml(plainUiText(w))}</div>`).join('');
       normParts.push(`<div class="warnings-list">${whtml}</div>`);
     }
   }
@@ -1861,16 +1861,16 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
 
   _lastCalcData = d;
   _massingInitDone = false;
-  parts.push(`<section class="result-anchor-section" id="result-volumetria"><div class="result-section-label">Norma y volumetría</div>
+  parts.push(`<section class="result-anchor-section" id="result-volumetria" role="tabpanel" aria-labelledby="tab-volumetria" tabindex="0"><h2 class="result-section-label">Norma y volumetría</h2>
     <details class="normative-detail" id="normative-detail" open ontoggle="_onNormativeToggle(this)">
       <summary>Detalle normativo y fuentes<span class="nd-decree">D.555/2021 · D.670/2025 · D.676/2025 · D.253-254/2026 · Res.962/2026</span></summary>
       <div class="normative-body">${normParts.join('')}</div>
     </details>
   </section>`);
   parts.push(modelSection);
-  parts.push(`<section class="result-anchor-section" id="result-restricciones"><div class="result-section-label">Restricciones y condiciones</div>${restrictionParts.join('')}</section>`);
-  parts.push(`<section class="result-anchor-section" id="result-financieros"><div class="result-section-label">Escenario financiero</div>${proformaPanel(d)}</section>`);
-  parts.push(`<section class="result-anchor-section" id="result-trazabilidad"><div class="result-section-label">Trazabilidad del cálculo</div>${traceBody}</section>`);
+  parts.push(`<section class="result-anchor-section" id="result-restricciones" role="tabpanel" aria-labelledby="tab-restricciones" tabindex="0"><h2 class="result-section-label">Restricciones y condiciones</h2>${restrictionParts.join('')}</section>`);
+  parts.push(`<section class="result-anchor-section" id="result-financieros" role="tabpanel" aria-labelledby="tab-financieros" tabindex="0"><h2 class="result-section-label">Escenario financiero</h2>${proformaPanel(d)}</section>`);
+  parts.push(`<section class="result-anchor-section" id="result-trazabilidad" role="tabpanel" aria-labelledby="tab-trazabilidad" tabindex="0"><h2 class="result-section-label">Trazabilidad del cálculo</h2>${traceBody}</section>`);
 
   parts.push(`<div class="print-disclaimer">
     <strong>ainmo · Estimación de prefactibilidad</strong> — D.555/2021 · D.670/2025 · D.676/2025 · D.253-254/2026 · Res.962/2026.
@@ -1907,7 +1907,12 @@ function _initResultAnchors() {
   const targets = links.map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
 
   function activate(id) {
-    links.forEach(link => link.classList.toggle('is-active', link.getAttribute('href') === `#${id}`));
+    links.forEach(link => {
+      const isActive = link.getAttribute('href') === `#${id}`;
+      link.classList.toggle('is-active', isActive);
+      link.setAttribute('aria-selected', String(isActive));
+      link.tabIndex = isActive ? 0 : -1;
+    });
     const active = rail.querySelector('.is-active');
     if (active) rail.scrollTo({ left:active.offsetLeft - (rail.clientWidth - active.offsetWidth) / 2, behavior:'smooth' });
   }
@@ -1961,6 +1966,18 @@ function _initResultAnchors() {
         root.scrollTo({ top, behavior:'smooth' });
       }
     });
+  });
+  rail.addEventListener('keydown', event => {
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+    const current = Math.max(0, links.indexOf(document.activeElement));
+    let next = current;
+    if (event.key === 'ArrowRight') next = (current + 1) % links.length;
+    if (event.key === 'ArrowLeft') next = (current - 1 + links.length) % links.length;
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = links.length - 1;
+    event.preventDefault();
+    links[next].focus();
+    links[next].click();
   });
 
   _resultNavObserver = new IntersectionObserver(() => {
@@ -2955,13 +2972,13 @@ function retrocesoCellHtml(rf, factor, fuenteDecreto) {
   const fuenteLabel =
     fuente === 'usuario'            ? 'Fuente: dato ingresado por el usuario' :
     fuente.startsWith('Layer 38')  ? 'Fuente GIS: Layer 38 Calzada POT (calzada sin andenes/separadores)' :
-    fuente === 'sin_dato'          ? 'Dato no disponible — proporcione ancho_via_m' :
+    fuente === 'sin_dato'          ? 'Dato no disponible — proporcione el ancho total de la vía' :
     fuente ? `Fuente: ${fuente}` : '';
 
   const valStr = A != null ? `A = ${A} m` : `A = ${factor} × D`;
   const sub = A != null
     ? `D = ${rf.D_m} m · ${fuenteLabel}`
-    : `D = perfil vial frente al predio · ${fuenteLabel || 'proporcione ancho_via_m'}`;
+    : `D = perfil vial frente al predio · ${fuenteLabel || 'proporcione el ancho total de la vía'}`;
 
   return `<div class="setback-row">
     <div>
@@ -3589,22 +3606,38 @@ function renderProformaResult(d) {
 /* ── Formula trace ───────────────────────────────────────────────────────── */
 function formulaTrace(steps) {
   if (!steps?.length) return '';
+  const traceLabels = {
+    area_lote: 'Área del lote', area_construible_max_m2: 'Área construible máxima',
+    planta_maxima_m2: 'Huella máxima', altura_base_pisos: 'Altura base',
+    aislamiento_posterior_m: 'Aislamiento posterior', aislamiento_lateral_m: 'Aislamiento lateral',
+    retroceso_fachada_A_m: 'Retroceso de fachada', ancho_via_m: 'Ancho total de la vía',
+    frente_m: 'Frente del lote', anu_m2: 'Área neta urbanizable'
+  };
+  const traceLabel = key => traceLabels[key] || String(key).replaceAll('_', ' ').replace(/^./, c => c.toUpperCase());
+  const traceText = value => String(value ?? '')
+    .replace(/área_construible_max(?:_m2)?/gi, 'área construible usada como base')
+    .replace(/huella_x_pisos/gi, 'huella edificable × pisos permitidos')
+    .replace(/sin_fuente_configurada/gi, 'sin fuente automatizada')
+    .replace(/\b([a-záéíóúñ]+(?:_[a-záéíóúñ0-9]+)+)\b/gi, match => match.replaceAll('_', ' '));
+  const traceValues = values => `<dl class="trace-values">${Object.entries(values).map(([key,value]) =>
+    `<div><dt>${escHtml(traceLabel(key))}</dt><dd>${value === null ? 'Dato no disponible' : escHtml(String(value))}</dd></div>`
+  ).join('')}</dl>`;
   const stepsHtml = steps.map(s => {
     const isErr = !!s.error;
     const valStr = s.valores && Object.keys(s.valores).length
-      ? JSON.stringify(s.valores, (k,v)=>v===null?'Dato no disponible':v, 2) : '';
+      ? traceValues(s.valores) : '';
     const resStr = s.resultado !== null && s.resultado !== undefined
-      ? `<div class="ts-res">= ${typeof s.resultado==='number'?fmt(s.resultado):escHtml(s.resultado)} ${escHtml(s.unidad || '')}</div>` : `<div class="ts-res">${escHtml(s.motivo || s.error || s.nota || 'Falta una entrada para resolver este paso.')}</div>`;
+      ? `<div class="ts-res">= ${typeof s.resultado==='number'?fmt(s.resultado):escHtml(traceText(s.resultado))} ${escHtml(s.unidad || '')}</div>` : `<div class="ts-res">${escHtml(traceText(s.motivo || s.error || s.nota || 'Falta una entrada para resolver este paso.'))}</div>`;
     return `<div class="trace-step${isErr ? ' step-error' : ''}" data-estado="${escHtml(s.estado || (isErr?'error':'derivado'))}">
       <div class="ts-n">Paso ${s.paso}</div>
       ${AinmoFigures.badge(s.estado || (isErr?'error':'derivado'))}
-      <div class="ts-desc">${escHtml(s.descripcion || '')}</div>
-      ${s.expresion ? `<div class="ts-expr">${escHtml(s.expresion)}</div>` : ''}
-      ${valStr ? `<div class="ts-vals">${escHtml(valStr)}</div>` : ''}
+      <div class="ts-desc">${escHtml(traceText(s.descripcion))}</div>
+      ${s.expresion ? `<div class="ts-expr">${escHtml(traceText(s.expresion))}</div>` : ''}
+      ${valStr ? `<div class="ts-vals">${valStr}</div>` : ''}
       ${resStr}
-      ${s.nota   ? `<div class="ts-note">${escHtml(s.nota)}</div>` : ''}
+      ${s.nota   ? `<div class="ts-note">${escHtml(traceText(s.nota))}</div>` : ''}
       ${s.fuente ? `<div class="ts-src">Fuente: ${escHtml(s.fuente)}</div>` : ''}
-      ${isErr    ? `<div class="ts-note" style="color:var(--c-err)">${escHtml(s.error)}</div>` : ''}
+      ${isErr    ? `<div class="ts-note" style="color:var(--c-err)">${escHtml(traceText(s.error))}</div>` : ''}
     </div>`;
   }).join('');
 
@@ -4316,6 +4349,21 @@ function set(html) { document.getElementById('results').innerHTML = html; }
 function clearResults() { document.getElementById('results').innerHTML = ''; _pendingAnu = null; _pendingFrente = null; }
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function plainUiText(value) {
+  return String(value ?? '')
+    .replace(/\baerocivil\b/gi, 'restricción aeronáutica')
+    .replace(/cerros_orientales/gi, 'Cerros Orientales')
+    .replace(/movimientos_en_masa/gi, 'amenaza por movimientos en masa')
+    .replace(/\binundacion\b/gi, 'amenaza por inundación')
+    .replace(/ronda_hidrica/gi, 'ronda hídrica')
+    .replace(/área_construible_max(?:_m2)?/gi, 'área construible usada como base')
+    .replace(/huella_x_pisos/gi, 'huella edificable × pisos permitidos')
+    .replace(/ancho_via_m/gi, 'ancho total de la vía')
+    .replace(/frente_m/gi, 'frente del lote')
+    .replace(/altura_m/gi, 'altura en metros')
+    .replace(/\b([a-záéíóúñ]+(?:_[a-záéíóúñ0-9]+)+)\b/gi, match => match.replaceAll('_', ' '));
 }
 function fmt(n) {
   if (n == null || !Number.isFinite(Number(n))) return 'Dato no disponible: revise las entradas';

@@ -42,8 +42,26 @@ assert(payloadSummary.includes('7 no aplican'));
 const action=ui.card({id:'metrics.x',etiqueta:'X',valor:null,estado:'insuficiente',motivo:'Falta perfil.',que_se_necesita:'Confirmar perfil vial.',quien_lo_resuelve:'topógrafo'});
 assert(action.includes('Se necesita:'));
 assert(action.includes('Confirmar perfil vial. — topógrafo'));
+const grouped=ui.grid({figuras:[
+  {id:'lote.area_m2',seccion:'volumetria',etiqueta:'Área del lote',valor:7771.7,unidad:'m²',estado:'derivado',motivo:'Área catastral.'},
+  {id:'metrics.area_construible_max_m2',seccion:'volumetria',etiqueta:'Área máxima',valor:null,unidad:'m²',estado:'no_aplica',motivo:'El IC/IO es resultante.',articulo_id:'555:310'},
+  {id:'metrics.planta_maxima_m2',seccion:'volumetria',etiqueta:'Huella máxima',valor:null,unidad:'m²',estado:'no_aplica',motivo:'El IC/IO es resultante.',articulo_id:'555:310'},
+  {id:'metrics.aislamiento_posterior_m',seccion:'volumetria',etiqueta:'Aislamiento posterior',valor:5,unidad:'m',estado:'resuelto',motivo:'Norma volumétrica.'},
+  {id:'parking.min_pct',seccion:'volumetria',etiqueta:'Mínimo',valor:8,unidad:'%',estado:'resuelto',motivo:'Misma explicación.',articulo_id:'555:389'},
+  {id:'parking.max_pct',seccion:'volumetria',etiqueta:'Máximo',valor:20,unidad:'%',estado:'resuelto',motivo:'Misma explicación.',articulo_id:'555:389'},
+  {id:'parking.adicional_pct',seccion:'volumetria',etiqueta:'Adicional',valor:15,unidad:'%',estado:'resuelto',motivo:'Misma explicación.',articulo_id:'555:389'},
+  {id:'parking.min_area_m2',seccion:'volumetria',etiqueta:'Área mínima',valor:null,unidad:'m²',estado:'insuficiente',motivo:'Falta área_construible_max.',articulo_id:'555:389'},
+  {id:'parking.max_area_m2',seccion:'volumetria',etiqueta:'Área máxima',valor:null,unidad:'m²',estado:'insuficiente',motivo:'Falta área_construible_max.',articulo_id:'555:389'},
+  {id:'parking.adicional_area_m2',seccion:'volumetria',etiqueta:'Área adicional',valor:null,unidad:'m²',estado:'insuficiente',motivo:'Falta área_construible_max.',articulo_id:'555:389'}
+]});
+for(const title of ['Lote y área','Edificabilidad (ICe)','Aislamientos y retrocesos','Estacionamientos'])assert(grouped.includes(title));
+assert(grouped.includes('data-figure-members="3"'));
+assert.equal((grouped.match(/Misma explicación\./g)||[]).length,2); // visible note + collapsed application, once for the merged family
+assert(!grouped.includes('area_construible_max'));
+assert(grouped.includes('<h3 id="figure-group-lote"'));
+assert(grouped.includes('<h4 class="m-label"'));
 const html=fs.readFileSync(require('node:path').join(__dirname,'../index.html'),'utf8');
 for(const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)){
   if(!/src=|type="(?:module|importmap)"/.test(match[1])) new vm.Script(match[2]);
 }
-console.log('Figure renderer: six statuses, zero, ranges, escaping, full-report counts and inline JS syntax passed.');
+console.log('Figure renderer: statuses, grouped hierarchy, deduplication, plain-language output and inline JS syntax passed.');

@@ -99,3 +99,46 @@ def test_api_has_specific_outside_bogota_and_chip_messages():
     assert 'resolution == "outside_bogota"' in api
     assert "Ainmo solo cubre predios en Bogotá D.C. por ahora." in api
     assert 'resolution == "chip_not_found"' in api
+
+
+def test_batch4_result_tabs_have_roles_state_and_keyboard_navigation():
+    assert 'role="tablist"' in HTML
+    assert HTML.count('role="tab"') == 6
+    assert HTML.count('role="tabpanel"') == 6
+    assert HTML.count('<h2 class="result-section-label">') == 6
+    assert "link.setAttribute('aria-selected', String(isActive))" in HTML
+    assert "link.tabIndex = isActive ? 0 : -1" in HTML
+    assert "['ArrowRight', 'ArrowLeft', 'Home', 'End']" in HTML
+
+
+def test_batch4_volumetric_renderer_groups_and_deduplicates():
+    status_js = Path(__file__).with_name("static").joinpath("figure-status.js").read_text()
+    for label in ("Lote y área", "Edificabilidad (ICe)", "Aislamientos y retrocesos", "Estacionamientos"):
+        assert label in status_js
+    assert "parking.porcentajes" in status_js
+    assert "parking.areas" in status_js
+    assert "metrics.area_y_huella_normativas" in status_js
+    assert "valores_resumen" in status_js
+    assert "<pre>" not in status_js
+
+
+def test_batch4_homepage_has_one_workflow_and_report_examples():
+    landing = Path(__file__).with_name("landing.html").read_text()
+    possibilities = landing[landing.index('id="posibilidades"'):landing.index('id="como-funciona"')]
+    guide = landing[landing.index('id="como-funciona"'):landing.index('id="normativa"')]
+    assert "Tres fragmentos reales del análisis de un lote" in possibilities
+    assert "ALTURA BASE" in possibilities
+    assert "AISLAMIENTO POSTERIOR" in possibilities
+    assert "VALOR RESIDUAL DEL LOTE" in possibilities
+    assert "Ubique y confirme" in guide
+    assert "Lea lo esencial" in guide
+    assert "Un informe, seis lecturas" in landing
+
+
+def test_batch4_internal_parking_note_is_not_user_facing():
+    calc = Path(__file__).with_name("calc.py").read_text()
+    assert "sobreestima en" not in calc
+    assert "por circularidad" not in calc
+    assert "área_construible_max como proxy" not in calc
+    assert "Los metros cuadrados " in calc
+    assert "solo pueden calcularse cuando el proyecto define esa área cubierta" in calc
