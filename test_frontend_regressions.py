@@ -101,6 +101,32 @@ def test_api_has_specific_outside_bogota_and_chip_messages():
     assert 'resolution == "chip_not_found"' in api
 
 
+def test_outside_bogota_message_has_an_explicit_frontend_path():
+    assert "json.resolution === 'outside_bogota' ? 'outside_bogota'" in HTML
+    assert "if (kind === 'outside_bogota')" in HTML
+    assert "La dirección parece corresponder a otra ciudad de Colombia" in HTML
+
+
+def test_result_tab_click_scrolls_the_real_section_into_view():
+    start = HTML.index("function _initResultAnchors()")
+    end = HTML.index("/* ── KPI strip", start)
+    function = HTML[start:end]
+    assert "target.scrollIntoView({ block:'start', inline:'nearest' })" in function
+    assert "target.getBoundingClientRect().top - root.getBoundingClientRect().top" not in function
+
+
+def test_megalot_and_negative_residuals_render_as_stops_not_estimates():
+    assert "area_construible_estimada?.fuera_de_rango" in HTML
+    assert "Alto — fuera del rango del modelo" in HTML
+    assert "function _kpiNegative" in HTML
+    assert "Alto — valor residual negativo" in HTML
+
+
+def test_internal_antejardin_citation_note_is_not_user_facing():
+    status = Path(__file__).with_name("figure_status.py").read_text()
+    assert "la referencia heredada al Art. 307 no sustenta esta regla" not in status
+
+
 def test_batch4_result_tabs_have_roles_state_and_keyboard_navigation():
     assert 'role="tablist"' in HTML
     assert HTML.count('role="tab"') == 6

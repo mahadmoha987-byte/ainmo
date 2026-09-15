@@ -257,6 +257,8 @@ details.trace-block[open] summary::after{content:"\25BE contraer"}
 .veredicto-banner.v-sobrepago{background:var(--c-r-bg);border:1px solid var(--c-r-b);color:var(--c-r-fg)}
 .veredicto-banner.v-margen{background:var(--c-a-bg);border:1px solid var(--c-a-b);color:var(--c-a-fg)}
 .veredicto-banner.v-en_linea{background:#e8f5e9;border:1px solid #a5d6a7;color:#1b5e20}
+.pf-negative-stop{margin:var(--sp-3) 0;padding:var(--sp-3) var(--sp-4);background:var(--c-r-bg);border:2px solid var(--c-r-b);color:var(--c-r-fg);font-size:var(--ts-sm);line-height:1.55}
+.pf-negative-stop strong{display:block;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
 /* ── KPI strip — 6 key numbers immediately below verdict banner ──────────── */
 .kpi-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:var(--rule);border-left:var(--rule);margin-bottom:var(--sp-4)}
 @media(max-width:700px){.kpi-strip{grid-template-columns:1fr 1fr}}
@@ -545,7 +547,7 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
 
 </style>
 <link rel="stylesheet" href="/static/figure-status.css?v=20260915-ui3">
-<script src="/static/figure-status.js?v=20260915-ui5"></script>
+<script src="/static/figure-status.js?v=20260915-ui6"></script>
 </head>
 <body>
 
@@ -1031,7 +1033,7 @@ async function submitGeoSearch() {
     if (!json.ok) {
       showGeoError(
         json.message || 'El geocodificador no pudo procesar la dirección.',
-        q, 'server_error'
+        q, json.resolution === 'outside_bogota' ? 'outside_bogota' : 'server_error'
       );
     } else if (json.candidates.length === 0) {
       showGeoError(null, q, 'no_results');
@@ -1114,7 +1116,11 @@ function _pickCandidate(i) {
 function showGeoError(msg, query, kind) {
   // Build a specific, actionable message for each failure mode.
   let body = '';
-  if (kind === 'no_results') {
+  if (kind === 'outside_bogota') {
+    body = `
+      <p><strong>Ainmo solo cubre predios en Bogotá D.C. por ahora.</strong></p>
+      <p class="hint" style="margin-top:6px">La dirección parece corresponder a otra ciudad de Colombia. No la mostraremos como si fuera un predio de Bogotá.</p>`;
+  } else if (kind === 'no_results') {
     const hasHash = query && query.includes('#');
     if (hasHash) {
       // Likely the address doesn't exist in Catastro or OSM with that number.
@@ -1957,15 +1963,10 @@ function _initResultAnchors() {
     const detail = target.closest('details');
     if (detail && !detail.open) detail.open = true;
     activate(target.id);
-    requestAnimationFrame(() => {
-      if (mobile) {
-        const top = target.getBoundingClientRect().top + window.scrollY - 52;
-        window.scrollTo({ top, behavior:'smooth' });
-      } else if (root) {
-        const top = target.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 52;
-        root.scrollTo({ top, behavior:'smooth' });
-      }
-    });
+    // Native scrolling chooses the actual nearest scroll container. The old
+    // hand-computed offset could resolve to the current position and leave the
+    // newly selected tab disconnected from the visible section.
+    requestAnimationFrame(() => target.scrollIntoView({ block:'start', inline:'nearest' }));
   });
   rail.addEventListener('keydown', event => {
     if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
@@ -2318,11 +2319,24 @@ function _kpiCell(label, value, unit, fin = false) {
 }
 
 function _kpiNull(label, reason, fin = false, estado = 'insuficiente') {
+  const value = estado === 'error' ? 'Falló la consulta'
+    : estado === 'requiere_concepto' ? 'Modelación profesional'
+    : 'Faltan datos';
   return `<div class="kpi-cell kpi-null${fin ? ' kpi-fin' : ''}" data-estado="${estado}">
     <div class="kpi-label">${label}</div>
     ${AinmoFigures.badge(estado)}
-    <div class="kpi-value figure-text-value">${estado === 'error' ? 'Falló la consulta' : 'Faltan datos'}</div>
+    <div class="kpi-value figure-text-value">${value}</div>
     <div class="kpi-reason">${reason}</div>
+  </div>`;
+}
+
+function _kpiNegative(label, value, unit) {
+  return `<div class="kpi-cell kpi-null kpi-fin" data-estado="requiere_concepto">
+    <div class="kpi-label">${label}</div>
+    <span class="figure-badge status-error">Alto</span>
+    <div class="kpi-value">${value}</div>
+    <div class="kpi-unit">${unit}</div>
+    <div class="kpi-reason"><strong>Alto:</strong> el escenario no deja valor residual positivo para el suelo. Revise cabida, precios y costos antes de continuar.</div>
   </div>`;
 }
 
@@ -2399,11 +2413,16 @@ function kpiStrip(d) {
       : _kpiNull('PISOS', 'sin datos'));
 
   const hasArea = Number.isFinite(Number(area)) && Number(area) > 0;
-  const noAreaReason = 'No se pudo calcular — área base no disponible';
+  const outOfRange = !!m.area_construible_estimada?.fuera_de_rango;
+  const noAreaReason = outOfRange
+    ? (m.area_construible_estimada.motivo || 'Fuera del rango del modelo automatizado; requiere modelación profesional.')
+    : 'No se pudo calcular — área base no disponible';
 
   if (d.figuras) {
     const find = id => d.figuras.find(f => f.id === id);
-    const areaFigure = areaSource.estimated || areaSource.range
+    const areaFigure = outOfRange
+      ? find('metrics.area_construible_estimada')
+      : areaSource.estimated || areaSource.range
       ? find('metrics.area_construible_estimada')
       : find(isRenov ? 'metrics.area_construible_max_sin_manzana_completa_m2' : 'metrics.area_construible_max_m2');
     const heightFigure = find('metrics.altura_base_pisos') || find('metrics.altura_maxima_pisos') || find('edificabilidad');
@@ -2413,11 +2432,11 @@ function kpiStrip(d) {
 
   return `<div class="kpi-strip" id="kpi-strip">
     ${areaCell}
-    <div id="kpi-units-cell">${hasArea ? _kpiLoading('UNIDADES') : _kpiNull('UNIDADES', noAreaReason)}</div>
+    <div id="kpi-units-cell">${hasArea ? _kpiLoading('UNIDADES') : _kpiNull('UNIDADES', noAreaReason, false, outOfRange ? 'requiere_concepto' : 'insuficiente')}</div>
     ${pisosCell}
-    <div id="kpi-ingresos-cell">${hasArea ? _kpiLoading('INGRESOS EST.', true) : _kpiNull('INGRESOS EST.', noAreaReason, true)}</div>
-    <div id="kpi-costos-cell">${hasArea ? _kpiLoading('COSTO EST.', true) : _kpiNull('COSTO EST.', noAreaReason, true)}</div>
-    <div id="kpi-residual-cell">${hasArea ? _kpiLoading('VALOR RESIDUAL', true) : _kpiNull('VALOR RESIDUAL', noAreaReason, true)}</div>
+    <div id="kpi-ingresos-cell">${hasArea ? _kpiLoading('INGRESOS EST.', true) : _kpiNull('INGRESOS EST.', noAreaReason, true, outOfRange ? 'requiere_concepto' : 'insuficiente')}</div>
+    <div id="kpi-costos-cell">${hasArea ? _kpiLoading('COSTO EST.', true) : _kpiNull('COSTO EST.', noAreaReason, true, outOfRange ? 'requiere_concepto' : 'insuficiente')}</div>
+    <div id="kpi-residual-cell">${hasArea ? _kpiLoading('VALOR RESIDUAL', true) : _kpiNull('VALOR RESIDUAL', noAreaReason, true, outOfRange ? 'requiere_concepto' : 'insuficiente')}</div>
   </div>`;
 }
 
@@ -2478,12 +2497,16 @@ async function _fetchKpiFinancials(d) {
   const areaSource = _areaForFinancials(d);
   const area = areaSource.area;
   if (!Number.isFinite(Number(area)) || Number(area) <= 0) {
-    const reason = 'No se pudo calcular — área base no disponible';
+    const outOfRange = !!d?.metrics?.area_construible_estimada?.fuera_de_rango;
+    const reason = outOfRange
+      ? (d.metrics.area_construible_estimada.motivo || 'Fuera del rango del modelo automatizado; requiere modelación profesional.')
+      : 'No se pudo calcular — área base no disponible';
+    const estado = outOfRange ? 'requiere_concepto' : 'insuficiente';
     const setCell = (id, html) => { const el = document.getElementById(id); if (el) el.outerHTML = html; };
-    setCell('kpi-units-cell', _kpiNull('UNIDADES', reason));
-    setCell('kpi-ingresos-cell', _kpiNull('INGRESOS EST.', reason, true));
-    setCell('kpi-costos-cell', _kpiNull('COSTO EST.', reason, true));
-    setCell('kpi-residual-cell', _kpiNull('VALOR RESIDUAL', reason, true));
+    setCell('kpi-units-cell', _kpiNull('UNIDADES', reason, false, estado));
+    setCell('kpi-ingresos-cell', _kpiNull('INGRESOS EST.', reason, true, estado));
+    setCell('kpi-costos-cell', _kpiNull('COSTO EST.', reason, true, estado));
+    setCell('kpi-residual-cell', _kpiNull('VALOR RESIDUAL', reason, true, estado));
     return;
   }
 
@@ -2521,7 +2544,9 @@ async function _fetchKpiFinancials(d) {
     setCell('kpi-ingresos-cell', _kpiCell('INGRESOS EST.', fmtCopM(pf.ingresos_totales_cop), pfUnit, true));
     setCell('kpi-costos-cell',   _kpiCell('COSTO EST.',    fmtCopM(pf.costos_totales_cop),    pfUnit, true));
     setCell('kpi-residual-cell', pf.valor_residual_lote_cop != null
-      ? _kpiCell('VALOR RESIDUAL', fmtCopM(pf.valor_residual_lote_cop), pfUnit, true)
+      ? (pf.valor_residual_lote_cop < 0
+        ? _kpiNegative('VALOR RESIDUAL', fmtCopM(pf.valor_residual_lote_cop), pfUnit)
+        : _kpiCell('VALOR RESIDUAL', fmtCopM(pf.valor_residual_lote_cop), pfUnit, true))
       : _kpiNull('VALOR RESIDUAL', 'sin datos', true));
 
     // Pre-fill proforma inputs with market defaults and render result
@@ -2560,6 +2585,9 @@ async function _fetchKpiFinancials(d) {
 function _verdictBlockers(d) {
   const blockers = [];
   const bc = d.binding_constraint;
+  if (d.metrics?.area_construible_estimada?.fuera_de_rango) {
+    blockers.push('Predio mayor a 1 ha: fuera del rango del modelo automatizado');
+  }
   if (bc === 'indeterminado') blockers.push('Edificabilidad requiere modelado volumétrico específico');
   for (const w of (d.warnings || [])) {
     const wl = w.toLowerCase();
@@ -2589,14 +2617,19 @@ function verdictBanner(d) {
   const tone = no ? 'vb-bloqueado' : conditional ? 'vb-condiciones' : 'vb-viable';
   const icon = no ? '✕' : conditional ? '⚠' : '✓';
   const hasDerivedArea = m.area_construible_estimada?.estado === 'derivado';
+  const outOfRange = !!m.area_construible_estimada?.fuera_de_rango;
   const reason = no
     ? 'La restricción o el tratamiento identificado impide emitir una cabida ordinaria con este cálculo.'
+    : outOfRange
+      ? 'El tamaño del predio supera el rango del modelo automatizado. Ainmo no genera una cabida, unidades ni valor residual sin modelación profesional completa.'
     : hasDerivedArea
       ? 'Existe un escenario edificable preliminar, pero el área es derivada y la geometría del proyecto debe verificarse.'
       : conditional
         ? (blockers[0] || 'Existe potencial edificable, pero falta resolver información necesaria antes de diseñar o comprar.')
         : 'El motor resolvió un escenario edificable preliminar con las reglas y fuentes consultadas.';
-  const bindingText = ({
+  const bindingText = outOfRange
+    ? 'El tamaño del predio manda: la cabida no puede cerrarse con el modelo automatizado de huella × pisos.'
+    : ({
     height: 'La altura es la restricción que manda aquí, no el índice de construcción.',
     footprint: 'La huella edificable es la restricción que manda aquí.',
     footprint_and_height: 'La huella edificable y la altura mandan conjuntamente aquí.',
@@ -3302,8 +3335,10 @@ function proformaPanel(d) {
   _proformaDefaults = null;
 
   if (!area) {
-    return `<div class="card" id="proforma-panel" style="opacity:.65">
+    const outOfRange = !!d.metrics?.area_construible_estimada?.fuera_de_rango;
+    return `<div class="card" id="proforma-panel"${outOfRange ? '' : ' style="opacity:.65"'}>
       ${_pfHeader(!!areaSource.range)}
+      ${outOfRange ? `<div class="pf-negative-stop" role="alert"><strong>Alto — fuera del rango del modelo</strong>${escHtml(d.metrics.area_construible_estimada.motivo)}</div>` : ''}
       <div class="pf-blocked-form">
         <p style="font-size:var(--ts-base);font-weight:var(--fw-5);color:var(--ink-2);margin-bottom:var(--sp-3)">
           ${areaSource.range ? `Elige un área dentro del rango derivado ${fmt(areaSource.range[0])}–${fmt(areaSource.range[1])} m²` : 'Ingresa el área construible modelada para calcular el retorno'}
@@ -3575,10 +3610,14 @@ function renderProformaResult(d) {
   const estimatedFlag = d.basado_en_area_estimada
     ? `<div class="pf-estimated-flag"><strong>Área estimada.</strong> ${escHtml(d.advertencia_area || 'Tanto el valor residual del lote como toda la matriz de sensibilidad dependen de esta cabida derivada; no es un ICe/IO normativo.')}</div>`
     : '';
+  const negativeStop = Number.isFinite(d.valor_residual_lote_cop) && d.valor_residual_lote_cop < 0
+    ? `<div class="pf-negative-stop" role="alert"><strong>Alto — valor residual negativo</strong>Con estos supuestos, el proyecto no deja un valor residual positivo para el suelo. No lo interprete como una recomendación de compra: revise cabida, precio de venta, costos, cronograma y financiación.</div>`
+    : '';
 
   return `<div data-estado="derivado" class="financial-figures">
     ${AinmoFigures.badge('derivado')} <span class="m-note">Escenario calculado con precios, costos y supuestos; no es un valor del decreto.</span>
     ${estimatedFlag}
+    ${negativeStop}
     ${veredictoHtml}
     <table class="proforma-table">
       <tbody>

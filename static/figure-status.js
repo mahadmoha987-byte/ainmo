@@ -37,6 +37,7 @@
   }
   function display(f){
     const v=f.valor??f.valor_m2??f.dimension_m;
+    if(f.fuera_de_rango)return 'Fuera del rango del modelo';
     if(f.estado==='no_aplica'){
       if(/resultante|no fija|no fijad|modelado/i.test(f.motivo||''))return 'Resultante';
       if(v===0||/no exig|sin exig|no aplica|inaplicable/i.test(f.motivo||''))return 'No exigido';

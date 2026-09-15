@@ -129,6 +129,21 @@ def test_large_irregular_consolidacion_polygon_keeps_a_positive_footprint():
     assert meta["clipped_area_local_m2"] > 0
 
 
+def test_megalot_is_stopped_before_area_units_or_financial_derivation():
+    """Lots over one hectare require master-planning, not huella × pisos."""
+    lookup = _lookup("MEGALOTE001", 547_000.0, KENNEDY_RING, -74.15, 4.55)
+    estimate = _derive(lookup, _metrics(5, 5), {"dimension_m": 0, "confianza": "alta"})
+
+    assert estimate["valor_m2"] is None
+    assert estimate["rango_m2"] is None
+    assert estimate["estado"] == "requiere_concepto"
+    assert estimate["fuera_de_rango"] is True
+    assert estimate["limite_modelo_m2"] == 10_000.0
+    assert estimate["entradas"]["huella_calculada"] is None
+    assert "10.000 m²" in estimate["motivo"]
+    assert "unidades ni valor residual" in estimate["advertencia"]
+
+
 def test_live_fixture_chapinero_renovacion_ice_is_unchanged():
     counter = [0]
 

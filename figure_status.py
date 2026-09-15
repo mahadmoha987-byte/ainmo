@@ -71,6 +71,13 @@ def _classify(key, obj, trat):
     if isinstance(value, float) and not math.isfinite(value):
         return _status("error", "El motor produjo un valor no finito; no debe utilizarse.", "Repetir la consulta y reportar el error a Ainmo.")
     if key == "area_construible_estimada":
+        if obj.get("fuera_de_rango"):
+            return _status(
+                "requiere_concepto",
+                obj.get("motivo") or "El tamaño del predio está fuera del rango validado del modelo automatizado.",
+                obj.get("que_se_necesita") or "Modelación completa del predio, sus cargas, cesiones, accesos y etapas de desarrollo.",
+                obj.get("quien_lo_resuelve") or "profesional",
+            )
         rng = obj.get("rango_m2")
         valid_value = _finite(value) and value > 0
         valid_range = (isinstance(rng, (list, tuple)) and len(rng) == 2
@@ -149,7 +156,7 @@ def annotate_result(result, lookup=None):
         if "RENOVACION" in trat:
             meta = _status("no_aplica", "No se exige antejardín general en Renovación Urbana, salvo normas de empates (Anexo 5 D.466/2024, Sección 1.7.a).")
             d["antejardin"].update(meta)
-            f.update(meta, fuente_verificada="Anexo 5 D.466/2024 · Sección 1.7.a; la referencia heredada al Art. 307 no sustenta esta regla.")
+            f.update(meta, fuente_verificada="Anexo 5 D.466/2024 · Sección 1.7.a.")
     # Indices must remain visible even when they are resultant. Other lookup
     # objects receive metadata but are not counted twice alongside their metrics.
     ed = d.get("edificabilidad") or {}

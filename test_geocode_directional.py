@@ -1,4 +1,5 @@
 import geocode
+import pytest
 
 
 def test_south_qualifier_on_cross_address_is_preserved_for_catastro():
@@ -82,6 +83,15 @@ def test_real_colombian_address_outside_bogota_gets_coverage_resolution(monkeypa
     assert result["candidates"] == []
     assert result["resolution"] == "outside_bogota"
     assert result["locality"] == "Medellín"
+
+
+@pytest.mark.parametrize("raw", [
+    "CHIP AAA0044ODRJ",
+    "chipAAA0044ODRJ",
+    "Chip: AAA-0044-ODRJ",
+])
+def test_chip_label_prefix_is_ignored(raw):
+    assert geocode._normalize_chip(raw) == "AAA0044ODRJ"
 
 
 def test_compound_avenue_without_hash_is_not_mistaken_for_intersection():

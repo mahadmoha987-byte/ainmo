@@ -69,6 +69,7 @@ def _step(
 # ── Consolidación derived-envelope geometry ───────────────────────────────
 
 _CONSERVATIVE_ANTEJARDIN_M = 5.0
+_CONSOLIDACION_DERIVATION_MAX_LOT_M2 = 10_000.0
 _DERIVED_AREA_WARNING = (
     "Estimación derivada. El Decreto 555 no fija IC/IO numéricamente en "
     "Consolidación; este valor resulta de la norma volumétrica y debe verificarse "
@@ -354,6 +355,50 @@ def _derive_consolidacion_area(
     antejardin_m = antejardin.get("dimension_m")
     retroceso_a = retroceso_obj.get("valor")
     consultation_date = (lookup.get("consulta") or {}).get("fecha")
+
+    # This envelope is a screening model for ordinary urban lots, not a
+    # subdivision or master-planning model. Applying it to a mega-lot creates
+    # precise-looking but meaningless area, unit and land-value totals.
+    if lot_area > _CONSOLIDACION_DERIVATION_MAX_LOT_M2:
+        motivo = (
+            f"El predio tiene {_fmt_es(lot_area)} m² y supera el límite de 10.000 m² "
+            "del modelo automatizado de huella. Requiere modelación urbanística y "
+            "arquitectónica completa antes de estimar área, unidades o valor residual."
+        )
+        estimate = {
+            "valor_m2": None,
+            "rango_m2": None,
+            "metodo": "fuera_del_rango_del_modelo",
+            "confianza": "baja",
+            "fuera_de_rango": True,
+            "limite_modelo_m2": _CONSOLIDACION_DERIVATION_MAX_LOT_M2,
+            "estado": "requiere_concepto",
+            "motivo": motivo,
+            "que_se_necesita": "Modelación completa del predio, sus cargas, cesiones, accesos y etapas de desarrollo.",
+            "quien_lo_resuelve": "profesional",
+            "supuestos": [
+                "No se aplicó huella × pisos porque el tamaño del predio está fuera del rango validado del modelo automatizado.",
+                "No se estimaron unidades ni valor residual a partir de una cabida no validada.",
+            ],
+            "entradas": {
+                "area_lote": lot_area,
+                "huella_calculada": None,
+                "pisos": pisos,
+                "aislamientos_aplicados": {"posterior_m": posterior, "lateral_m": lateral},
+                "antejardin_m": antejardin_m,
+                "retroceso_m": retroceso_a,
+            },
+            "fecha_consulta": consultation_date,
+            "advertencia": "Fuera del rango del modelo automatizado. No use este resultado para estimar cabida, unidades ni valor residual del suelo.",
+        }
+        trace.append(_step(
+            N(), "Área construible estimada — control de escala",
+            "área_lote > 10.000 m² → modelación profesional requerida",
+            estimate["entradas"], None, "m²",
+            fuente="Límite operativo del modelo de prefactibilidad de Ainmo",
+            nota=motivo,
+        ))
+        return estimate
 
     assumptions = [
         "La huella se recortó sobre el polígono catastral real; el par de bordes paralelos con mayor separación se trató como frente y fondo, y el punto consultado orientó cuál es el frente.",

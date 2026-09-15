@@ -60,7 +60,8 @@ def _in_bogota(lat: float, lng: float) -> bool:
 
 def _normalize_chip(raw: str) -> str | None:
     """Return a canonical UAECD CHIP or ``None`` for non-CHIP input."""
-    chip = re.sub(r"[\s.-]+", "", str(raw or "")).upper()
+    text = re.sub(r"^\s*CHIP\s*:?\s*", "", str(raw or ""), flags=re.I)
+    chip = re.sub(r"[\s.-]+", "", text).upper()
     return chip if _CHIP_RE.fullmatch(chip) else None
 
 
