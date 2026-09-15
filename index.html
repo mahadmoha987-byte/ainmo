@@ -544,7 +544,7 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
 
 </style>
 <link rel="stylesheet" href="/static/figure-status.css?v=20260914-ui2">
-<script src="/static/figure-status.js?v=20260914-ui2"></script>
+<script src="/static/figure-status.js?v=20260914-ui3"></script>
 </head>
 <body>
 
@@ -598,7 +598,7 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
       </div>
       <div class="sp-geo-results" id="geo-results" style="display:none"></div>
       <div class="sp-manual-toggle">
-        <button type="button" onclick="toggleManualCoords()">Ingresar coordenadas</button>
+        <button type="button" id="manual-coords-toggle" aria-controls="manual-coords-form" aria-expanded="false" onclick="toggleManualCoords()">Ingresar coordenadas</button>
       </div>
       <div class="sp-manual-form" id="manual-coords-form" style="display:none">
         <div class="sp-manual-grid">
@@ -1151,7 +1151,10 @@ function resetGeoResults() {
 
 function toggleManualCoords() {
   const el = document.getElementById('manual-coords-form');
-  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  const opening = window.getComputedStyle(el).display === 'none';
+  el.style.display = opening ? 'block' : 'none';
+  document.getElementById('manual-coords-toggle')?.setAttribute('aria-expanded', String(opening));
+  if (opening) document.getElementById('lat')?.focus();
 }
 
 async function runWithConfirmed() {
@@ -1830,13 +1833,17 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
   if (d.formula_trace) {
     traceBody = formulaTrace(d.formula_trace);
   } else if (_currentUser && !isPro) {
-    traceBody = `<div class="card" style="opacity:.7;text-align:center;padding:20px">
-      <p style="color:var(--c-muted);font-size:14px">Traza de cálculo completa disponible en
-        <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick="showUpgradeModal()">Plan Pro</button>
-      </p>
+    traceBody = `<div class="card" style="text-align:center;padding:24px">
+      <p style="color:var(--ink-2);font-size:14px"><strong>La trazabilidad completa está disponible en Plan Pro.</strong><br>
+        Su sesión está activa, pero este plan no incluye las fórmulas y pasos detallados del cálculo.</p>
+      <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="showUpgradeModal()">Consultar Plan Pro</button>
     </div>`;
   } else {
-    traceBody = `<div class="notice-bar">La traza detallada no está incluida en este resultado.</div>`;
+    traceBody = `<div class="card" style="text-align:center;padding:24px">
+      <p style="color:var(--ink-2);font-size:14px"><strong>La trazabilidad completa está disponible en Plan Pro.</strong><br>
+        Inicie sesión para consultar su plan y acceder a las fórmulas y pasos detallados del cálculo.</p>
+      <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="showAuthModal()">Iniciar sesión</button>
+    </div>`;
   }
 
   if (isPro && _currentAnalysisId) {
@@ -2517,6 +2524,7 @@ async function _fetchKpiFinancials(d) {
       setCell(id, _kpiNull(id.includes('residual') ? 'VALOR RESIDUAL' : id.includes('ingresos') ? 'INGRESOS EST.' : 'COSTO EST.', finReason, true, pfBlocked ? 'insuficiente' : 'error'))
     );
     const pfResDiv = document.getElementById('pf-result');
+    if (pfBlocked) _markSalePriceRequired();
     if (pfResDiv && pfResDiv.textContent.includes('Cargando'))
       pfResDiv.innerHTML = pfBlocked
         ? '<div class="warn-item">Sin precio de venta de referencia para esta localidad — ingrese el precio manualmente en el panel de análisis financiero.</div>'
@@ -3286,6 +3294,12 @@ function proformaPanel(d) {
               style="width:140px;padding:6px 10px;border:var(--rule);font-family:var(--ff-mono);font-size:var(--ts-base)">
             <span style="font-size:var(--ts-sm);color:var(--ink-4);margin-left:4px">m²</span>
           </div>
+          <div id="pf-manual-sale-wrap">
+            <label for="pf-manual-sale-price" style="font-size:var(--ts-sm);color:var(--ink-3);display:block;margin-bottom:3px">Precio de venta (COP/m²)</label>
+            <input type="number" id="pf-manual-sale-price" min="100000" step="100000" placeholder="Ej: 8.500.000"
+              style="width:190px;padding:6px 10px;border:var(--rule);font-family:var(--ff-mono);font-size:var(--ts-base)">
+            <span class="proforma-source">Requerido si no existe referencia para la localidad.</span>
+          </div>
           <button class="btn btn-primary" onclick="calcProformaManual()">Calcular con esta área</button>
         </div>
         <div id="pf-result" style="margin-top:var(--sp-4)"></div>
@@ -3302,7 +3316,7 @@ function proformaPanel(d) {
       </label>
       <div></div>
       <label>Precio de venta (COP/m²)
-        <input id="pf-pv" type="number" min="100000" step="100000" value="7500000">
+        <input id="pf-pv" type="number" min="100000" step="100000" placeholder="Cargando referencia…">
         <span class="proforma-source" id="pf-pv-src">Promedio Bogotá · cargando fuente…</span>
       </label>
       <label>Costo de construcción (COP/m²)
@@ -3350,7 +3364,7 @@ function pfReset(id, defaultVal) {
 }
 
 function _pfParams() {
-  const pv   = parseFloat(document.getElementById('pf-pv')?.value  || '7500000');
+  const pv   = parseFloat(document.getElementById('pf-pv')?.value  || '') || null;
   const cc   = parseFloat(document.getElementById('pf-cc')?.value  || '2800000');
   const ef   = parseFloat(document.getElementById('pf-ef')?.value  || '82') / 100;
   const cb   = parseFloat(document.getElementById('pf-cb')?.value  || '18') / 100;
@@ -3367,19 +3381,23 @@ async function calcProforma() {
 
   const params = new URLSearchParams({
     area_m2: _lastProformaArea,
-    precio_venta_cop_m2: pv,
     costo_construccion_cop_m2: cc,
     eficiencia_vendible_pct: ef,
     costos_blandos_pct: cb,
     margen_objetivo_pct: mg,
   });
+  if (pv)                       params.set('precio_venta_cop_m2', pv);
   if (lote)                     params.set('precio_lote_cop', lote);
   if (_lastProformaLng != null) { params.set('lng', _lastProformaLng); params.set('lat', _lastProformaLat); }
   if (_lastProformaAreaEstimated) params.set('area_estimada', 'true');
 
   try {
     const json = await _fetchJsonWithTimeout(`/api/proforma?${params}`);
-    if (!json.ok) { if (resDiv) resDiv.innerHTML = `<div class="warn-item">${escHtml(json.message || 'Error')}</div>`; return; }
+    if (!json.ok) {
+      if (json.error === 'blocked') _markSalePriceRequired();
+      if (resDiv) resDiv.innerHTML = `<div class="warn-item">${escHtml(json.message || 'Error')}</div>`;
+      return;
+    }
     if (!_proformaDefaults && json.data.defaults_meta) { _proformaDefaults = json.data.defaults_meta; _applyProformaSources(_proformaDefaults); }
     if (resDiv) resDiv.innerHTML = renderProformaResult(json.data);
     AinmoFigures.applyFilter();
@@ -3393,6 +3411,7 @@ async function calcProforma() {
 
 async function calcProformaManual() {
   const area = parseFloat(document.getElementById('pf-manual-area')?.value || '');
+  const salePrice = parseFloat(document.getElementById('pf-manual-sale-price')?.value || '') || null;
   if (!area || area <= 0) { return; }
   _lastProformaArea = area;
   // A value typed by the user is always a modeled/estimated area, even when
@@ -3402,10 +3421,18 @@ async function calcProformaManual() {
   if (resDiv) resDiv.innerHTML = '<em style="color:var(--ink-4)">Calculando…</em>';
   const params = new URLSearchParams({area_m2: area});
   params.set('area_estimada', 'true');
+  if (salePrice) params.set('precio_venta_cop_m2', salePrice);
   if (_lastProformaLng != null) { params.set('lng', _lastProformaLng); params.set('lat', _lastProformaLat); }
   try {
     const json = await _fetchJsonWithTimeout(`/api/proforma?${params}`);
-    if (!json.ok) { if (resDiv) resDiv.innerHTML = `<div class="warn-item">${escHtml(json.message || 'Error')}</div>`; return; }
+    if (!json.ok) {
+      if (json.error === 'blocked') {
+        _markSalePriceRequired();
+        document.getElementById('pf-manual-sale-price')?.focus();
+      }
+      if (resDiv) resDiv.innerHTML = `<div class="warn-item">${escHtml(json.message || 'Error')}</div>`;
+      return;
+    }
     _proformaDefaults = json.data.defaults_meta || null;
     if (resDiv) resDiv.innerHTML = renderProformaResult(json.data);
     AinmoFigures.applyFilter();
@@ -3415,6 +3442,18 @@ async function calcProformaManual() {
       : `Error de red: ${e.message}`;
     if (resDiv) resDiv.innerHTML = `<div class="warn-item">${escHtml(message)}</div>`;
   }
+}
+
+function _markSalePriceRequired() {
+  const pv = document.getElementById('pf-pv');
+  if (pv && !pv.dataset.userEdited) {
+    pv.value = '';
+    pv.placeholder = 'Ingrese precio de venta por m²';
+  }
+  const source = document.getElementById('pf-pv-src');
+  if (source) source.textContent = 'Sin referencia para esta localidad · ingrese un valor manual.';
+  const manual = document.getElementById('pf-manual-sale-price');
+  if (manual) manual.setAttribute('aria-invalid', 'true');
 }
 
 function _applyProformaSources(meta) {

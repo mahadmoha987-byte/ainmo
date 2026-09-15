@@ -57,12 +57,19 @@
       </details></div>`;
   }
   function summary(d){
-    const counts=Object.fromEntries(Object.keys(labels).map(k=>[k,0]));
-    const metrics=metricFigures(d);
-    metrics.forEach(f=>{if(f.estado in counts)counts[f.estado]++;});
+    const fallbackCounts=Object.fromEntries(Object.keys(labels).map(k=>[k,0]));
+    const uniqueFigures=[...new Map((d.figuras||[]).map(f=>[f.id,f])).values()];
+    uniqueFigures.forEach(f=>{if(f.estado in fallbackCounts)fallbackCounts[f.estado]++;});
+    const supplied=d.resumen_estados||{};
+    const counts=Object.fromEntries(Object.keys(labels).map(k=>[
+      k,Number.isFinite(Number(supplied[k]))?Number(supplied[k]):fallbackCounts[k]
+    ]));
+    const total=Number.isFinite(Number(supplied.total))
+      ? Number(supplied.total)
+      : Object.values(counts).reduce((sum,value)=>sum+value,0);
     const statusOrder=['resuelto','derivado','insuficiente','requiere_concepto','no_aplica','error'];
-    const countLabel=k=>counts[k]===1?({derivado:'derivada',insuficiente:'con datos insuficientes',requiere_concepto:'requiere concepto',no_aplica:'no aplica',error:'con error'}[k]||plural[k]):plural[k];
-    return `<div class="figure-summary" aria-label="Resumen y filtros de las métricas"><div class="figure-summary-line"><button type="button" data-status-filter="todos" aria-pressed="true">${counts.resuelto} de ${metrics.length} ${metrics.length===1?'resuelta':'resueltas'}</button>${statusOrder.filter(k=>k!=='resuelto'&&counts[k]).map(k=>`<span aria-hidden="true">·</span><button type="button" data-status-filter="${k}" aria-pressed="false">${counts[k]} ${countLabel(k)}</button>`).join('')}</div><p>Estado de las ${metrics.length} métricas del cálculo. Seleccione un estado para filtrar el informe; “resuelto” no significa licencia.</p></div><p id="figure-filter-feedback" class="figure-filter-feedback" role="status" hidden></p>`;
+    const countLabel=k=>counts[k]===1?({resuelto:'resuelta',derivado:'derivada',insuficiente:'con datos insuficientes',requiere_concepto:'requiere concepto',no_aplica:'no aplica',error:'con error'}[k]||plural[k]):plural[k];
+    return `<div class="figure-summary" aria-label="Resumen y filtros de todas las figuras"><div class="figure-summary-line"><button type="button" data-status-filter="todos" aria-pressed="true">Todos · ${total}</button>${statusOrder.filter(k=>counts[k]).map(k=>`<span aria-hidden="true">·</span><button type="button" data-status-filter="${k}" aria-pressed="false">${counts[k]} ${countLabel(k)}</button>`).join('')}</div><p>Estado de las ${total} figuras del informe completo. Seleccione un estado para filtrar; pulse de nuevo el filtro activo o «Todos» para restablecer.</p></div><p id="figure-filter-feedback" class="figure-filter-feedback" role="status" hidden></p>`;
   }
   function applyFilter(){
     const results=document.getElementById('results');if(!results)return;
@@ -80,7 +87,7 @@
       msg.textContent='Esta sección no contiene variables del estado seleccionado.';msg.hidden=!empty;
     });
     const feedback=document.getElementById('figure-filter-feedback');
-    if(feedback){feedback.hidden=selected==='todos';feedback.textContent=`Filtro activo: ${labels[selected]||''}. Pulse «Todas» para volver al informe completo.`;}
+    if(feedback){feedback.hidden=selected==='todos';feedback.textContent=`Filtro activo: ${labels[selected]||''}. Pulse de nuevo este filtro o «Todos» para volver al informe completo.`;}
   }
   async function loadArticle(details){
     const id=details.dataset.articleId;if(!id||!details.open)return;
@@ -92,7 +99,11 @@
   }
   function init(){
     selected='todos';const results=document.getElementById('results');
-    results.querySelectorAll('[data-status-filter]').forEach(b=>b.addEventListener('click',()=>{selected=b.dataset.statusFilter;applyFilter();}));
+    results.querySelectorAll('[data-status-filter]').forEach(b=>b.addEventListener('click',()=>{
+      const requested=b.dataset.statusFilter;
+      selected=requested!=='todos'&&selected===requested?'todos':requested;
+      applyFilter();
+    }));
     results.querySelectorAll('.figure-article').forEach(el=>el.addEventListener('toggle',()=>loadArticle(el)));
     applyFilter();
   }
