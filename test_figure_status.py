@@ -50,6 +50,8 @@ def test_contract_zero_missing_error_and_no_fabricated_estimate():
     assert d['antejardin']['estado']=='insuficiente'  # InputRequired isn't an engine error
     assert d['metrics']['area_construible_estimada']['estado']=='insuficiente'
     assert d['metrics']['altura_base_pisos']['estado']=='error'
+    zero=annotate_result(result({'area_construible_estimada':{'valor_m2':0,'rango_m2':None}}))
+    assert zero['metrics']['area_construible_estimada']['estado']=='insuficiente'
     f=next(f for f in d['figuras'] if f['id']=='parking.min_pct')
     assert f['valor']==0 and f['estado']=='resuelto'
     states={e.value for e in Estado}

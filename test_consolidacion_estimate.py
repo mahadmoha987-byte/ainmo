@@ -104,6 +104,31 @@ def test_live_fixture_usaquen_snap_forces_low_confidence():
     assert any("snap" in item for item in estimate["supuestos"])
 
 
+def test_large_irregular_consolidacion_polygon_keeps_a_positive_footprint():
+    """Regression: cadastral bends must not be treated as extra façades."""
+    lon0, lat0 = -74.0850, 4.7450
+    meters = [
+        (0, 0), (25, 0), (50, 1), (75, 0), (100, 0),
+        (100, 30), (82, 30), (82, 55), (100, 55), (100, 80),
+        (72, 80), (48, 79), (20, 80), (0, 80),
+        (0, 52), (12, 52), (12, 28), (0, 28), (0, 0),
+    ]
+    cos_lat = __import__('math').cos(__import__('math').radians(lat0))
+    ring = [[[
+        lon0 + x / (111_319.49 * cos_lat),
+        lat0 + y / 111_319.49,
+    ] for x, y in meters]]
+    lookup = _lookup("009241036001", 7771.7, ring, lon0, lat0)
+    footprint, meta = calc._footprint_from_polygon(
+        lookup, antejardin_m=5, posterior_m=5, lateral_m=4,
+    )
+
+    assert footprint is not None
+    assert footprint > 0
+    assert footprint < 7771.7
+    assert meta["clipped_area_local_m2"] > 0
+
+
 def test_live_fixture_chapinero_renovacion_ice_is_unchanged():
     counter = [0]
 

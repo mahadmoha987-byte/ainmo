@@ -22,6 +22,7 @@ import sys
 from typing import Any
 
 import p2_lookup
+from shapely.geometry import Polygon
 from figure_status import annotate_result
 from p2_lookup import BuildabilityLookupError, ZeroFeaturesError
 
@@ -249,32 +250,89 @@ def _footprint_from_polygon(
             return (alignment, -midpoint_distance)
 
         rear_idx = min(range(len(edges)), key=rear_score)
-    clipped = list(points)
-    for i, (a, b) in enumerate(edges):
-        setback = antejardin_m if i == front_idx else posterior_m if i == rear_idx else lateral_m
-        if setback > 0:
-            clipped = _clip_inside_edge(clipped, a, b, setback)
-            if len(clipped) < 3:
-                return 0.0, {
-                    "front_edge": front_idx,
-                    "rear_edge": rear_idx,
-                    "outer_area_local_m2": round(_polygon_area(points), 2),
-                    "clipped_area_local_m2": 0.0,
-                    "has_holes": len(rings) > 1,
-                }
+    # A half-plane per raw cadastral segment only works for convex polygons.
+    # Large ArcGIS lots commonly contain dozens of collinear/jagged segments;
+    # intersecting every segment's half-plane computes the polygon's kernel and
+    # can collapse a perfectly valid irregular lot to zero.  Apply the common
+    # part of the three setbacks with GEOS' topology-preserving inward buffer,
+    # then apply only the distinct front/rear planes.  This preserves concavities
+    # and holes instead of treating every small bend as another lateral facade.
+    raw_outer = [tuple(map(float, p[:2])) for p in rings[0] if len(p) >= 2]
+    if len(raw_outer) > 1 and raw_outer[0] == raw_outer[-1]:
+        raw_outer.pop()
+    lon0 = sum(p[0] for p in raw_outer) / len(raw_outer)
+    lat0 = sum(p[1] for p in raw_outer) / len(raw_outer)
+    cos_lat = math.cos(math.radians(lat0))
 
-    outer_area = _polygon_area(points)
-    clipped_area = _polygon_area(clipped)
+    def project_ring(ring: list) -> list[tuple[float, float]]:
+        raw = [tuple(map(float, p[:2])) for p in ring if len(p) >= 2]
+        if len(raw) > 1 and raw[0] == raw[-1]:
+            raw.pop()
+        return [
+            ((lon - lon0) * cos_lat * 111_319.49, (lat - lat0) * 111_319.49)
+            for lon, lat in raw
+        ]
+
+    holes = [project_ring(ring) for ring in rings[1:]]
+    holes = [ring for ring in holes if len(ring) >= 3]
+    lot_polygon = Polygon(points, holes=holes)
+    if not lot_polygon.is_valid:
+        lot_polygon = lot_polygon.buffer(0)
+    if lot_polygon.is_empty or lot_polygon.area <= 0:
+        return None, {"reason": "polygon_area_invalid", "has_holes": bool(holes)}
+
+    setbacks = [max(0.0, float(v)) for v in (antejardin_m, posterior_m, lateral_m)]
+    common_setback = min(setbacks)
+    clipped = lot_polygon.buffer(-common_setback, join_style=2) if common_setback > 0 else lot_polygon
+
+    min_x, min_y, max_x, max_y = lot_polygon.bounds
+    extent = max(max_x - min_x, max_y - min_y) + 2 * max(setbacks) + 100.0
+
+    def inward_half_plane(edge_idx: int, setback: float) -> Polygon:
+        a, b = edges[edge_idx]
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length = max(math.hypot(dx, dy), 1e-9)
+        ux, uy = dx / length, dy / length
+        nx, ny = -uy, ux  # outer ring is CCW, so left is inside
+        shifted_a = (a[0] + nx * setback, a[1] + ny * setback)
+        shifted_b = (b[0] + nx * setback, b[1] + ny * setback)
+        p1 = (shifted_a[0] - ux * extent, shifted_a[1] - uy * extent)
+        p2 = (shifted_b[0] + ux * extent, shifted_b[1] + uy * extent)
+        return Polygon([
+            p1,
+            p2,
+            (p2[0] + nx * 2 * extent, p2[1] + ny * 2 * extent),
+            (p1[0] + nx * 2 * extent, p1[1] + ny * 2 * extent),
+        ])
+
+    if not clipped.is_empty:
+        clipped = clipped.intersection(inward_half_plane(front_idx, setbacks[0]))
+    if not clipped.is_empty:
+        clipped = clipped.intersection(inward_half_plane(rear_idx, setbacks[1]))
+
+    outer_area = lot_polygon.area
+    clipped_area = 0.0 if clipped.is_empty else clipped.area
     lot_area = float((lookup.get("lote") or {}).get("area_m2", {}).get("valor") or 0)
     if outer_area <= 0 or lot_area <= 0:
         return None, {"reason": "polygon_area_invalid"}
+    if clipped_area <= max(0.1, outer_area * 1e-6):
+        return None, {
+            "reason": "footprint_collapsed",
+            "front_edge": front_idx,
+            "rear_edge": rear_idx,
+            "outer_area_local_m2": round(outer_area, 2),
+            "clipped_area_local_m2": round(clipped_area, 2),
+            "has_holes": bool(holes),
+            "common_setback_m": common_setback,
+        }
     footprint = max(0.0, min(lot_area, clipped_area / outer_area * lot_area))
     return round(footprint, 1), {
         "front_edge": front_idx,
         "rear_edge": rear_idx,
         "outer_area_local_m2": round(outer_area, 2),
         "clipped_area_local_m2": round(clipped_area, 2),
-        "has_holes": len(rings) > 1,
+        "has_holes": bool(holes),
+        "common_setback_m": common_setback,
     }
 
 

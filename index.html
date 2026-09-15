@@ -747,11 +747,14 @@ let _currentAnalysisId = null;  // analysis_id returned by last successful /api/
 let _supabase = null;           // Supabase JS client (initialized in initSupabase)
 let _session = null;            // current Supabase session
 let _lastLookupCoords = null;   // {lat, lng, vis} of most recent successful lookup
+let _lastResolvedAddress = '';  // immutable identity shown for the current report
+let _lastResolvedLotCodigo = null;
 let _hasAnalyzed = false;       // true after first successful analysis (hides welcome card)
 let _massingInst = null;        // active buildMassing() instance (disposed on new lookup)
 let _massingView = '3d';        // '3d' | '2d'
 let _lastCalcData = null;       // calc result data for 3D view / DXF export
 let _massingInitDone = false;   // true once massing has been initialised for current result
+let _resultNavScrollCleanup = null;
 let _geoSearchInFlight = false; // prevents concurrent submitGeoSearch calls
 let _lookupAbortCtrl = null;    // AbortController for the in-flight /api/calc fetch
 let _lookupSeq = 0;             // monotonically increasing; discard stale responses
@@ -1174,13 +1177,17 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
 
   enterResult();
   showLoading();
-  const address = document.getElementById('addr-input')?.value?.trim() || '';
+  // Freeze the user-visible identity of this request. A second map click can
+  // change the input while the GIS calls are still in flight; reading the DOM
+  // again after the response used to mix an old address with a new lot.
+  const requestAddress = document.getElementById('addr-input')?.value?.trim() || '';
+  const requestExpectedLotCodigo = _expectedLotCodigo;
   const params = new URLSearchParams({ lat, lng, vis_en_sitio: vis });
   if (anu       != null) params.set('anu_m2',      anu);
   if (frente    != null) params.set('frente_m',    frente);
   if (anchoVia  != null) params.set('ancho_via_m', anchoVia);
-  if (address)           params.set('address',     address);
-  if (_expectedLotCodigo) params.set('expected_lotcodigo', _expectedLotCodigo);
+  if (requestAddress) params.set('address', requestAddress);
+  if (requestExpectedLotCodigo) params.set('expected_lotcodigo', requestExpectedLotCodigo);
   if (scenarioOnly)      params.set('scenario_only', 'true');
 
   let json;
@@ -1232,15 +1239,17 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
         if (welcome) welcome.style.display = 'none';
       }
       const d = json.data || {};
-      const address = d.direccion || document.getElementById('addr-input')?.value?.trim() || '';
+      const address = d.direccion || requestAddress || '';
+      _lastResolvedAddress = address;
+      _lastResolvedLotCodigo = d.lote?.lotcodigo || requestExpectedLotCodigo || null;
       saveToHistory({
         lat, lng, vis, address,
         tratamiento: d.tratamiento,
-        lotcodigo: d.lote?.lotcodigo || _expectedLotCodigo || null,
+        lotcodigo: d.lote?.lotcodigo || requestExpectedLotCodigo || null,
         ts: Date.now(),
       });
     }
-    render(json, lat, lng, vis, anu, frente, anchoVia);
+    render(json, lat, lng, vis, anu, frente, anchoVia, requestAddress);
   } catch (err) {
     console.error('[edificabilidad] render error:', err);
     showRenderError(err);
@@ -1264,6 +1273,7 @@ function enterLanding() {
   document.getElementById('geo-results').style.display = 'none';
   document.getElementById('addr-input').value = '';
   _confirmedCoords = null; _expectedLotCodigo = null; _pendingAnu = null; _pendingFrente = null;
+  _lastResolvedAddress = ''; _lastResolvedLotCodigo = null;
   if (_lotLayer) { _map.removeLayer(_lotLayer); _lotLayer = null; }
   if (_markerLayer) { _map.removeLayer(_markerLayer); _markerLayer = null; }
   _map.setView([4.6534, -74.0831], 12);
@@ -1286,7 +1296,7 @@ async function loadEjemplo() {
 /* ══════════════════════════════════════════════════════════════════════════
    Router
 ══════════════════════════════════════════════════════════════════════════ */
-function render(json, lat, lng, vis, anu, frente, anchoVia) {
+function render(json, lat, lng, vis, anu, frente, anchoVia, requestAddress = '') {
   if (!json.ok) {
     const retryCall = `runLookup(${lat},${lng},${vis},${anu??'null'},${frente??'null'},${anchoVia??'null'})`;
     switch (json.error) {
@@ -1344,7 +1354,7 @@ function render(json, lat, lng, vis, anu, frente, anchoVia) {
     return showBlockingRestrictions(d);
   }
 
-  showResult(d, lat, lng, vis, anu);
+  showResult(d, lat, lng, vis, anu, requestAddress);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1651,12 +1661,14 @@ async function submitAnchoVia() {
 /* ══════════════════════════════════════════════════════════════════════════
    Main result renderer
 ══════════════════════════════════════════════════════════════════════════ */
-function showResult(d, lat, lng, vis, anu) {
+function showResult(d, lat, lng, vis, anu, requestAddress = '') {
   const parts = [];
   const isPro = _currentUser && _currentUser.plan === 'pro';
   const _tratUpper = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
   const _isRenov = _tratUpper.includes('RENOVACION');
-  const resultAddress = document.getElementById('addr-input')?.value?.trim() || `Predio ${d.lote?.lotcodigo || 'consultado'}`;
+  const resultAddress = d.direccion || requestAddress || `Predio ${d.lote?.lotcodigo || 'consultado'}`;
+  _lastResolvedAddress = resultAddress;
+  _lastResolvedLotCodigo = d.lote?.lotcodigo || null;
   const consultedAt = d.consulta?.fecha || d.contexto_regulatorio?.corte_normativo || 'sin fecha';
 
   parts.push(`<header class="result-context">
@@ -1688,14 +1700,19 @@ function showResult(d, lat, lng, vis, anu) {
   // Acquisition-facing summary of what is decision-ready and what still
   // requires diligence. Built exclusively from the cited calculation result.
   parts.push(acquisitionBrief(d));
-  parts.push(`</section><section class="result-anchor-section" id="result-restricciones"><div class="result-section-label">Restricciones y condiciones</div>`);
-  if (d.figuras) parts.push(AinmoFigures.grid(d, 'restricciones'));
+  parts.push(`</section>`);
+
+  // Build each tab as a peer section, then append them in exactly the same
+  // order as the navigation rail below. This prevents scroll-spy from
+  // highlighting one tab while another section is actually visible.
+  const restrictionParts = [];
+  if (d.figuras) restrictionParts.push(AinmoFigures.grid(d, 'restricciones'));
 
   const eq253 = d.equipamiento_decreto_253;
   if (eq253) {
     const floors = eq253.pisos != null ? `${eq253.pisos} pisos` : 'SIN_DATO - requiere verificación';
     const tone = eq253.pisos != null && !eq253.requiere_poligono ? 'var(--c-link)' : 'var(--c-warn,#f59e0b)';
-    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:${tone}">
+    restrictionParts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:${tone}">
       <strong>Equipamiento en Consolidación - D.253/2026: ${escHtml(floors)}.</strong>
       ${eq253.antejardin_min_m != null ? `Antejardín mínimo general: ${fmt(eq253.antejardin_min_m)} m. ` : ''}
       Fuente: ${escHtml(eq253.fuente || 'Anexo 36.1')}. Verifique instrumentos previos, régimen de transición, BIC, Franja de Adecuación y Actuación Estratégica aplicable.
@@ -1704,7 +1721,7 @@ function showResult(d, lat, lng, vis, anu) {
 
   const eco676 = d.incentivo_sostenibilidad_d676;
   if (eco676?.tratamiento_elegible) {
-    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:#0f766e">
+    restrictionParts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:#0f766e">
       <strong>Oportunidad potencial - incentivos de construcción sostenible D.676/2025.</strong>
       ${escHtml(eco676.ruta_tratamiento)}
       <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">Ver requisitos para habilitar el incentivo</summary>
@@ -1716,7 +1733,7 @@ function showResult(d, lat, lng, vis, anu) {
 
   const obl2026 = d.referencia_obligaciones_urbanisticas_2026;
   if (obl2026 && !d.figuras) {
-    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--ink-4)">
+    restrictionParts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--ink-4)">
       <strong>Obligaciones urbanísticas - referencia 2026: $${Number(obl2026.valor_tope_cop_m2).toLocaleString('es-CO')}/m².</strong>
       ${escHtml(obl2026.nota)} <span style="font-size:12px">${escHtml(obl2026.cita)}</span>
     </div>`);
@@ -1724,7 +1741,7 @@ function showResult(d, lat, lng, vis, anu) {
 
   const reg = d.contexto_regulatorio;
   if (reg) {
-    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-link)">
+    restrictionParts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-link)">
       <strong>Base normativa con corte ${escHtml(reg.corte_normativo)}.</strong>
       ${escHtml(reg.descripcion)}. Alcance: prefactibilidad no certificada; los instrumentos especiales deben verificarse antes de ofertar o licenciar.
     </div>`);
@@ -1732,7 +1749,7 @@ function showResult(d, lat, lng, vis, anu) {
 
   const catSource = d.lote?.fuente_datos;
   if (catSource?.es_fallback) {
-    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-err)">
+    restrictionParts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-err)">
       <strong>Fuente catastral de contingencia.</strong>
       ${escHtml(catSource.fuente)} · referencia ${escHtml(catSource.fecha_referencia || 'sin fecha')}. Confirme geometría y área en Catastro Bogotá.
     </div>`);
@@ -1740,7 +1757,7 @@ function showResult(d, lat, lng, vis, anu) {
 
   const _catastroSnap = d.lote?.consulta_catastro;
   if (_catastroSnap) {
-    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-warn,#f59e0b)">
+    restrictionParts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-warn,#f59e0b)">
       <strong>Predio aproximado: ${fmt(_catastroSnap.distancia_m)} m desde la coordenada.</strong>
       La coordenada cayó fuera del polígono catastral y se usó el lote más cercano. Confirme el predio antes de usar estas cifras.
     </div>`);
@@ -1749,14 +1766,12 @@ function showResult(d, lat, lng, vis, anu) {
   // Large-lot contextual note (> 5 000 m²)
   const _lotArea = d.lote?.area_m2?.valor ?? null;
   if (_lotArea && _lotArea > 5000) {
-    parts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-warn,#f59e0b)">
+    restrictionParts.push(`<div class="notice-bar" style="margin-bottom:var(--sp-3);border-left-color:var(--c-warn,#f59e0b)">
       <strong>Lote de gran tamaño (${fmt(_lotArea)} m²).</strong>
       Las cifras reflejan el potencial de redesarrollo de toda la manzana o supermanzana — no de una parcela de construcción típica.
       Verifique si existe englobe, loteo aprobado o plan parcial vigente antes de tomar decisiones.
     </div>`);
   }
-
-  parts.push(`</section>`);
 
   // Export buttons — PDF is available to all users
   const pdfBtn = `<button class="btn btn-primary btn-sm" onclick="downloadPdf(${lat},${lng},${vis})">⬇ Descargar PDF</button>`;
@@ -1773,7 +1788,6 @@ function showResult(d, lat, lng, vis, anu) {
   // Normative detail — collapsible, collapsed by default
   const normParts = [];
 
-  normParts.push(`<section class="result-anchor-section" id="result-volumetria"><div class="result-section-label">Norma y volumetría</div>`);
   normParts.push(lotIdFull(d, lat, lng));
   normParts.push(bindingBanner(d.binding_constraint, d));
   normParts.push(buildingProfile(d));
@@ -1783,7 +1797,7 @@ function showResult(d, lat, lng, vis, anu) {
     normParts.push(_frenteInputCard(lat, lng, vis, anu ?? d.input?.anu_m2_supplied ?? null));
   }
 
-  normParts.push(`<div class="result-anchor-target" id="result-modelo-3d" data-estado="derivado"><div class="result-section-label">Modelo tridimensional</div>
+  const modelSection = `<section class="result-anchor-section" id="result-modelo-3d" data-estado="derivado"><div class="result-section-label">Modelo tridimensional</div>
   ${AinmoFigures.badge('derivado')} <span class="m-note">Maqueta aproximada con supuestos propios; no sustituye la modelación del proyecto ni necesariamente reproduce la huella estimada del resumen.</span>
   <div class="massing-wrap" id="massing-wrap">
     <div class="massing-toolbar">
@@ -1793,7 +1807,7 @@ function showResult(d, lat, lng, vis, anu) {
     </div>
     <div id="massing-container"><div class="massing-no-data">Cargando vista 3D…</div></div>
     <div class="massing-info" id="massing-info"></div>
-  </div></div>`);
+  </div></section>`;
 
   if (d.warnings?.length) {
     const filteredWarnings = d.warnings.filter(w => {
@@ -1811,36 +1825,40 @@ function showResult(d, lat, lng, vis, anu) {
   if (!d.figuras) normParts.push(setbacksCard(d));
   if (!d.figuras) normParts.push(parkingCard(d));
   normParts.push(unitsPanel(d));
-  normParts.push(`</section>`);
 
+  let traceBody = '';
   if (d.formula_trace) {
-    normParts.push(`<section class="result-anchor-section" id="result-trazabilidad"><div class="result-section-label">Trazabilidad del cálculo</div>${formulaTrace(d.formula_trace)}</section>`);
+    traceBody = formulaTrace(d.formula_trace);
   } else if (_currentUser && !isPro) {
-    normParts.push(`<section class="result-anchor-section" id="result-trazabilidad"><div class="result-section-label">Trazabilidad del cálculo</div><div class="card" style="opacity:.7;text-align:center;padding:20px">
+    traceBody = `<div class="card" style="opacity:.7;text-align:center;padding:20px">
       <p style="color:var(--c-muted);font-size:14px">Traza de cálculo completa disponible en
         <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick="showUpgradeModal()">Plan Pro</button>
       </p>
-    </div></section>`);
+    </div>`;
   } else {
-    normParts.push(`<section class="result-anchor-section" id="result-trazabilidad"><div class="result-section-label">Trazabilidad del cálculo</div><div class="notice-bar">La traza detallada no está incluida en este resultado.</div></section>`);
+    traceBody = `<div class="notice-bar">La traza detallada no está incluida en este resultado.</div>`;
   }
 
   if (isPro && _currentAnalysisId) {
-    normParts.push(`<div class="card">
+    traceBody += `<div class="card">
       <div class="notes-label">Notas personales (guardado automático)</div>
       <textarea class="notes-area" id="notes-textarea" placeholder="Agrega comentarios, referencias o próximos pasos…"
         onblur="autoSaveNotes('${_currentAnalysisId}', this.value)"></textarea>
-    </div>`);
+    </div>`;
   }
 
   _lastCalcData = d;
   _massingInitDone = false;
-  parts.push(`<details class="normative-detail" id="normative-detail" open ontoggle="_onNormativeToggle(this)">
-    <summary>Detalle normativo y fuentes<span class="nd-decree">D.555/2021 · D.670/2025 · D.676/2025 · D.253-254/2026 · Res.962/2026</span></summary>
-    <div class="normative-body">${normParts.join('')}</div>
-  </details>`);
-
+  parts.push(`<section class="result-anchor-section" id="result-volumetria"><div class="result-section-label">Norma y volumetría</div>
+    <details class="normative-detail" id="normative-detail" open ontoggle="_onNormativeToggle(this)">
+      <summary>Detalle normativo y fuentes<span class="nd-decree">D.555/2021 · D.670/2025 · D.676/2025 · D.253-254/2026 · Res.962/2026</span></summary>
+      <div class="normative-body">${normParts.join('')}</div>
+    </details>
+  </section>`);
+  parts.push(modelSection);
+  parts.push(`<section class="result-anchor-section" id="result-restricciones"><div class="result-section-label">Restricciones y condiciones</div>${restrictionParts.join('')}</section>`);
   parts.push(`<section class="result-anchor-section" id="result-financieros"><div class="result-section-label">Escenario financiero</div>${proformaPanel(d)}</section>`);
+  parts.push(`<section class="result-anchor-section" id="result-trazabilidad"><div class="result-section-label">Trazabilidad del cálculo</div>${traceBody}</section>`);
 
   parts.push(`<div class="print-disclaimer">
     <strong>ainmo · Estimación de prefactibilidad</strong> — D.555/2021 · D.670/2025 · D.676/2025 · D.253-254/2026 · Res.962/2026.
@@ -1867,6 +1885,10 @@ function _initResultAnchors() {
     _resultNavObserver.disconnect();
     _resultNavObserver = null;
   }
+  if (_resultNavScrollCleanup) {
+    _resultNavScrollCleanup();
+    _resultNavScrollCleanup = null;
+  }
   const rail = document.querySelector('.result-anchor-rail');
   if (!rail) return;
   const links = [...rail.querySelectorAll('a[href^="#result-"]')];
@@ -1880,6 +1902,35 @@ function _initResultAnchors() {
 
   const mobile = window.matchMedia('(max-width:700px)').matches;
   const root = mobile ? null : document.getElementById('result-col');
+  const scrollHost = root || window;
+  let syncFrame = null;
+  function syncActiveToScroll() {
+    syncFrame = null;
+    const atBottom = root
+      ? root.scrollTop + root.clientHeight >= root.scrollHeight - 8
+      : window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 8;
+    if (atBottom && targets.length) {
+      activate(targets[targets.length - 1].id);
+      return;
+    }
+    const rootTop = root ? root.getBoundingClientRect().top : 0;
+    const activationLine = rootTop + 96;
+    let current = targets[0];
+    for (const target of targets) {
+      if (target.getBoundingClientRect().top <= activationLine) current = target;
+      else break;
+    }
+    if (current) activate(current.id);
+  }
+  const onScroll = () => {
+    if (syncFrame != null) return;
+    syncFrame = requestAnimationFrame(syncActiveToScroll);
+  };
+  scrollHost.addEventListener('scroll', onScroll, { passive:true });
+  _resultNavScrollCleanup = () => {
+    scrollHost.removeEventListener('scroll', onScroll);
+    if (syncFrame != null) cancelAnimationFrame(syncFrame);
+  };
   rail.addEventListener('click', event => {
     const link = event.target.closest('a[href^="#result-"]');
     if (!link) return;
@@ -1900,12 +1951,11 @@ function _initResultAnchors() {
     });
   });
 
-  _resultNavObserver = new IntersectionObserver(entries => {
-    const visible = entries.filter(entry => entry.isIntersecting)
-      .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-    if (visible[0]) activate(visible[0].target.id);
+  _resultNavObserver = new IntersectionObserver(() => {
+    syncActiveToScroll();
   }, { root, rootMargin:'-56px 0px -65% 0px', threshold:[0, .05] });
   targets.forEach(target => _resultNavObserver.observe(target));
+  syncActiveToScroll();
 }
 
 /**
@@ -2271,17 +2321,30 @@ function _kpiUnits(un, estimatedArea) {
 
 function _areaForFinancials(d) {
   const m = d?.metrics || {};
+  const positiveArea = value => {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : null;
+  };
   const trat = (d?.tratamiento || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const isRenov = trat.includes('RENOVACION');
-  const regulatory = isRenov
+  const regulatoryRaw = isRenov
     ? (m.area_construible_max_sin_manzana_completa_m2?.valor ?? m.area_construible_max_m2?.valor)
     : m.area_construible_max_m2?.valor;
+  const regulatory = positiveArea(regulatoryRaw);
   if (regulatory != null) return { area: regulatory, estimated: false, range: null };
   const estimate = m.area_construible_estimada;
-  if (trat.includes('CONSOLIDACION') && estimate?.valor_m2 != null) {
-    return { area: estimate.valor_m2, estimated: true, range: null };
+  const estimated = positiveArea(estimate?.valor_m2);
+  if (trat.includes('CONSOLIDACION') && estimated != null) {
+    return { area: estimated, estimated: true, range: null };
   }
-  return { area: null, estimated: false, range: estimate?.rango_m2 || null };
+  const range = Array.isArray(estimate?.rango_m2)
+    ? estimate.rango_m2.map(positiveArea)
+    : null;
+  return {
+    area: null,
+    estimated: false,
+    range: range?.length === 2 && range.every(value => value != null) && range[0] <= range[1] ? range : null,
+  };
 }
 
 function kpiStrip(d) {
@@ -2306,7 +2369,8 @@ function kpiStrip(d) {
       ? _kpiCell('PISOS', 'Resultante', escHtml(m.altura_maxima_pisos.articulo || 'Arts. 304–307 y Anexo 5 D.555/2021'))
       : _kpiNull('PISOS', 'sin datos'));
 
-  const hasArea = area != null;
+  const hasArea = Number.isFinite(Number(area)) && Number(area) > 0;
+  const noAreaReason = 'No se pudo calcular — área base no disponible';
 
   if (d.figuras) {
     const find = id => d.figuras.find(f => f.id === id);
@@ -2320,11 +2384,11 @@ function kpiStrip(d) {
 
   return `<div class="kpi-strip" id="kpi-strip">
     ${areaCell}
-    <div id="kpi-units-cell">${area != null ? _kpiLoading('UNIDADES') : _kpiNull('UNIDADES', 'sin área')}</div>
+    <div id="kpi-units-cell">${hasArea ? _kpiLoading('UNIDADES') : _kpiNull('UNIDADES', noAreaReason)}</div>
     ${pisosCell}
-    <div id="kpi-ingresos-cell">${hasArea ? _kpiLoading('INGRESOS EST.', true) : _kpiNull('INGRESOS EST.', 'sin área', true)}</div>
-    <div id="kpi-costos-cell">${hasArea ? _kpiLoading('COSTO EST.', true) : _kpiNull('COSTO EST.', 'sin área', true)}</div>
-    <div id="kpi-residual-cell">${hasArea ? _kpiLoading('VALOR RESIDUAL', true) : _kpiNull('VALOR RESIDUAL', 'sin área', true)}</div>
+    <div id="kpi-ingresos-cell">${hasArea ? _kpiLoading('INGRESOS EST.', true) : _kpiNull('INGRESOS EST.', noAreaReason, true)}</div>
+    <div id="kpi-costos-cell">${hasArea ? _kpiLoading('COSTO EST.', true) : _kpiNull('COSTO EST.', noAreaReason, true)}</div>
+    <div id="kpi-residual-cell">${hasArea ? _kpiLoading('VALOR RESIDUAL', true) : _kpiNull('VALOR RESIDUAL', noAreaReason, true)}</div>
   </div>`;
 }
 
@@ -2366,20 +2430,40 @@ function acquisitionBrief(d) {
   </section>`;
 }
 
+async function _fetchJsonWithTimeout(url, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function _fetchKpiFinancials(d) {
   // Capture sequence at call time; discard stale responses if a newer lookup started.
   const seqAtStart = _lookupSeq;
 
   const areaSource = _areaForFinancials(d);
   const area = areaSource.area;
-  if (!area) return;
+  if (!Number.isFinite(Number(area)) || Number(area) <= 0) {
+    const reason = 'No se pudo calcular — área base no disponible';
+    const setCell = (id, html) => { const el = document.getElementById(id); if (el) el.outerHTML = html; };
+    setCell('kpi-units-cell', _kpiNull('UNIDADES', reason));
+    setCell('kpi-ingresos-cell', _kpiNull('INGRESOS EST.', reason, true));
+    setCell('kpi-costos-cell', _kpiNull('COSTO EST.', reason, true));
+    setCell('kpi-residual-cell', _kpiNull('VALOR RESIDUAL', reason, true));
+    return;
+  }
 
   const inp = d.input || {};
 
   // Fetch proforma and units in parallel with defaults
   const [pfResp, unResp] = await Promise.allSettled([
-    fetch(`/api/proforma?area_m2=${area}${areaSource.estimated ? '&area_estimada=true' : ''}${inp.lng != null ? `&lng=${inp.lng}&lat=${inp.lat}` : ''}`).then(r => r.json()),
-    fetch(`/api/units?area_m2=${area}&circulacion_pct=18&pct_studio=20&pct_1br=30&pct_2br=35&pct_3br=15&m2_studio=40&m2_1br=55&m2_2br=75&m2_3br=95`).then(r => r.json()),
+    _fetchJsonWithTimeout(`/api/proforma?area_m2=${area}${areaSource.estimated ? '&area_estimada=true' : ''}${inp.lng != null ? `&lng=${inp.lng}&lat=${inp.lat}` : ''}`),
+    _fetchJsonWithTimeout(`/api/units?area_m2=${area}&circulacion_pct=18&pct_studio=20&pct_1br=30&pct_2br=35&pct_3br=15&m2_studio=40&m2_1br=55&m2_2br=75&m2_3br=95`),
   ]);
 
   // If a newer lookup started while these fetches were in-flight, discard silently.
@@ -2390,6 +2474,18 @@ async function _fetchKpiFinancials(d) {
   const pf = pfVal?.ok ? pfVal.data : null;
   const pfBlocked = pfVal && !pfVal.ok && pfVal.error === 'blocked';
   const setCell = (id, html) => { const el = document.getElementById(id); if (el) el.outerHTML = html; };
+
+  // Resolve the units card before rendering the more complex pro-forma. A
+  // presentation error in that panel must never leave this KPI spinning.
+  const un = unResp.status === 'fulfilled' && unResp.value.ok ? unResp.value.data : null;
+  if (un?.total_unidades != null) {
+    setCell('kpi-units-cell', _kpiUnits(un, areaSource.estimated));
+  } else {
+    const unitReason = unResp.status === 'rejected' && unResp.reason?.name === 'AbortError'
+      ? 'No se pudo calcular — la consulta tardó demasiado.'
+      : 'No se pudo obtener el escenario de unidades. Reintente el cálculo.';
+    setCell('kpi-units-cell', _kpiNull('UNIDADES', unitReason, false, 'error'));
+  }
 
   if (pf) {
     const pfUnit = pf.basado_en_area_estimada ? 'basado en área estimada' : 'supuestos predeterminados';
@@ -2413,7 +2509,10 @@ async function _fetchKpiFinancials(d) {
     const pfResDiv = document.getElementById('pf-result');
     if (pfResDiv) pfResDiv.innerHTML = renderProformaResult(pf);
   } else {
-    const finReason = pfBlocked ? 'Ingrese precio de venta de referencia para calcular.' : 'No se pudo cargar el escenario financiero. Reintente.';
+    const pfTimedOut = pfResp.status === 'rejected' && pfResp.reason?.name === 'AbortError';
+    const finReason = pfBlocked ? 'Ingrese precio de venta de referencia para calcular.'
+      : pfTimedOut ? 'No se pudo calcular — la consulta tardó demasiado.'
+      : 'No se pudo cargar el escenario financiero. Reintente.';
     ['kpi-ingresos-cell','kpi-costos-cell','kpi-residual-cell'].forEach(id =>
       setCell(id, _kpiNull(id.includes('residual') ? 'VALOR RESIDUAL' : id.includes('ingresos') ? 'INGRESOS EST.' : 'COSTO EST.', finReason, true, pfBlocked ? 'insuficiente' : 'error'))
     );
@@ -2424,13 +2523,6 @@ async function _fetchKpiFinancials(d) {
         : '<div class="warn-item">No se pudo cargar el análisis financiero</div>';
   }
 
-  // Update units cell
-  const un = unResp.status === 'fulfilled' && unResp.value.ok ? unResp.value.data : null;
-  if (un?.total_unidades != null) {
-    setCell('kpi-units-cell', _kpiUnits(un, areaSource.estimated));
-  } else {
-    setCell('kpi-units-cell', _kpiNull('UNIDADES', 'No se pudo obtener el escenario de unidades. Reintente el cálculo.', false, 'error'));
-  }
   if (d.figuras) AinmoFigures.applyFilter();
 }
 
@@ -3286,14 +3378,16 @@ async function calcProforma() {
   if (_lastProformaAreaEstimated) params.set('area_estimada', 'true');
 
   try {
-    const resp = await fetch(`/api/proforma?${params}`);
-    const json = await resp.json();
+    const json = await _fetchJsonWithTimeout(`/api/proforma?${params}`);
     if (!json.ok) { if (resDiv) resDiv.innerHTML = `<div class="warn-item">${escHtml(json.message || 'Error')}</div>`; return; }
     if (!_proformaDefaults && json.data.defaults_meta) { _proformaDefaults = json.data.defaults_meta; _applyProformaSources(_proformaDefaults); }
     if (resDiv) resDiv.innerHTML = renderProformaResult(json.data);
     AinmoFigures.applyFilter();
   } catch (e) {
-    if (resDiv) resDiv.innerHTML = `<div class="warn-item">Error de red: ${escHtml(e.message)}</div>`;
+    const message = e.name === 'AbortError'
+      ? 'No se pudo calcular — la consulta tardó demasiado.'
+      : `Error de red: ${e.message}`;
+    if (resDiv) resDiv.innerHTML = `<div class="warn-item">${escHtml(message)}</div>`;
   }
 }
 
@@ -3301,19 +3395,25 @@ async function calcProformaManual() {
   const area = parseFloat(document.getElementById('pf-manual-area')?.value || '');
   if (!area || area <= 0) { return; }
   _lastProformaArea = area;
+  // A value typed by the user is always a modeled/estimated area, even when
+  // the API result did not provide a derived range beforehand.
+  _lastProformaAreaEstimated = true;
   const resDiv = document.getElementById('pf-result');
   if (resDiv) resDiv.innerHTML = '<em style="color:var(--ink-4)">Calculando…</em>';
   const params = new URLSearchParams({area_m2: area});
-  if (_lastProformaAreaEstimated) params.set('area_estimada', 'true');
+  params.set('area_estimada', 'true');
   if (_lastProformaLng != null) { params.set('lng', _lastProformaLng); params.set('lat', _lastProformaLat); }
   try {
-    const json = await fetch(`/api/proforma?${params}`).then(r => r.json());
+    const json = await _fetchJsonWithTimeout(`/api/proforma?${params}`);
     if (!json.ok) { if (resDiv) resDiv.innerHTML = `<div class="warn-item">${escHtml(json.message || 'Error')}</div>`; return; }
     _proformaDefaults = json.data.defaults_meta || null;
     if (resDiv) resDiv.innerHTML = renderProformaResult(json.data);
     AinmoFigures.applyFilter();
   } catch (e) {
-    if (resDiv) resDiv.innerHTML = `<div class="warn-item">Error de red: ${escHtml(e.message)}</div>`;
+    const message = e.name === 'AbortError'
+      ? 'No se pudo calcular — la consulta tardó demasiado.'
+      : `Error de red: ${e.message}`;
+    if (resDiv) resDiv.innerHTML = `<div class="warn-item">${escHtml(message)}</div>`;
   }
 }
 
@@ -3324,13 +3424,17 @@ function _applyProformaSources(meta) {
   const pvEl = document.getElementById('pf-pv-src');
   if (pvEl && meta.precio_venta_cop_m2) {
     const m = meta.precio_venta_cop_m2;
-    pvEl.textContent = `Promedio Bogotá ${m.fecha} · rango ${_fmtK(m.rango[0])}–${_fmtK(m.rango[1])}/m²`;
+    const range = Array.isArray(m.rango) && m.rango.length === 2
+      ? ` · rango ${_fmtK(m.rango[0])}–${_fmtK(m.rango[1])}/m²` : '';
+    pvEl.textContent = `Promedio Bogotá ${m.fecha || 'sin fecha'}${range}`;
     pvEl.title = m.fuente;
   }
   const ccEl = document.getElementById('pf-cc-src');
   if (ccEl && meta.costo_construccion_cop_m2) {
     const m = meta.costo_construccion_cop_m2;
-    ccEl.textContent = `No-VIS estándar ${m.fecha} · rango ${_fmtK(m.rango[0])}–${_fmtK(m.rango[1])}/m²`;
+    const range = Array.isArray(m.rango) && m.rango.length === 2
+      ? ` · rango ${_fmtK(m.rango[0])}–${_fmtK(m.rango[1])}/m²` : '';
+    ccEl.textContent = `No-VIS estándar ${m.fecha || 'sin fecha'}${range}`;
     ccEl.title = m.fuente;
   }
   const efEl = document.getElementById('pf-ef-src');
@@ -3408,7 +3512,7 @@ function renderProformaResult(d) {
   const efPct  = Math.round(efVal * 100);
   const aVend  = d.area_vendible_m2 ?? (d.area_construible_m2 * efVal);
   const estimatedFlag = d.basado_en_area_estimada
-    ? `<div class="pf-estimated-flag"><strong>Basado en área estimada.</strong> Tanto el valor residual del lote como toda la matriz de sensibilidad dependen de esta cabida derivada; no es un ICe/IO normativo.</div>`
+    ? `<div class="pf-estimated-flag"><strong>Área estimada.</strong> ${escHtml(d.advertencia_area || 'Tanto el valor residual del lote como toda la matriz de sensibilidad dependen de esta cabida derivada; no es un ICe/IO normativo.')}</div>`
     : '';
 
   return `<div data-estado="derivado" class="financial-figures">
@@ -3485,9 +3589,9 @@ async function downloadPdf(lat, lng, vis) {
   if (inp.anu_m2_supplied)    params.set('anu_m2',      inp.anu_m2_supplied);
   if (inp.frente_m_supplied)  params.set('frente_m',    inp.frente_m_supplied);
   if (inp.ancho_via_m_supplied) params.set('ancho_via_m', inp.ancho_via_m_supplied);
-  if (_expectedLotCodigo) params.set('expected_lotcodigo', _expectedLotCodigo);
+  if (_lastResolvedLotCodigo) params.set('expected_lotcodigo', _lastResolvedLotCodigo);
 
-  const address = document.getElementById('addr-input')?.value?.trim() || 'Dirección no especificada';
+  const address = _lastResolvedAddress || `Predio ${_lastResolvedLotCodigo || 'consultado'}`;
   params.set('address', address);
 
   const btn = document.activeElement;
@@ -3620,7 +3724,7 @@ async function downloadDxf(lat, lng, vis) {
   if (inp.anu_m2_supplied)     params.set('anu_m2', inp.anu_m2_supplied);
   if (inp.frente_m_supplied)   params.set('frente_m', inp.frente_m_supplied);
   if (inp.ancho_via_m_supplied) params.set('ancho_via_m', inp.ancho_via_m_supplied);
-  if (_expectedLotCodigo) params.set('expected_lotcodigo', _expectedLotCodigo);
+  if (_lastResolvedLotCodigo) params.set('expected_lotcodigo', _lastResolvedLotCodigo);
 
   const btn = event?.target || document.activeElement;
   const origText = btn?.textContent;
@@ -4236,6 +4340,7 @@ function _initMap() {
   L.control.zoom({ position: 'bottomright' }).addTo(_map);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> | SDP Bogotá',
+    maxNativeZoom: 19,
     maxZoom: 21,
   }).addTo(_map);
 
@@ -4283,6 +4388,11 @@ function _initMap() {
     _pendingFrente = null;
     _confirmedCoords = null;
     _expectedLotCodigo = null;
+    // A direct parcel click starts a coordinate lookup, not another lookup for
+    // the address that happened to be searched previously.
+    const addressInput = document.getElementById('addr-input');
+    if (addressInput) addressInput.value = '';
+    _closeAddressSuggestions(true);
     document.getElementById('geo-results').style.display = 'none';
     await runLookup(e.latlng.lat, e.latlng.lng, vis, null, null, null);
   });

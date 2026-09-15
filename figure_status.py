@@ -72,7 +72,10 @@ def _classify(key, obj, trat):
         return _status("error", "El motor produjo un valor no finito; no debe utilizarse.", "Repetir la consulta y reportar el error a Ainmo.")
     if key == "area_construible_estimada":
         rng = obj.get("rango_m2")
-        if _finite(value) or (isinstance(rng, (list, tuple)) and len(rng) == 2 and all(_finite(v) for v in rng)):
+        valid_value = _finite(value) and value > 0
+        valid_range = (isinstance(rng, (list, tuple)) and len(rng) == 2
+                       and all(_finite(v) and v > 0 for v in rng) and rng[0] <= rng[1])
+        if valid_value or valid_range:
             return _status("derivado", "Estimación de huella por pisos, no un tope fijado numéricamente por el decreto.", "Verificar geometría, aislamientos y altura mediante modelación del proyecto.", "profesional")
         return _status("insuficiente", note or "Faltan entradas para estimar la huella y los pisos.", "Confirmar polígono, antejardín, aislamientos, perfil vial y altura base.", "profesional")
     if "CONSOLIDACION" in trat and key in {"area_construible_max_m2", "planta_maxima_m2"} and value is None:

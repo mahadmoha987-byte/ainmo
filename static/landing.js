@@ -39,30 +39,6 @@
     });
     observer.observe(counter);
   }
-  const track = document.getElementById('featureTrack');
-  const cards = [...track.children];
-  const position = document.getElementById('featurePosition');
-  function cardLeft(card) { return card.offsetLeft - cards[0].offsetLeft; }
-  function go(direction) {
-    const max = track.scrollWidth - track.clientWidth;
-    let destination = track.scrollLeft + direction * (cards[0].offsetWidth + parseFloat(getComputedStyle(track).gap));
-    if (direction > 0 && track.scrollLeft >= max - 4) destination = 0;
-    if (direction < 0 && track.scrollLeft <= 4) destination = max;
-    track.scrollTo({left:Math.max(0, Math.min(destination, max)), behavior:reduced ? 'instant' : 'smooth'});
-  }
-  document.getElementById('featureNext').addEventListener('click', () => go(1));
-  document.getElementById('featurePrev').addEventListener('click', () => go(-1));
-  track.addEventListener('keydown', e => { if (e.target === track && ['ArrowLeft','ArrowRight'].includes(e.key)) { e.preventDefault(); go(e.key === 'ArrowRight' ? 1 : -1); } });
-  function updatePosition() {
-    const visible = cards.map((card, i) => ({i, left:cardLeft(card) - track.scrollLeft, width:card.offsetWidth}))
-      .filter(card => card.left >= -2 && card.left + card.width <= track.clientWidth + 2);
-    if (!visible.length) return;
-    const first = visible[0].i + 1, last = visible[visible.length - 1].i + 1;
-    position.textContent = `${first === last ? first : `${first}–${last}`} / ${cards.length}`;
-  }
-  track.addEventListener('scroll', updatePosition, {passive:true});
-  window.addEventListener('resize', updatePosition, {passive:true});
-  updatePosition();
   function safeUrl(value, image = false) {
     try { const u = new URL(value, location.origin); return u.protocol === 'https:' && ['bogota.gov.co','www.bogota.gov.co'].includes(u.hostname) && (!image || u.pathname.startsWith('/sites/default/')) ? u.href : null; } catch { return null; }
   }

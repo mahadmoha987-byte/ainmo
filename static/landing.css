@@ -79,3 +79,112 @@
   .feature-track .photo-card { flex-basis: 100%; }
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important}.motion .reveal.pending{opacity:1;transform:none}.hero-button:is(:hover,:focus-visible),.nav-cta:is(:hover,:focus-visible),.hero-button:is(:hover,:focus-visible) span{transform:none}.hero-button::after,.nav-cta::after{display:none}}
+
+/* A short credibility statement replaces the repeated three-icon process row. */
+.traceability-band {
+  padding: 86px 0 82px;
+  background: var(--paper);
+  text-align: center;
+}
+.traceability-band strong {
+  display: block;
+  max-width: 900px;
+  margin: 0 auto 14px;
+  font: 400 clamp(30px, 3.4vw, 46px)/1.28 'Dosis', Arial, sans-serif;
+}
+.traceability-band span {
+  display: block;
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: .02em;
+}
+
+/* These are report excerpts, not another explanation of the product workflow. */
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+}
+.report-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 510px;
+  padding: 30px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e5e7e2;
+  box-shadow: 0 18px 45px #303d4808;
+}
+.report-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 5px;
+  background: var(--pearl);
+}
+.report-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 25px;
+  border-bottom: 1px solid var(--line);
+  color: #7e8781;
+  font-size: 9px;
+  letter-spacing: .13em;
+}
+.report-status {
+  flex: none;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: none;
+}
+.report-status.resolved { background: #e8f3e9; color: #38734c; }
+.report-status.derived { background: #fff1d5; color: #8b661e; }
+.report-label {
+  margin: 36px 0 8px;
+  color: #7b837e;
+  font-size: 11px;
+  letter-spacing: .15em;
+}
+.report-value {
+  margin-bottom: 23px;
+  font: 400 44px/1.15 'Dosis', Arial, sans-serif;
+}
+.report-formula { font-size: 31px; line-height: 1.25; }
+.report-reading {
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.75;
+}
+.report-source {
+  display: grid;
+  gap: 4px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+  color: #767e78;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.report-source b { color: #3d4845; font-weight: 500; }
+.report-card .text-link { margin-top: auto; }
+
+@media(max-width:1000px) {
+  .report-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-card:last-child { grid-column: 1 / -1; min-height: 430px; }
+}
+@media(max-width:760px) {
+  .hero h1 { font-size: 52px; }
+  .traceability-band { padding: 70px 0; }
+  .report-grid { grid-template-columns: 1fr; }
+  .report-card, .report-card:last-child { grid-column: auto; min-height: 460px; padding: 26px; }
+}
+@media(max-width:380px) {
+  .hero h1 { font-size: 45px; }
+  .report-card-head { align-items: flex-start; }
+}
