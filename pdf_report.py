@@ -1387,7 +1387,6 @@ h3 { font-size:9pt; margin-bottom:5pt; text-transform:uppercase; letter-spacing:
 .mono { font-family:"Courier New",monospace; }
 .page { margin-top:18pt; }
 .toc-page { min-height:240mm; page-break-before:always; page-break-after:always; }
-.major-page { page-break-before:always; }
 .appendix-page { page-break-before:always; }
 .avoid { page-break-inside:avoid; }
 .eyebrow { font-size:7pt; font-weight:700; letter-spacing:1.1pt; text-transform:uppercase; color:var(--muted); }
@@ -1567,10 +1566,11 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
 </section>
 
 <!-- 5. Area and units -->
-<section class="page major-page">
-  <div class="section-head"><span class="section-no">05</span><div class="eyebrow">Cabida preliminar</div><h2>Área construible / unidades estimadas</h2></div>
-  <div class="site-assumption"><strong>Supuesto de sitio libre.</strong> {{ vacant_site_warning }}{% if existing_units_warning %}<br><strong>Alerta catastral:</strong> {{ existing_units_warning }}{% endif %}</div>
-  <div class="callout-grid avoid">
+<section class="page">
+  <div class="avoid">
+    <div class="section-head"><span class="section-no">05</span><div class="eyebrow">Cabida preliminar</div><h2>Área construible / unidades estimadas</h2></div>
+    <div class="site-assumption"><strong>Supuesto de sitio libre.</strong> {{ vacant_site_warning }}{% if existing_units_warning %}<br><strong>Alerta catastral:</strong> {{ existing_units_warning }}{% endif %}</div>
+    <div class="callout-grid">
     <div class="callout">
       <div class="callout-label">{{ area_label }}</div>
       <div class="callout-value">{{ area_max }} {{ area_max_unit }}</div>
@@ -1588,6 +1588,7 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
       <div class="callout-value" style="font-size:12pt">{{ binding_short }}</div>
       <div class="note">{{ binding_detail }}</div>
       <div class="source">{{ decree_short }}</div>
+    </div>
     </div>
   </div>
   {% if area_warning %}<div class="warning"><strong>Advertencia.</strong> {{ area_warning }}</div>{% endif %}
@@ -1661,6 +1662,7 @@ def _make_env() -> Environment:
         "fuente_D": "Fuente de D",
         "confianza_D": "Confianza de D",
         "retroceso_aplicado_a_huella": "Altura de fachada descontada de la huella",
+        "retroceso_m": "Altura máxima de fachada A (m)",
         "area_lote": "Área del lote",
         "huella_calculada": "Huella calculada",
         "pisos": "Pisos",
@@ -1670,14 +1672,23 @@ def _make_env() -> Environment:
         key = str(value)
         return label_overrides.get(key, key.replace("_", " ").strip().capitalize())
 
+    def plain_value(value):
+        if isinstance(value, dict):
+            return ", ".join(f"{human_label(k)}: {plain_value(v)}" for k, v in value.items())
+        if isinstance(value, (list, tuple)):
+            return ", ".join(plain_value(v) for v in value)
+        return (str(value)
+                .replace("sin_fuente_configurada", "sin fuente automatizada")
+                .replace("SIN_DATO", "SIN DATO")
+                .replace("area_construible_max_m2", "área construible máxima"))
+
     def pretty_kv(obj):
         if not obj:
             return ""
         try:
             lines = []
             for k, v in obj.items():
-                display_v = str(v).replace("sin_fuente_configurada", "sin fuente automatizada").replace("SIN_DATO", "SIN DATO")
-                lines.append(f"{human_label(k)}: {display_v}")
+                lines.append(f"{human_label(k)}: {plain_value(v)}")
             return "\n".join(lines)
         except Exception:
             return str(obj)
@@ -1926,6 +1937,7 @@ def _render_html(
             "movimientos_en_masa": "remoción en masa",
             "inundacion": "amenaza de inundación",
             "ronda_hidrica": "ronda hídrica",
+            "area_construible_max_m2": "área construible máxima",
         }
         for old, new in replacements.items():
             text = text.replace(old, new)
@@ -1958,6 +1970,9 @@ def _render_html(
                 "altura_total_m": "altura total en metros",
                 "ancho_via_m": "perfil vial en metros",
                 "N/A": "No aplica",
+                "huella_poligono_con_retiros": "huella del polígono con aislamientos",
+                "pisos_base": "pisos base",
+                "B_proxy_m2": "área base B",
             }
             for old, new in expression_replacements.items():
                 step["expresion"] = step["expresion"].replace(old, new)
