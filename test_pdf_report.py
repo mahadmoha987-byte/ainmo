@@ -10,6 +10,7 @@ def _fixture_payload():
         "lote": {
             "lotcodigo": "009241036001",
             "area_m2": {"valor": 7771.7, "confianza": "alta"},
+            "unidades_predio": 197,
         },
         "tratamiento": "CONSOLIDACION",
         "binding_constraint": "height",
@@ -67,6 +68,35 @@ def test_pdf_uses_calculated_road_width_and_retroceso():
     assert html.index("Fuentes consultadas") < html.index("Trazabilidad del cálculo")
 
 
+def test_pdf_discloses_coordinate_lookup_existing_units_and_facade_height():
+    calculated, lookup = _fixture_payload()
+    html = pdf_report.generate_html_preview(
+        calculated, lookup, "Predio 009241036001 · Suba, Bogotá D.C."
+    )
+    assert "Consultado por coordenada; sin dirección catastral asociada" in html
+    assert "Este lote registra 197 unidades prediales" in html
+    assert "Supuesto de sitio libre" in html
+    assert "Altura máxima de fachada" in html
+    assert "no es un retiro horizontal" in html
+    assert "Retroceso de fachada</strong>" not in html
+
+
+def test_pdf_humanizes_restriction_warning_and_groups_sources():
+    calculated, lookup = _fixture_payload()
+    calculated["warnings"] = [
+        "SIN_DATO DE RESTRICCIONES: aerocivil, cerros_orientales, "
+        "movimientos_en_masa, inundacion, ronda_hidrica"
+    ]
+    html = pdf_report.generate_html_preview(calculated, lookup, "Predio Suba")
+    assert "SIN DATO DE RESTRICCIONES" in html
+    assert "restricciones aeronáuticas" in html
+    assert "remoción en masa" in html
+    assert "ronda hídrica" in html
+    assert "cerros_orientales" not in html
+    assert "<h3>Capas GIS</h3>" in html
+    assert "<h3>Decretos y artículos</h3>" in html
+
+
 def test_json_and_pdf_routes_share_calculation_helper(monkeypatch):
     calculated, lookup = _fixture_payload()
     monkeypatch.setattr(api, "_gis_lookup_cached", lambda *_args: lookup)
@@ -82,4 +112,3 @@ def test_json_and_pdf_routes_share_calculation_helper(monkeypatch):
     ))
     assert resolved_lookup is lookup
     assert result is calculated
-

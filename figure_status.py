@@ -31,7 +31,7 @@ LABELS = {
     "altura_bonus_manzana_con_vis_bonus_pisos": "Altura adicional con incentivo VIS/VIP",
     "aislamiento_posterior_m": "Aislamiento posterior",
     "aislamiento_lateral_m": "Aislamiento lateral",
-    "retroceso_fachada_A_m": "Relación de fachada A = factor × D",
+    "retroceso_fachada_A_m": "Altura máxima de fachada (A = factor × D)",
     "area_construible_max_sin_manzana_completa_m2": "Área ICe 5,0 (sin manzana completa)",
     "area_construible_max_esquina_manzana_m2": "Área ICe 6,0 (esquina condicionada)",
     "area_construible_max_manzana_completa_m2": "Área ICe 7,0 (manzana completa)",

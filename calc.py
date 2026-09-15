@@ -708,7 +708,7 @@ def _resolve_D(
     return None, "sin_dato", None
 
 
-# ── Retroceso de fachada — shared helper ─────────────────────────────────────
+# ── Altura máxima de fachada — shared helper ─────────────────────────────────
 
 def _retroceso_fachada(
     lookup: dict,
@@ -720,7 +720,7 @@ def _retroceso_fachada(
     metrics: dict,
 ) -> None:
     """
-    Compute A = factor × D (retroceso de fachada) and store result in metrics.
+    Compute A = factor × D (altura máxima de fachada) and store result in metrics.
 
     D is resolved via _resolve_D() (user input > Layer 38 GIS > None).
     Writes metrics["retroceso_fachada_A_m"] in-place; adds a trace step.
@@ -730,7 +730,7 @@ def _retroceso_fachada(
     if D_m is not None:
         A_m = round(factor * D_m, 2)
         trace.append(_step(
-            N(), "Retroceso de fachada",
+            N(), "Altura máxima de fachada",
             f"A = {factor} × D",
             {"factor": factor, "D_m": D_m, "fuente_D": fuente_D, "confianza_D": confianza_D},
             A_m, "m",
@@ -748,11 +748,12 @@ def _retroceso_fachada(
             "factor": factor,
             "confianza": confianza_D,
             "fuente_D": fuente_D,
+            "nota": "A es una altura máxima de fachada; no se descuenta de la huella edificable.",
         }
     else:
         trace.append({
             "paso": N(),
-            "descripcion": "Retroceso de fachada",
+            "descripcion": "Altura máxima de fachada",
             "expresion": f"A = {factor} × D   (D = perfil vial frente al predio)",
             "valores": {"factor": factor, "D": "requerido"},
             "resultado": None, "unidad": "m",
@@ -760,7 +761,7 @@ def _retroceso_fachada(
             "nota": (
                 "No se pudo determinar el ancho vial automáticamente. "
                 "Proporcione ancho_via_m (perfil total: calzada + andenes + separador si aplica) "
-                "para obtener el valor numérico del retroceso."
+                "para obtener el valor numérico de la altura máxima de fachada."
             ),
         })
         metrics["retroceso_fachada_A_m"] = {
@@ -768,7 +769,7 @@ def _retroceso_fachada(
             "factor": factor,
             "confianza": "requiere_input",
             "fuente_D": "sin_dato",
-            "nota": f"A = {factor} × D — proporcione ancho_via_m para calcular.",
+            "nota": f"A = {factor} × D — proporcione ancho_via_m para calcular la altura máxima de fachada.",
         }
 
 
@@ -1676,7 +1677,7 @@ def _calc_consolidacion(
             "Los índices de construcción y ocupación no están fijados numéricamente. "
             "Emergen de: aislamiento posterior (tabla Art. 310 / Anexo 5 p.57), "
             "aislamiento lateral (si tipología aislada: 1/5 × altura total, mín. 4m), "
-            "antejardín (mapa CU-5.5), y retroceso de fachada (A = 2.5 × D). "
+            "antejardín (mapa CU-5.5), y altura máxima de fachada (A = 2,5 × D). "
             "Para obtener IC e IO reales es necesario modelar la geometría del lote con sus dimensiones exactas."
         ),
     })
@@ -2112,7 +2113,7 @@ _RU_AMBITOS = [
 _RU_IO_ALTURA_NULL = (
     "IO y altura no están fijados numéricamente para Renovación Urbana. "
     "Son resultantes de las normas volumétricas del Anexo 5 "
-    "(retroceso de fachada A=2.5×D; aislamientos según altura efectiva). "
+    "(altura máxima de fachada A = 2,5 × D; aislamientos según altura efectiva). "
     "El IC efectivo máximo es el control regulatorio operativo."
 )
 
@@ -2221,7 +2222,7 @@ def _calc_renovacion_urbana(
         "nota": (
             "El ICe máximo (5.0 / 6.0 / 7.0 según ámbito del proyecto) es el control "
             "regulatorio operativo. IO y altura son resultantes del Anexo 5. "
-            "Retroceso de fachada: A = 2.5 × D (mismo que Consolidación)."
+            "Altura máxima de fachada: A = 2,5 × D (misma relación que en Consolidación)."
         ),
     })
 

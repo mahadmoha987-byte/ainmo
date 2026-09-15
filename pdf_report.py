@@ -166,7 +166,6 @@ def _profile_svg(d: dict) -> str:
             ant_m = float(ant_m) if ant_m is not None else None
         except (TypeError, ValueError):
             ant_m = None
-    ret_m  = _fval(m, "retroceso_fachada_A_m", "valor")
     post_m = _fval(m, "aislamiento_posterior_m", "valor")
     lat_m_raw = _fval(m, "aislamiento_lateral_m", "valor")
     lat_m  = lat_m_raw if lat_m_raw and lat_m_raw > 0 else None
@@ -175,7 +174,7 @@ def _profile_svg(d: dict) -> str:
     dim_color = "#1B48D4" if is_hbc else "#8D929E"
 
     W, H, GY = 580, 260, 206
-    left_sb  = max(40, (ant_m or 0) * 9) if ant_m else (max(36, (ret_m or 0) * 4) if ret_m else 44)
+    left_sb  = max(40, (ant_m or 0) * 9) if ant_m else 44
     right_sb = max(32, (post_m or 0) * 9) if post_m else 40
     lat_sb   = max(18, (lat_m or 0) * 6) if lat_m else 18
     bld_x    = left_sb + lat_sb
@@ -234,15 +233,9 @@ def _profile_svg(d: dict) -> str:
             'font-family="Courier New,monospace" font-size="9" text-anchor="middle">'
             f'ant. {_n(ant_m, 1)}m</text>'
         )
-    elif ret_m:
-        ant_label = (
-            f'<text x="{left_sb / 2:.1f}" y="{GY + 15}" fill="#5E6370" '
-            'font-family="Courier New,monospace" font-size="9" text-anchor="middle">'
-            f'ret. {_n(ret_m, 2)}m</text>'
-        )
     post_label = ""
     if post_m:
-        prx = rx + (W - rx) / 2
+        prx = min(W - 34, max(rx + 24, rx + (W - rx) / 2))
         post_label = (
             f'<text x="{prx:.1f}" y="{GY + 15}" fill="#5E6370" '
             'font-family="Courier New,monospace" font-size="9" text-anchor="middle">'
@@ -287,9 +280,10 @@ def _profile_svg(d: dict) -> str:
 def _param_rows(d: dict, lu: dict) -> list[dict]:
     """Build the full parameter table. Every GIS value with source + confianza."""
 
-    def row(cat, campo, valor, fuente, confianza, nota=""):
+    def row(cat, campo, valor, fuente, confianza, nota="", estado=None):
         return {"cat": cat, "campo": campo, "valor": valor,
-                "fuente": fuente, "confianza": confianza, "nota": nota}
+                "fuente": fuente, "confianza": confianza, "nota": nota,
+                "estado": estado}
 
     rows = []
     lote = lu.get("lote") or {}
@@ -417,11 +411,13 @@ def _param_rows(d: dict, lu: dict) -> list[dict]:
     ret_v   = _get(dm, "retroceso_fachada_A_m", "valor")
     ret_d   = dm.get("retroceso_fachada_A_m") or {}
     ret_note = ret_d.get("nota") or ret_obj.get("nota") or ""
-    rows.append(row("Volumen", "Retroceso de fachada (A = 2,5 × D)",
+    rows.append(row("Volumen", "Altura máxima de fachada (A = 2,5 × D)",
                     f"{_n(ret_v, 2)} m" if ret_v is not None else "Sin dato (D no encontrado)",
                     ret_obj.get("articulo") or "Anexo 5 Cap. 1.2.2.E.1.1 D.555/2021",
                     ret_d.get("confianza") or "media",
-                    ret_note))
+                    (ret_note if "no se descuenta de la huella" in ret_note.lower()
+                     else (ret_note + " A es una altura; no se descuenta de la huella edificable.").strip()),
+                    _state(ret_d, value=ret_v)))
 
     # ── Vía ──
     # The value actually used by calc is echoed in the retroceso metric. Read
@@ -451,11 +447,23 @@ def _param_rows(d: dict, lu: dict) -> list[dict]:
     # ── Bonus ──
     bon_man = ed.get("bonus_altura_manzana_completa") or {}
     if bon_man:
+        bonus_metric = dm.get("altura_con_bonus_pisos") or {}
+        bonus_value = bonus_metric.get("valor")
+        bonus_state = _state(bonus_metric, value=bonus_value, default="requiere_concepto")
+        if bonus_value is None and bonus_state == "resuelto":
+            bonus_state = "requiere_concepto"
+        bonus_display = (
+            f"Aplica: {int(bonus_value)} pisos" if bonus_value is not None
+            else "No aplica a este lote" if bonus_state == "no_aplica"
+            else f"Por confirmar: × {bon_man.get('factor','2')} — máx. {bon_man.get('altura_maxima_con_bonus_pisos','?')} pisos"
+        )
         rows.append(row("Bonus", "Bonus manzana completa (Art. 310 § 2)",
-                        f"× {bon_man.get('factor','2')} — máx. {bon_man.get('altura_maxima_con_bonus_pisos','?')} pisos",
+                        bonus_display,
                         bon_man.get("articulo") or "Art. 310 Parágrafo 2 D.555/2021",
-                        bon_man.get("confianza") or "alta",
-                        bon_man.get("condicion") or ""))
+                        bonus_metric.get("confianza") or bon_man.get("confianza") or "media",
+                        bonus_metric.get("motivo") or bonus_metric.get("nota") or bon_man.get("condicion") or
+                        "Requiere confirmar ocupación de manzana completa, frente, área y perfil vial.",
+                        bonus_state))
     bon_vis = ed.get("bonus_altura_vis") or {}
     if bon_vis:
         bv_applied = _get(dm, "altura_con_vis_bonus_pisos", "valor")
@@ -517,7 +525,7 @@ def _floor_rows(d: dict, lu: dict) -> list[dict]:
         rows.append({
             "piso": f"P{p:02d}",
             "nivel": f"+{_n(h_inf, 1)}–+{_n(h_sup, 1)} m*",
-            "regla": " · ".join(rules) if rules else "—",
+            "regla": " · ".join(rules) if rules else "Sin regla específica para este piso",
         })
     return rows
 
@@ -551,7 +559,6 @@ def _unit_estimate(d: dict) -> dict | None:
 def _next_steps(d: dict, lu: dict) -> list[dict]:
     """Generate a contextual checklist based on the analysis result."""
     steps = []
-    warnings = d.get("warnings") or []
     m  = d.get("metrics") or {}
     bc = d.get("binding_constraint") or ""
     ed = lu.get("edificabilidad") or {}
@@ -567,7 +574,7 @@ def _next_steps(d: dict, lu: dict) -> list[dict]:
         "Este informe es informativo; el concepto oficial es el único documento vinculante.")
     add("Verificar las dimensiones reales del predio con levantamiento topográfico.",
         "alta",
-        "IC, IO, aislamientos y retroceso dependen de las dimensiones exactas del lote.")
+        "IC, IO, aislamientos y la envolvente de fachada dependen de las dimensiones exactas del lote.")
 
     # Specific to tratamiento
     trat = d.get("tratamiento") or lu.get("tratamiento") or ""
@@ -593,21 +600,16 @@ def _next_steps(d: dict, lu: dict) -> list[dict]:
     via_conf = avia.get("confianza") or ""
     if via_conf == "media" or not avia.get("D_m"):
         add("Verificar el perfil vial oficial (ancho total incluyendo andenes y separadores) con SDP.",
-                "media",
-                f"Retroceso de fachada A = 2,5 × D. El D actual ({_n(avia.get('D_m') or avia.get('ancho_m'), 2)} m) "
-                f"incluye solo calzada(s), sin andenes.")
+            "media",
+                f"La altura máxima de fachada usa A = 2,5 × D. El D actual ({_n(avia.get('D_m') or avia.get('ancho_m'), 2)} m) "
+                f"incluye solo calzada(s), sin andenes ni separadores.")
 
     # Lateral setback note
     lat_conf = _get(m, "aislamiento_lateral_m", "confianza") or ""
     if lat_conf == "media":
         add("Recalcular aislamiento lateral con la altura real definida en diseño (≠ 3 m/piso asumido).",
             "media",
-            "Fórmula: max(1/5 × altura_total_m, 4 m). Altura actual asume 3 m/piso.")
-
-    # Warnings from calc
-    for w in warnings:
-        if w:
-            add(str(w), "advertencia")
+            "Fórmula: máximo entre un quinto de la altura total y 4 m. La altura actual asume 3 m por piso.")
 
     # VIS opportunity
     vis_receptora = lu.get("area_actividad", {}).get("es_receptora_vis")
@@ -733,26 +735,38 @@ def _normative_rows(d: dict, lu: dict) -> list[dict]:
     retro = m.get("retroceso_fachada_A_m") or {}
     retro_v = retro.get("valor")
     factor = retro.get("factor") or 2.5
-    add("Retroceso de fachada", f"A = {_n(factor, 1)} × D",
+    add("Altura máxima de fachada", f"A = {_n(factor, 1)} × D",
         f"{_n(retro_v, 2)} m" if retro_v is not None else "Sin dato",
         retro, "Anexo 5 Cap. 1.2.2.E.1.1 Decreto 555/2021")
 
     # D is deliberately sourced from the calculated metric used for A, not by
     # re-reading the raw lookup snapshot. This keeps PDF and /api/calc identical.
     road_v = retro.get("D_m")
+    road_confidence = retro.get("confianza")
+    road_state = "resuelto" if road_v is not None and road_confidence == "alta" else "insuficiente"
     road_obj = {
-        "estado": "resuelto" if road_v is not None else "insuficiente",
-        "motivo": retro.get("motivo") or retro.get("nota"),
+        "estado": road_state,
+        "motivo": (
+            "El ancho disponible corresponde a calzada; faltan andenes y separador para resolver el perfil vial total."
+            if road_v is not None and road_state == "insuficiente"
+            else retro.get("motivo") or retro.get("nota")
+        ),
+        "que_se_necesita": "El perfil vial completo: calzada, andenes y separador.",
+        "quien_lo_resuelve": "SDP",
         "fuente": retro.get("fuente_D"),
     }
-    add("Ancho de calzada usado (D)", "Dato de entrada para el retroceso",
+    add("Ancho de calzada disponible (D)", "Entrada para la altura máxima de fachada",
         f"{_n(road_v, 2)} m" if road_v is not None else "Sin dato",
         road_obj, "Layer 38 POT FeatureServer (ANCHO)")
 
     if parking.get("min_pct") is not None:
+        parking_area = parking.get("min_m2") or parking.get("max_m2") or parking.get("base_area_m2")
         parking_obj = {
-            "estado": parking.get("estado") or "resuelto",
-            "motivo": parking.get("motivo") or parking.get("nota"),
+            "estado": (parking.get("estado") or "resuelto") if parking_area is not None else "insuficiente",
+            "motivo": (parking.get("motivo") or parking.get("nota")) if parking_area is not None else
+                      "Los porcentajes normativos están identificados, pero falta el área cubierta del proyecto para calcular la exigencia.",
+            "que_se_necesita": None if parking_area is not None else "El área cubierta del proyecto según el Art. 390.",
+            "quien_lo_resuelve": None if parking_area is not None else "profesional",
             "fuente": parking.get("fuente"),
         }
         result = (
@@ -770,27 +784,39 @@ def _normative_rows(d: dict, lu: dict) -> list[dict]:
     return rows
 
 
-def _used_sources(d: dict, lu: dict, rows: list[dict], param_rows: list[dict]) -> list[str]:
-    """Only sources that actually contributed to this report, deduplicated."""
-    sources: list[str] = []
+def _used_sources(d: dict, lu: dict, rows: list[dict], param_rows: list[dict]) -> list[dict]:
+    """Return a short, grouped source register for this lot."""
+    m = d.get("metrics") or {}
+    ant = d.get("antejardin") or {}
+    groups: list[dict] = []
 
-    def add(value: Any) -> None:
-        if not value:
-            return
-        text = str(value).strip()
-        if text and text not in ("—", "sin_dato", "usuario") and text not in sources:
-            sources.append(text)
+    gis = [
+        "Catastro Bogotá · MapServer capa 0 (polígono, área, código de lote y unidades prediales).",
+        "SDP · POT FeatureServer capa 15 (tratamiento, tipología y altura máxima).",
+    ]
+    if ant or _get(m, "area_construible_estimada", default={}):
+        gis.append("SDP · POT FeatureServer capa 22, mapa CU-5.5 (antejardín).")
+    if _get(m, "retroceso_fachada_A_m", "D_m") is not None:
+        gis.append("SDP · POT FeatureServer capa 38, campo ANCHO (ancho de calzada; no equivale al perfil vial total).")
+    if lu.get("area_actividad"):
+        gis.append("SDP · POT FeatureServer capa 14 (área de actividad y regla de estacionamientos).")
+    groups.append({"name": "Capas GIS", "items": gis})
 
-    add(_get(d, "lote", "fuente_datos", "fuente"))
-    for row in rows:
-        add(row.get("source"))
-    for row in param_rows:
-        add(row.get("fuente"))
-    derived = _get(d, "metrics", "area_construible_estimada", default={}) or {}
-    for src in derived.get("fuentes") or []:
-        bits = [src.get("fuente"), src.get("articulo")]
-        add(" · ".join(str(bit) for bit in bits if bit))
-    return sources
+    articles = ["Decreto Distrital 555 de 2021 · Art. 310 (tratamiento de Consolidación)."]
+    if d.get("parking"):
+        articles.append("Decreto Distrital 555 de 2021 · Arts. 389, 390 y 390A (estacionamientos).")
+    articles.extend([
+        "Anexo 5 · Cap. 2.4.2.A.2 (aislamiento posterior).",
+        "Anexo 5 · Cap. 1.2.2.D.2 (aislamiento lateral).",
+        "Anexo 5 · Cap. 1.2.2.E.1.1 (altura máxima de fachada A en función del perfil vial D).",
+    ])
+    groups.append({"name": "Decretos y artículos", "items": articles})
+
+    if ant:
+        groups.append({"name": "Resoluciones", "items": [
+            "Resolución SDP 1631 de 2023 · cartografía operativa del antejardín, cuando la capa 22 aporta el dato."
+        ]})
+    return groups
 
 
 # ── HTML template ─────────────────────────────────────────────────────────────
@@ -1359,11 +1385,14 @@ h1 { font-size:24pt; line-height:1.08; letter-spacing:-.4pt; }
 h2 { font-size:14pt; margin-bottom:8pt; }
 h3 { font-size:9pt; margin-bottom:5pt; text-transform:uppercase; letter-spacing:.45pt; }
 .mono { font-family:"Courier New",monospace; }
-.page { page-break-before:always; }
+.page { margin-top:18pt; }
+.toc-page { min-height:240mm; page-break-before:always; page-break-after:always; }
+.major-page { page-break-before:always; }
+.appendix-page { page-break-before:always; }
 .avoid { page-break-inside:avoid; }
 .eyebrow { font-size:7pt; font-weight:700; letter-spacing:1.1pt; text-transform:uppercase; color:var(--muted); }
 .section-no { float:right; color:var(--muted); font:7pt "Courier New",monospace; }
-.section-head { padding-bottom:5pt; border-bottom:1pt solid var(--ink); margin-bottom:10pt; }
+.section-head { padding-bottom:5pt; border-bottom:1pt solid var(--ink); margin:16pt 0 10pt; page-break-after:avoid; }
 .note { color:var(--muted); font-size:7.5pt; }
 .source { color:var(--muted); font-size:6.7pt; margin-top:2pt; line-height:1.3; }
 .source::before { content:"Fuente: "; font-weight:700; color:var(--ink); }
@@ -1380,15 +1409,16 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
 .kv td:last-child { font-weight:700; }
 
 /* Cover */
-.cover { min-height:245mm; position:relative; padding-top:12mm; }
-.cover-rule { border-top:3pt solid var(--ink); margin-bottom:30mm; }
+.cover { page-break-after:always; padding-top:10mm; }
+.cover-rule { border-top:3pt solid var(--ink); margin-bottom:22mm; }
 .cover .eyebrow { margin-bottom:10pt; }
 .cover h1 { max-width:160mm; }
 .cover-sub { font-size:11pt; color:var(--muted); margin-top:8pt; }
-.cover-kv { width:122mm; margin-top:28mm; }
+.cover-kv { width:135mm; margin-top:20mm; }
 .cover-kv td { padding:5pt 0; border:0; border-bottom:.5pt solid var(--line); }
-.cover-kv td:first-child { color:var(--muted); width:42mm; }
-.cover-disclaimer { position:absolute; left:0; right:0; bottom:8mm; padding-top:7pt; border-top:1pt solid var(--ink); font-size:7.5pt; color:var(--muted); }
+.cover-kv td:first-child { color:var(--muted); width:52mm; padding-right:7pt; }
+.cover-disclaimer { margin-top:14mm; padding-top:7pt; border-top:1pt solid var(--ink); font-size:7.5pt; color:var(--muted); }
+.site-assumption { margin-top:7pt; padding:7pt 9pt; border:1pt solid var(--amber-b); background:var(--amber-bg); color:var(--amber); page-break-inside:avoid; }
 
 /* TOC */
 .toc { margin-top:18pt; }
@@ -1440,8 +1470,9 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
 .alert { padding:5pt 7pt; color:var(--red); background:var(--red-bg); border-left:2pt solid var(--red-b); margin-bottom:4pt; page-break-inside:avoid; }
 
 /* Sources and trace */
-.sources { counter-reset:src; }
-.sources li { margin:0 0 5pt 15pt; padding-left:3pt; }
+.source-group { margin:0 0 10pt; page-break-inside:avoid; }
+.sources { margin:0; padding-left:17pt; }
+.sources li { margin:0 0 4pt; padding-left:2pt; }
 .trace { border-left:2pt solid var(--line); padding:4pt 0 4pt 8pt; margin-bottom:6pt; page-break-inside:avoid; }
 .trace-step { font:bold 6.5pt "Courier New",monospace; color:var(--muted); text-transform:uppercase; }
 .trace-expr,.trace-values { font:7pt "Courier New",monospace; background:var(--soft); padding:3pt 5pt; margin-top:3pt; white-space:pre-wrap; }
@@ -1454,20 +1485,22 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
 <section class="cover">
   <div class="cover-rule"></div>
   <div class="eyebrow">Informe de prefactibilidad urbanística · Bogotá D.C.</div>
-  <h1>{{ address }}</h1>
+  <h1>{{ report_title }}</h1>
   <p class="cover-sub">Análisis de edificabilidad y controles volumétricos</p>
   <table class="cover-kv">
     <tr><td>Fecha del informe</td><td>{{ date_label }}</td></tr>
-    <tr><td>Coordenadas</td><td class="mono">{{ lat }}, {{ lng }}</td></tr>
+    <tr><td>Coordenadas WGS84</td><td class="mono">{{ lat }}, {{ lng }} · grados decimales</td></tr>
     <tr><td>CHIP / código de lote</td><td class="mono">{{ lotcodigo }}</td></tr>
     <tr><td>Tratamiento</td><td>{{ tratamiento }}</td></tr>
     <tr><td>Área del lote</td><td class="mono">{{ lot_area }}</td></tr>
+    <tr><td>Unidades prediales registradas</td><td class="mono">{{ predial_units }}</td></tr>
   </table>
+  {% if existing_units_warning %}<div class="site-assumption"><strong>Predio probablemente desarrollado.</strong> {{ existing_units_warning }}</div>{% endif %}
   <div class="cover-disclaimer"><strong>Alcance.</strong> {{ disclaimer }}</div>
 </section>
 
 <!-- 2. TOC -->
-<section class="page">
+<section class="toc-page">
   <div class="section-head"><span class="section-no">02</span><div class="eyebrow">Contenido</div><h2>Tabla de contenido</h2></div>
   <div class="toc">
     {% for item in toc %}<div class="toc-row"><div class="toc-n">{{ "%02d"|format(loop.index) }}</div><div class="toc-label">{{ item }}</div></div>{% endfor %}
@@ -1480,7 +1513,7 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
   <div class="summary-grid">
     <div class="summary-left">
       <table class="kv">
-        <tr><td>Dirección</td><td>{{ address }}</td></tr>
+        <tr><td>Dirección</td><td>{{ address_display }}</td></tr>
         <tr><td>CHIP / código de lote</td><td class="mono">{{ lotcodigo }}</td></tr>
         <tr><td>Localidad / UPZ</td><td>{{ locality_upz }}</td></tr>
         <tr><td>Tratamiento</td><td>{{ tratamiento }}</td></tr>
@@ -1527,15 +1560,16 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
     {% set ns = namespace(last_cat="") %}
     {% for row in param_rows %}
       {% if row.cat != ns.last_cat %}{% set ns.last_cat = row.cat %}<tr class="cat"><td colspan="4">{{ row.cat }}</td></tr>{% endif %}
-      <tr><td>{{ row.campo }}</td><td class="value">{{ row.valor }}</td><td>{{ row.fuente }}</td><td class="note">{{ row.nota }}</td></tr>
+      <tr><td>{{ row.campo }}</td><td class="value">{{ row.valor }}{% if row.estado %}<br><span class="status s-{{ row.estado }}">{{ row.estado|replace('_',' ') }}</span>{% endif %}</td><td>{{ row.fuente }}</td><td class="note">{{ row.nota }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
 </section>
 
 <!-- 5. Area and units -->
-<section class="page">
+<section class="page major-page">
   <div class="section-head"><span class="section-no">05</span><div class="eyebrow">Cabida preliminar</div><h2>Área construible / unidades estimadas</h2></div>
+  <div class="site-assumption"><strong>Supuesto de sitio libre.</strong> {{ vacant_site_warning }}{% if existing_units_warning %}<br><strong>Alerta catastral:</strong> {{ existing_units_warning }}{% endif %}</div>
   <div class="callout-grid avoid">
     <div class="callout">
       <div class="callout-label">{{ area_label }}</div>
@@ -1576,6 +1610,8 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
   <table><thead><tr><th>Piso</th><th>Nivel aproximado</th><th>Regla aplicable</th></tr></thead><tbody>{% for row in floor_rows %}<tr><td class="mono">{{ row.piso }}</td><td class="mono">{{ row.nivel }}</td><td>{{ row.regla }}</td></tr>{% endfor %}</tbody></table>
   <p class="note" style="margin-top:4pt">La equivalencia usa 3,0 m por piso como referencia; el proyecto puede definir alturas distintas.</p>
   {% endif %}
+  <h3 style="margin-top:12pt">Alcance financiero</h3>
+  <p class="note">Este PDF regulatorio no incorpora el pro-forma ni el valor residual del suelo. La omisión es deliberada: esos resultados dependen de supuestos editables de mercado, financiación, impuestos, cronograma y absorción, y no forman parte de la norma urbanística. Consúltelos y expórtelos como un escenario financiero separado.</p>
 </section>
 
 <!-- 6. Profile -->
@@ -1583,6 +1619,7 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
   <div class="section-head"><span class="section-no">06</span><div class="eyebrow">Forma edificable</div><h2>Perfil volumétrico</h2></div>
   <div class="profile-wrap">{{ profile_svg|safe }}</div>
   <div class="setbacks">{% for sb in setbacks %}<div class="setback"><span class="note">{{ sb.label }}</span><b>{{ sb.val }}</b><span class="source">{{ sb.src }}</span></div>{% endfor %}</div>
+  {% if facade_height %}<div class="verdict"><strong>Altura máxima de fachada (A = 2,5 × D): {{ facade_height }}</strong>Es una altura sobre el espacio público; no es un retiro horizontal y no se descuenta de la huella edificable.<div class="source">Anexo 5 Cap. 1.2.2.E.1.1</div></div>{% endif %}
   <p class="note" style="margin-top:8pt">Diagrama indicativo, no a escala. La altura en metros supone 3,0 m por piso. Debe verificarse con la geometría y el diseño del proyecto.</p>
 </section>
 
@@ -1598,14 +1635,14 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
 <section class="page">
   <div class="section-head"><span class="section-no">08</span><div class="eyebrow">Verificación independiente</div><h2>Fuentes consultadas</h2></div>
   <p style="margin-bottom:10pt">Solo se listan las fuentes que aportaron datos o reglas a este predio.</p>
-  <ol class="sources">{% for source in used_sources %}<li>{{ source }}</li>{% endfor %}</ol>
+  {% for group in used_sources %}<div class="source-group"><h3>{{ group.name }}</h3><ol class="sources">{% for source in group["items"] %}<li>{{ source }}</li>{% endfor %}</ol></div>{% endfor %}
   <p class="note" style="margin-top:14pt">Fecha de consulta GIS: {{ consultation_date }}. Para una decisión vinculante, confirme la información con la SDP, Catastro Bogotá y la Curaduría Urbana competente.</p>
 </section>
 
 <!-- 9. Trace appendix -->
-<section class="page">
+<section class="page appendix-page">
   <div class="section-head"><span class="section-no">09</span><div class="eyebrow">Apéndice</div><h2>Trazabilidad del cálculo</h2></div>
-  {% if trace %}{% for step in trace %}<div class="trace"><div class="trace-step">Paso {{ step.paso }}</div><strong>{{ step.descripcion }}</strong>{% if step.expresion %}<div class="trace-expr">{{ step.expresion }}</div>{% endif %}{% if step.valores %}<div class="trace-values">{{ step.valores|pretty_kv }}</div>{% endif %}{% if step.resultado is not none %}<div class="trace-result">= {% if step.resultado is mapping %}{% for key,value in step.resultado.items() %}{{ key }}: {{ value }} {% endfor %}{% elif step.resultado is iterable and step.resultado is not string %}{{ step.resultado|join(', ') }}{% else %}{{ step.resultado }}{% endif %} {{ step.unidad or '' }}</div>{% endif %}{% if step.nota %}<div class="note">{{ step.nota }}</div>{% endif %}{% if step.fuente %}<div class="source">{{ step.fuente }}</div>{% endif %}</div>{% endfor %}{% else %}<p class="note">La traza detallada no está incluida en este resultado guardado.</p>{% endif %}
+  {% if trace %}{% for step in trace %}<div class="trace"><div class="trace-step">Paso {{ step.paso }}</div><strong>{{ step.descripcion }}</strong>{% if step.expresion %}<div class="trace-expr">{{ step.expresion }}</div>{% endif %}{% if step.valores %}<div class="trace-values">{{ step.valores|pretty_kv }}</div>{% endif %}{% if step.resultado is not none %}<div class="trace-result">= {% if step.resultado is mapping %}{% for key,value in step.resultado.items() %}{{ key|human_label }}: {{ value }} {% endfor %}{% elif step.resultado is iterable and step.resultado is not string %}{{ step.resultado|join(', ') }}{% else %}{{ step.resultado }}{% endif %} {{ step.unidad or '' }}</div>{% endif %}{% if step.nota %}<div class="note">{{ step.nota }}</div>{% endif %}{% if step.fuente %}<div class="source">{{ step.fuente }}</div>{% endif %}</div>{% endfor %}{% else %}<p class="note">La traza detallada no está incluida en este resultado guardado.</p>{% endif %}
 </section>
 </body>
 </html>"""
@@ -1618,13 +1655,29 @@ def _make_env() -> Environment:
 
     env = Environment(loader=BaseLoader(), autoescape=True)
 
+    label_overrides = {
+        "factor": "Factor",
+        "D_m": "Perfil vial usado D (m)",
+        "fuente_D": "Fuente de D",
+        "confianza_D": "Confianza de D",
+        "retroceso_aplicado_a_huella": "Altura de fachada descontada de la huella",
+        "area_lote": "Área del lote",
+        "huella_calculada": "Huella calculada",
+        "pisos": "Pisos",
+    }
+
+    def human_label(value):
+        key = str(value)
+        return label_overrides.get(key, key.replace("_", " ").strip().capitalize())
+
     def pretty_kv(obj):
         if not obj:
             return ""
         try:
             lines = []
             for k, v in obj.items():
-                lines.append(f"{k}: {v}")
+                display_v = str(v).replace("sin_fuente_configurada", "sin fuente automatizada").replace("SIN_DATO", "SIN DATO")
+                lines.append(f"{human_label(k)}: {display_v}")
             return "\n".join(lines)
         except Exception:
             return str(obj)
@@ -1634,6 +1687,7 @@ def _make_env() -> Environment:
 
     env.filters["pretty_kv"] = pretty_kv
     env.filters["n1"] = n1
+    env.filters["human_label"] = human_label
     env.tests["none"] = lambda v: v is None
     env.tests["mapping"] = lambda v: isinstance(v, dict)
     env.tests["iterable"] = lambda v: hasattr(v, "__iter__")
@@ -1716,15 +1770,65 @@ def _render_html(
     aa_code    = _get(lu, "area_actividad", "codigo") or "—"
     aa_name    = _get(lu, "area_actividad", "nombre") or ""
     area_act   = f"{aa_code}" + (f" — {aa_name[:45]}" if aa_name else "")
+    address_text = (address or "").strip()
+    coordinate_query = (
+        not address_text
+        or address_text.lower().startswith("predio ")
+        or address_text.lower().startswith("dirección no")
+    )
     locality   = lu.get("localidad") or _get(lu, "lote", "localidad")
+    if not locality and " · " in address_text:
+        locality = address_text.split(" · ", 1)[1].split(",", 1)[0].strip()
+    if not locality and coordinate_query:
+        try:
+            from cabida.market_defaults import resolve_localidad
+            locality = resolve_localidad(float(inp.get("lng")), float(inp.get("lat")))
+        except Exception:
+            locality = None
+    locality_labels = {
+        "usaquen": "Usaquén", "santa_fe": "Santa Fe", "san_cristobal": "San Cristóbal",
+        "fontibon": "Fontibón", "engativa": "Engativá", "los_martires": "Los Mártires",
+        "antonio_narino": "Antonio Nariño", "la_candelaria": "La Candelaria",
+        "ciudad_bolivar": "Ciudad Bolívar", "barrios_unidos": "Barrios Unidos",
+    }
+    if locality:
+        locality = locality_labels.get(str(locality).lower(), str(locality).replace("_", " ").title())
     upz        = lu.get("upz") or lu.get("upl") or _get(lu, "lote", "upz")
-    locality_upz = " / ".join(str(v) for v in (locality, upz) if v) or "No incluido en las capas consultadas"
+    locality_upz = str(locality) if locality else "Localidad no resuelta"
+    locality_upz += f" · UPZ {upz}" if upz else " · UPZ no incluida en las capas consultadas"
     current_use = lu.get("uso_actual") or _get(lu, "lote", "uso_actual") or "No incluido en las capas consultadas"
     anu_val    = _get(d, "anu", "valor_m2")
     anu_usado  = _area(anu_val) if anu_val else None
     rango      = d.get("rango") or lu.get("rango")
     lat        = f'{inp.get("lat", 0):.5f}'
     lng        = f'{inp.get("lng", 0):.5f}'
+    address_display = (
+        "Consultado por coordenada; sin dirección catastral asociada"
+        if coordinate_query else address_text
+    )
+    report_title = (
+        f"Predio {lotcodigo}" + (f" · {locality}, Bogotá D.C." if locality else " · Bogotá D.C.")
+        if coordinate_query else address_text
+    )
+    lot_units = lote.get("unidades_predio")
+    if lot_units is None:
+        lot_units = _get(lu, "lote", "unidades_predio")
+    try:
+        lot_units_count = int(float(lot_units)) if lot_units is not None else None
+    except (TypeError, ValueError):
+        lot_units_count = None
+    predial_units = str(lot_units_count) if lot_units_count is not None else "No disponible"
+    vacant_site_warning = (
+        "La cabida supone un lote libre, disponible y sin cargas. No incorpora edificaciones existentes, "
+        "demolición, englobe, desenglobe, propiedad horizontal, servidumbres ni afectaciones de título."
+    )
+    existing_units_warning = ""
+    if lot_units_count is not None and lot_units_count > 1:
+        existing_units_warning = (
+            f"Este lote registra {lot_units_count} unidades prediales. Es probable que se trate de un predio ya "
+            "desarrollado en propiedad horizontal; la cabida estimada asume un lote libre y no considera "
+            "demolición, englobe ni el régimen de propiedad horizontal existente."
+        )
 
     # Verdict
     area_max_obj = m.get("area_construible_max_m2") or {}
@@ -1796,9 +1900,6 @@ def _render_html(
     if ant_dim is not None:
         setbacks.append({"label": "Antejardín", "val": f"{_n(ant_dim, 1)} m",
                           "src": "Art. 314 / Layer 22"})
-    if ret_v is not None:
-        setbacks.append({"label": "Retroceso fachada", "val": f"{_n(ret_v, 2)} m",
-                          "src": "Anx. 5 Cap. 1.2.2.E.1.1"})
     if post_v is not None:
         setbacks.append({"label": "Aislamiento posterior", "val": f"{_n(post_v, 1)} m",
                           "src": "Anx. 5 Cap. 2.4.2.A.2"})
@@ -1808,6 +1909,7 @@ def _render_html(
     if not setbacks:
         setbacks.append({"label": "Retiros", "val": "Sin dato",
                           "src": "Verificar con Curaduría"})
+    facade_height = f"{_n(ret_v, 2)} m" if ret_v is not None else None
 
     # Tables and report sections
     param_rows = _param_rows(d, lu)
@@ -1815,7 +1917,21 @@ def _render_html(
     used_sources = _used_sources(d, lu, normative_rows, param_rows)
     floor_rows = _floor_rows(d, lu)
     next_steps_list = _next_steps(d, lu)
-    warnings   = [w for w in (d.get("warnings") or []) if w]
+    def humanize_warning(value: Any) -> str:
+        text = str(value)
+        replacements = {
+            "SIN_DATO": "SIN DATO",
+            "aerocivil": "restricciones aeronáuticas",
+            "cerros_orientales": "Cerros Orientales",
+            "movimientos_en_masa": "remoción en masa",
+            "inundacion": "amenaza de inundación",
+            "ronda_hidrica": "ronda hídrica",
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        return text
+
+    warnings   = [humanize_warning(w) for w in (d.get("warnings") or []) if w]
     catastro_snap = lote.get("consulta_catastro") or (lu.get("lote") or {}).get("consulta_catastro")
     if catastro_snap:
         warnings.insert(0, (
@@ -1823,7 +1939,29 @@ def _render_html(
             f"más cercano, a {_n(catastro_snap.get('distancia_m'), 1)} m. Confirme el predio "
             "antes de usar este informe."
         ))
-    trace      = d.get("formula_trace") or []
+    trace = []
+    for raw_step in d.get("formula_trace") or []:
+        step = dict(raw_step)
+        if step.get("descripcion") == "Retroceso de fachada":
+            step["descripcion"] = "Altura máxima de fachada"
+        if isinstance(step.get("nota"), str):
+            step["nota"] = humanize_warning(step["nota"]).replace(
+                "valor numérico del retroceso", "valor numérico de la altura máxima de fachada"
+            )
+        if isinstance(step.get("expresion"), str):
+            expression_replacements = {
+                "anillo_proyectado_MAGNA_SIRGAS_9377": "anillo proyectado en MAGNA-SIRGAS 9377",
+                "Layer_22.DIMENSION": "Capa 22 · campo DIMENSION",
+                "área_lote": "área del lote",
+                "retroceso_A": "altura de fachada A",
+                "retroceso": "altura máxima de fachada",
+                "altura_total_m": "altura total en metros",
+                "ancho_via_m": "perfil vial en metros",
+                "N/A": "No aplica",
+            }
+            for old, new in expression_replacements.items():
+                step["expresion"] = step["expresion"].replace(old, new)
+        trace.append(step)
     toc = [
         "Resumen del predio",
         "Normativa aplicable - exigencia vs. resultado",
@@ -1843,7 +1981,9 @@ def _render_html(
         timestamp    = timestamp,
         date_label   = date_label,
         consultation_date = consultation_date,
-        address      = address,
+        address      = address_text,
+        address_display = address_display,
+        report_title = report_title,
         lotcodigo    = lotcodigo,
         lot_area     = lot_area,
         tratamiento  = trat,
@@ -1855,6 +1995,9 @@ def _render_html(
         rango        = rango,
         lat          = lat,
         lng          = lng,
+        predial_units = predial_units,
+        vacant_site_warning = vacant_site_warning,
+        existing_units_warning = existing_units_warning,
         map_img      = map_img,
         area_max     = area_max,
         area_label   = area_label,
@@ -1871,6 +2014,7 @@ def _render_html(
         verdict_sentence = verdict_s,
         profile_svg  = profile_svg,
         setbacks     = setbacks,
+        facade_height = facade_height,
         param_rows   = param_rows,
         normative_rows = normative_rows,
         used_sources = used_sources,

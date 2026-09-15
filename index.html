@@ -2731,7 +2731,7 @@ function bindingBanner(bc, d) {
 
   let sub = cfg.sub;
   if (bc === 'total_area' && isRenovacion) {
-    sub = 'El ICe efectivo (Índice de Construcción Efectivo) fija el techo de metros construibles sobre el área de terreno. IO y altura no están fijados numéricamente — son resultantes de los aislamientos y el retroceso de fachada (A = 2.5 × D).';
+    sub = 'El ICe efectivo (Índice de Construcción Efectivo) fija el techo de metros construibles sobre el área de terreno. IO y altura no están fijados numéricamente — son resultantes de los aislamientos y la envolvente de fachada (A = 2,5 × D).';
   }
   if (bc === 'height' && isMejora) {
     sub = 'La altura máxima en pisos (tabla Art. 338 cruzando ancho de vía × área de lote) es el control fijo. IC e IO no están fijados en el decreto — son resultantes de la altura y los aislamientos.';
@@ -2994,10 +2994,10 @@ function derivedAreaCard(estimate) {
   </div>`;
 }
 
-/* ── Retroceso de fachada row — computed A when GIS / user data available ── */
+/* ── Altura máxima de fachada — computed A when GIS / user data available ── */
 function retrocesoCellHtml(rf, factor, fuenteDecreto) {
   if (!rf) {
-    return setbackRow('Retroceso de fachada', `A = ${factor} × D`,
+    return setbackRow('Altura máxima de fachada', `A = ${factor} × D`,
       'D = perfil vial frente al predio (no disponible automáticamente).', fuenteDecreto);
   }
   const A = rf.valor;
@@ -3015,7 +3015,7 @@ function retrocesoCellHtml(rf, factor, fuenteDecreto) {
 
   return `<div class="setback-row">
     <div>
-      <div class="sb-name">Retroceso de fachada</div>
+      <div class="sb-name">Altura máxima de fachada</div>
       <div class="sb-sub">${escHtml(sub)} ${confianzaBadge(rf.confianza)}</div>
       ${fuenteDecreto ? `<div class="sb-sub" style="color:var(--c-link)">${escHtml(fuenteDecreto)}</div>` : ''}
     </div>
@@ -3649,7 +3649,7 @@ function formulaTrace(steps) {
     area_lote: 'Área del lote', area_construible_max_m2: 'Área construible máxima',
     planta_maxima_m2: 'Huella máxima', altura_base_pisos: 'Altura base',
     aislamiento_posterior_m: 'Aislamiento posterior', aislamiento_lateral_m: 'Aislamiento lateral',
-    retroceso_fachada_A_m: 'Retroceso de fachada', ancho_via_m: 'Ancho total de la vía',
+    retroceso_fachada_A_m: 'Altura máxima de fachada', ancho_via_m: 'Ancho total de la vía',
     frente_m: 'Frente del lote', anu_m2: 'Área neta urbanizable'
   };
   const traceLabel = key => traceLabels[key] || String(key).replaceAll('_', ' ').replace(/^./, c => c.toUpperCase());

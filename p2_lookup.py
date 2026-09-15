@@ -715,7 +715,7 @@ def _query_area_actividad(lng: float, lat: float) -> dict:
 
 # ── Calzada width (Layer 38) ─────────────────────────────────────────────────
 
-def _query_ancho_via_gis(lng: float, lat: float) -> dict:
+def _query_ancho_via_gis(lng: float, lat: float, lot_rings: list | None = None) -> dict:
     """
     Query Layer 38 (Calzada polygons) for carriageway width near the lot centroid.
 
@@ -735,6 +735,7 @@ def _query_ancho_via_gis(lng: float, lat: float) -> dict:
     Caller must add andén/separador widths to get the full perfil vial (D_total).
     ZeroFeaturesError within the buffer → D_m = None.
     """
+    boundary_fallback = False
     try:
         feats = query_fs(
             L_CALZADA, lng, lat,
@@ -742,16 +743,46 @@ def _query_ancho_via_gis(lng: float, lat: float) -> dict:
             distance_m=_CALZADA_RADIUS_M,
         )
     except ZeroFeaturesError:
-        return {
-            "D_m": None,
-            "n_calzadas": 0,
-            "confianza": None,
-            "fuente": f"Layer 38 POT FeatureServer (Calzada) — sin dato dentro de {_CALZADA_RADIUS_M}m",
-            "nota": (
-                f"No se encontraron polígonos de calzada (Layer 38) dentro de {_CALZADA_RADIUS_M}m "
-                "del centroide del predio. El ancho de vía debe ser ingresado manualmente."
-            ),
-        }
+        feats = []
+        ring = lot_rings[0] if lot_rings else []
+        if ring:
+            # Large/irregular lots may place the selected coordinate well over
+            # 25 m from every street. Query four boundary extremes so the
+            # frontage layer is not silently missed.
+            sample_points = {
+                tuple(min(ring, key=lambda p: p[0])),
+                tuple(max(ring, key=lambda p: p[0])),
+                tuple(min(ring, key=lambda p: p[1])),
+                tuple(max(ring, key=lambda p: p[1])),
+            }
+            seen: dict[tuple, dict] = {}
+            for point_lng, point_lat in sample_points:
+                try:
+                    nearby = query_fs(
+                        L_CALZADA, point_lng, point_lat,
+                        out_fields=["ANCHO", "CODIGO_IDENTIFICACION_VIAL"],
+                        distance_m=15,
+                    )
+                except ZeroFeaturesError:
+                    continue
+                for feature in nearby:
+                    attrs = feature.get("attributes") or {}
+                    key = (attrs.get("CODIGO_IDENTIFICACION_VIAL"), attrs.get("ANCHO"))
+                    seen[key] = feature
+            feats = list(seen.values())
+            boundary_fallback = bool(feats)
+        if not feats:
+            return {
+                "D_m": None,
+                "n_calzadas": 0,
+                "confianza": None,
+                "fuente": f"Layer 38 POT FeatureServer (Calzada) — sin dato dentro de {_CALZADA_RADIUS_M}m",
+                "nota": (
+                    f"No se encontraron polígonos de calzada (Layer 38) dentro de {_CALZADA_RADIUS_M}m "
+                    "del punto consultado ni junto a los extremos del polígono del lote. "
+                    "El perfil vial debe verificarse manualmente."
+                ),
+            }
 
     # Group by CODIGO_IDENTIFICACION_VIAL and collect ANCHO values
     groups: dict[object, list[float]] = {}
@@ -787,10 +818,15 @@ def _query_ancho_via_gis(lng: float, lat: float) -> dict:
         "D_m": D_total,
         "n_calzadas": n,
         "confianza": "media",
-        "fuente": "Layer 38 POT FeatureServer (Calzada) — ancho de calzada(s), sin andenes ni separadores",
+        "fuente": (
+            "Layer 38 POT FeatureServer (Calzada) — consulta junto al lindero; ancho de calzada, sin andenes ni separadores"
+            if boundary_fallback else
+            "Layer 38 POT FeatureServer (Calzada) — ancho de calzada(s), sin andenes ni separadores"
+        ),
         "nota": (
             f"{n} calzada{'s' if n > 1 else ''} (CODIGO_VIA={best_codigo}): {breakdown}. "
-            "Andenes y separadores no incluidos — el perfil vial total (D) puede ser mayor."
+            + ("La consulta central no encontró vía; se revisaron los extremos del polígono del lote. " if boundary_fallback else "")
+            + "Andenes y separadores no incluidos — el perfil vial total (D) puede ser mayor."
         ),
     }
 
@@ -1242,14 +1278,26 @@ def lookup(
         if state != "consultado"
     ]
     if missing_restrictions:
+        restriction_labels = {
+            "aerocivil": "restricciones aeronáuticas",
+            "cerros_orientales": "Cerros Orientales",
+            "movimientos_en_masa": "remoción en masa",
+            "inundacion": "amenaza de inundación",
+            "ronda_hidrica": "ronda hídrica",
+            "bic": "patrimonio cultural",
+        }
+        readable_restrictions = [
+            restriction_labels.get(name, name.replace("_", " "))
+            for name in missing_restrictions
+        ]
         result["warnings"].append(
-            "SIN_DATO DE RESTRICCIONES: no se verificaron automáticamente "
-            + ", ".join(missing_restrictions)
+            "SIN DATO DE RESTRICCIONES: no se verificaron automáticamente "
+            + ", ".join(readable_restrictions)
             + ". Esto no significa ausencia de afectación; consulte las autoridades y mapas oficiales."
         )
 
     # ── Step 1c: Calzada width (Layer 38) — used for retroceso de fachada ──────
-    result["ancho_via_gis"] = _query_ancho_via_gis(lng, lat)
+    result["ancho_via_gis"] = _query_ancho_via_gis(lng, lat, rings_wgs84)
 
     # ── Step 1d: Área de actividad (Layer 14) — needed for Art. 389 parking ───
     # Queried here for ALL tratamientos (not only Consolidación) so parking can
