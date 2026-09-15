@@ -72,3 +72,30 @@ def test_manual_coordinates_open_from_computed_visibility_on_first_click():
     function = HTML[start:end]
     assert "window.getComputedStyle(el).display === 'none'" in function
     assert "aria-expanded" in function
+
+
+def test_search_supports_chip_and_vis_scenario_is_explained():
+    assert 'placeholder="Dirección, CHIP o clic en el mapa…"' in HTML
+    assert "No determina por sí solo una obligación VIS/VIP" in HTML
+    assert "ni cambia el tratamiento POT" in HTML
+    assert "case 'exact_chip': return 'CHIP exacto'" in HTML
+
+
+def test_blocked_reports_are_not_saved_as_successful_recents():
+    helper_start = HTML.index("function _isSuccessfulHistoryResult(data)")
+    helper_end = HTML.index("function saveToHistory", helper_start)
+    helper = HTML[helper_start:helper_end]
+    assert "conservacion_no_soportado" in helper
+    assert "tratamiento_no_implementado" in helper
+    assert "restriccion_bloqueante" in helper
+    lookup_start = HTML.index("async function runLookup")
+    lookup_end = HTML.index("/* ═", lookup_start)
+    lookup = HTML[lookup_start:lookup_end]
+    assert "if (_isSuccessfulHistoryResult(d))" in lookup
+
+
+def test_api_has_specific_outside_bogota_and_chip_messages():
+    api = Path(__file__).with_name("api.py").read_text()
+    assert 'resolution == "outside_bogota"' in api
+    assert "Ainmo solo cubre predios en Bogotá D.C. por ahora." in api
+    assert 'resolution == "chip_not_found"' in api

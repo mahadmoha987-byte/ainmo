@@ -404,9 +404,10 @@ body{overflow:hidden}
 .sp-chips{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:var(--sp-2)}
 .ejemplo-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border:1px solid var(--accent-dim);background:var(--accent-bg);color:var(--accent);font-size:var(--ts-sm);font-weight:var(--fw-6);cursor:pointer;border-radius:var(--r1);font-family:var(--ff-ui)}
 .ejemplo-chip:hover{background:var(--accent-dim);border-color:var(--accent)}
-.sp-vis{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-1)}
+.sp-vis{display:grid;grid-template-columns:auto 1fr;align-items:start;column-gap:var(--sp-2);row-gap:2px;margin-bottom:var(--sp-1)}
 .sp-vis input[type=checkbox]{width:14px;height:14px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
 .sp-vis label{font-size:var(--ts-sm);color:var(--ink-2);cursor:pointer;margin:0;font-weight:var(--fw-4)}
+.sp-vis-help{grid-column:2;font-size:11px;line-height:1.4;color:var(--ink-4);max-width:290px}
 .sp-geo-results{margin-top:var(--sp-2)}
 .sp-manual-toggle{margin-top:var(--sp-2);text-align:right}
 .sp-manual-toggle button{background:none;border:none;color:var(--ink-4);font-size:var(--ts-xs);font-family:var(--ff-ui);cursor:pointer;text-decoration:underline;padding:0}
@@ -544,7 +545,7 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
 
 </style>
 <link rel="stylesheet" href="/static/figure-status.css?v=20260914-ui2">
-<script src="/static/figure-status.js?v=20260914-ui3"></script>
+<script src="/static/figure-status.js?v=20260915-ui4"></script>
 </head>
 <body>
 
@@ -578,8 +579,8 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
       </div>
       <div class="sp-row" style="margin-top:var(--sp-2)">
         <div class="sp-address-field">
-          <input type="text" id="addr-input" placeholder="Dirección o clic en el mapa…" autocomplete="off" spellcheck="false"
-                 aria-label="Buscar dirección" role="combobox" aria-autocomplete="list"
+          <input type="text" id="addr-input" placeholder="Dirección, CHIP o clic en el mapa…" autocomplete="off" spellcheck="false"
+                 aria-label="Buscar dirección o CHIP" role="combobox" aria-autocomplete="list"
                  aria-controls="address-suggestions" aria-expanded="false">
           <span class="sp-suggest-spinner" id="address-suggest-spinner" hidden aria-hidden="true"></span>
           <div class="address-suggestions" id="address-suggestions" role="listbox"
@@ -595,6 +596,7 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
       <div class="sp-vis">
         <input type="checkbox" id="vis-check">
         <label for="vis-check">VIS/VIP en sitio</label>
+        <span class="sp-vis-help">Escenario del proyecto: ajusta estacionamientos y, solo si la zona y la norma lo permiten, incentivos de altura. No determina por sí solo una obligación VIS/VIP ni cambia el tratamiento POT.</span>
       </div>
       <div class="sp-geo-results" id="geo-results" style="display:none"></div>
       <div class="sp-manual-toggle">
@@ -1096,6 +1098,7 @@ function _showGeoCandidates(candidates, isNear) {
 
 function _geoQualityLabel(candidate) {
   switch (candidate?.match_type) {
+    case 'exact_chip': return 'CHIP exacto';
     case 'exact_address': return 'coincidencia exacta';
     case 'same_block': return 'misma cuadra, número distinto';
     case 'osm_address': return 'dirección OSM, confirmar';
@@ -1245,12 +1248,14 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
       const address = d.direccion || requestAddress || '';
       _lastResolvedAddress = address;
       _lastResolvedLotCodigo = d.lote?.lotcodigo || requestExpectedLotCodigo || null;
-      saveToHistory({
-        lat, lng, vis, address,
-        tratamiento: d.tratamiento,
-        lotcodigo: d.lote?.lotcodigo || requestExpectedLotCodigo || null,
-        ts: Date.now(),
-      });
+      if (_isSuccessfulHistoryResult(d)) {
+        saveToHistory({
+          lat, lng, vis, address,
+          tratamiento: d.tratamiento,
+          lotcodigo: d.lote?.lotcodigo || requestExpectedLotCodigo || null,
+          ts: Date.now(),
+        });
+      }
     }
     render(json, lat, lng, vis, anu, frente, anchoVia, requestAddress);
   } catch (err) {
@@ -4056,6 +4061,15 @@ document.addEventListener('keydown', (e) => {
 ══════════════════════════════════════════════════════════════════════════ */
 const _HIST_KEY = 'edif_history_v1';
 const _HIST_MAX = 6;
+
+function _isSuccessfulHistoryResult(data) {
+  const blocked = new Set([
+    'conservacion_no_soportado',
+    'tratamiento_no_implementado',
+    'restriccion_bloqueante',
+  ]);
+  return !!data && !blocked.has(data.binding_constraint);
+}
 
 function saveToHistory(item) {
   if (!item.lat || !item.lng) return;

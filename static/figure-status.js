@@ -22,17 +22,31 @@
   }
   function display(f){
     const v=f.valor??f.valor_m2??f.dimension_m;
+    if(f.estado==='no_aplica'){
+      if(/resultante|no fija|no fijad|modelado/i.test(f.motivo||''))return 'Resultante';
+      if(v===0||/no exig|sin exig|no aplica|inaplicable/i.test(f.motivo||''))return 'No exigido';
+      return 'No aplica';
+    }
     if(num(v)!==null)return num(v);
     if(typeof v==='boolean'&&f.estado==='resuelto')return v?'Permitida con condiciones':'No permitida';
     if(Array.isArray(f.rango_m2)&&f.rango_m2.length===2&&f.rango_m2.every(Number.isFinite))return f.rango_m2.map(num).join('–');
+    if(f.estado==='requiere_concepto')return 'Concepto requerido';
+    if(f.estado==='insuficiente')return 'Dato pendiente';
+    if(f.estado==='error')return 'Cálculo fallido';
+    if(f.estado==='derivado')return 'Estimación no disponible';
     if(f.formula)return esc(f.formula);
     if(f.requerido===true)return 'Requerido';
     if(f.aplica===true)return 'Aplica con condiciones';
     if(f.nivel&&!f.nivel.startsWith('no_aplica'))return esc(f.nivel.replaceAll('_',' '));
-    return f.estado==='no_aplica'&&/resultante|no fija|no fijad|modelado/i.test(f.motivo||'')?'Resultante':esc(labels[f.estado]||labels.insuficiente);
+    return 'Dato no disponible';
+  }
+  function numericFigure(f){
+    if(f.estado==='no_aplica')return false;
+    return num(f.valor??f.valor_m2??f.dimension_m)!==null
+      ||(Array.isArray(f.rango_m2)&&f.rango_m2.length===2&&f.rango_m2.every(Number.isFinite));
   }
   function card(f,compact=false){
-    const numeric=num(f.valor??f.valor_m2??f.dimension_m)!==null||Array.isArray(f.rango_m2);
+    const numeric=numericFigure(f);
     if(compact) return `<div class="kpi-cell figure-card figure-compact" data-figure-id="${esc(f.id)}" data-estado="${esc(f.estado)}">
       <div class="kpi-label">${esc(f.etiqueta)}</div>${badge(f.estado)}<div class="kpi-value ${numeric?'':'figure-text-value'}">${display(f)}</div>
       ${numeric&&f.unidad?`<div class="m-unit">${esc(f.unidad)}</div>`:''}

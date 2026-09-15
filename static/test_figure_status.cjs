@@ -8,6 +8,9 @@ for(const estado of ['resuelto','derivado','insuficiente','requiere_concepto','n
   assert(html.includes('data-estado="'+estado+'"'));
 }
 assert.equal(ui.display({valor:0,estado:'resuelto'}),'0');
+assert.equal(ui.display({valor:0,estado:'no_aplica',motivo:'No se exige antejardín.'}),'No exigido');
+assert.equal(ui.display({valor:null,estado:'requiere_concepto',motivo:'Debe definirlo la curaduría.'}),'Concepto requerido');
+assert.notEqual(ui.display({valor:null,estado:'requiere_concepto',motivo:'Debe definirlo la curaduría.'}),'Requiere concepto');
 assert.equal(ui.display({valor_m2:null,rango_m2:[1671,1911.6],estado:'derivado'}),'1.671–1.911,6');
 assert(!ui.card({id:'<img>',etiqueta:'<script>alert(1)</script>',estado:'error',motivo:'<img>'}).includes('<script>'));
 const summary=ui.summary({figuras:[{id:'a',estado:'resuelto'},{id:'a',estado:'resuelto'},{id:'b',estado:'derivado'}]});

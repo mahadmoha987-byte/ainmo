@@ -51,6 +51,39 @@ def test_complete_plate_validation_accepts_directional_and_bis_addresses():
     assert not geocode._is_complete_street_plate("BOGOTA")
 
 
+def test_chip_is_recognized_before_street_plate_validation(monkeypatch):
+    geocode._cache.clear()
+    monkeypatch.setattr(geocode, "_catastro_chip_query", lambda chip: [{
+        "lat": 4.628,
+        "lng": -74.15,
+        "label": "KR 78K 6 35 SUR",
+        "source": "catastro",
+        "lotcodigo": "004514061017",
+        "chip": chip,
+        "match_type": "exact_chip",
+        "match_confidence": "alta",
+    }])
+
+    result = geocode.geocode_detailed("aaa-0044-odrj")
+    assert result["resolution"] == "exact_chip"
+    assert result["candidates"][0]["chip"] == "AAA0044ODRJ"
+    assert result["candidates"][0]["lotcodigo"] == "004514061017"
+    assert geocode._normalize_chip("CALLEBOGOTA") is None
+
+
+def test_real_colombian_address_outside_bogota_gets_coverage_resolution(monkeypatch):
+    geocode._cache.clear()
+    monkeypatch.setattr(geocode, "_nominatim_outside_bogota_query", lambda _q: [{
+        "lat": 6.207,
+        "lng": -75.574,
+        "locality": "Medellín",
+    }])
+    result = geocode.geocode_detailed("Carrera 43A # 1-50, Medellín")
+    assert result["candidates"] == []
+    assert result["resolution"] == "outside_bogota"
+    assert result["locality"] == "Medellín"
+
+
 def test_compound_avenue_without_hash_is_not_mistaken_for_intersection():
     assert not geocode._is_intersection_query("Avenida Carrera 11 109 32")
     assert not geocode._is_intersection_query("Avenida Calle 13 16A 12")

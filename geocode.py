@@ -20,6 +20,10 @@ _CATASTRO_LOTE = (
     "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services"
     "/catastro/lote/MapServer/0"
 )
+_CATASTRO_PREDIO = (
+    "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services"
+    "/catastro/lote/MapServer/3"
+)
 _NOMINATIM = "https://nominatim.openstreetmap.org/search"
 _BOGOTA_VIEWBOX = "-74.25,4.45,-73.99,4.83"
 
@@ -38,9 +42,26 @@ _VIA_WORDS_RE = re.compile(
 _BOGOTA_LAT = (4.45, 4.83)
 _BOGOTA_LNG = (-74.25, -73.99)
 
+# UAECD's Código Homologado de Identificación Predial is an 11-character
+# cadastral identifier. The current public Predio table stores it in PRECHIP.
+_CHIP_RE = re.compile(r"^[A-Z]{3}\d{4}[A-Z]{4}$", re.I)
+_OUTSIDE_BOGOTA_CITY_RE = re.compile(
+    r"\b(?:MEDELLIN|BELLO|ENVIGADO|ITAGUI|SABANETA|RIONEGRO|CALI|PALMIRA|"
+    r"BARRANQUILLA|SOLEDAD|CARTAGENA|BUCARAMANGA|FLORIDABLANCA|CUCUTA|"
+    r"PEREIRA|DOSQUEBRADAS|MANIZALES|ARMENIA|IBAGUE|VILLAVICENCIO|"
+    r"SANTA\s+MARTA|PASTO|MONTERIA|NEIVA|TUNJA)\b(?:\s+COLOMBIA)?$",
+    re.I,
+)
+
 
 def _in_bogota(lat: float, lng: float) -> bool:
     return _BOGOTA_LAT[0] <= lat <= _BOGOTA_LAT[1] and _BOGOTA_LNG[0] <= lng <= _BOGOTA_LNG[1]
+
+
+def _normalize_chip(raw: str) -> str | None:
+    """Return a canonical UAECD CHIP or ``None`` for non-CHIP input."""
+    chip = re.sub(r"[\s.-]+", "", str(raw or "")).upper()
+    return chip if _CHIP_RE.fullmatch(chip) else None
 
 
 def _is_intersection_query(raw: str) -> bool:
@@ -511,6 +532,74 @@ def _anchor_candidates_to_linked_lots(candidates: list[dict]) -> list[dict]:
     return candidates
 
 
+def _catastro_chip_query(chip: str) -> list[dict]:
+    """Resolve a UAECD CHIP to its containing cadastral lot.
+
+    CHIP belongs to the non-spatial Predio table (MapServer table 3). Its
+    BARMANPRE relationship key is the spatial Lote layer's LOTCODIGO. Querying
+    both official resources keeps the returned point inside the selected lot
+    and lets `/api/calc` enforce its existing expected-lot guard.
+    """
+    safe_chip = chip.replace("'", "''")
+    predio_params = urllib.parse.urlencode({
+        "where": f"PRECHIP='{safe_chip}'",
+        "outFields": "PRECHIP,PREDIRECC,BARMANPRE",
+        "returnGeometry": "false",
+        "resultRecordCount": 50,
+        "f": "json",
+    })
+    with urllib.request.urlopen(
+        f"{_CATASTRO_PREDIO}/query?{predio_params}", context=_SSL_CTX, timeout=12
+    ) as response:
+        predio_data = json.load(response)
+
+    predios_by_lot: dict[str, dict] = {}
+    for feature in predio_data.get("features", []):
+        attributes = feature.get("attributes") or {}
+        lotcodigo = str(attributes.get("BARMANPRE") or "").strip()
+        if not re.fullmatch(r"[0-9]{12}", lotcodigo):
+            continue
+        predios_by_lot.setdefault(lotcodigo, attributes)
+    if not predios_by_lot:
+        return []
+
+    quoted = ",".join(f"'{code}'" for code in sorted(predios_by_lot))
+    lot_params = urllib.parse.urlencode({
+        "where": f"LOTCODIGO IN ({quoted})",
+        "outFields": "LOTCODIGO",
+        "returnGeometry": "true",
+        "outSR": "4326",
+        "resultRecordCount": max(20, len(predios_by_lot)),
+        "f": "json",
+    })
+    with urllib.request.urlopen(
+        f"{_CATASTRO_LOTE}/query?{lot_params}", context=_SSL_CTX, timeout=12
+    ) as response:
+        lot_data = json.load(response)
+
+    candidates: list[dict] = []
+    for feature in lot_data.get("features", []):
+        attributes = feature.get("attributes") or {}
+        lotcodigo = str(attributes.get("LOTCODIGO") or "").strip()
+        rings = (feature.get("geometry") or {}).get("rings") or []
+        point = _polygon_interior_point(rings)
+        if point is None or not _in_bogota(point[1], point[0]):
+            continue
+        predio = predios_by_lot.get(lotcodigo) or {}
+        official_address = str(predio.get("PREDIRECC") or "").strip()
+        candidates.append({
+            "lat": point[1],
+            "lng": point[0],
+            "label": official_address or f"CHIP {chip}",
+            "source": "catastro",
+            "lotcodigo": lotcodigo,
+            "chip": chip,
+            "match_type": "exact_chip",
+            "match_confidence": "alta",
+        })
+    return candidates
+
+
 # -----------------------------------------------------------------------
 # Nominatim fallback
 # -----------------------------------------------------------------------
@@ -562,6 +651,55 @@ def _nominatim_query(q: str) -> list[dict]:
     return candidates
 
 
+def _nominatim_outside_bogota_query(q: str) -> list[dict]:
+    """Confirm a named Colombian road/address outside Bogotá.
+
+    This is deliberately called only when the user names another Colombian
+    city, so an ordinary Bogotá typo does not trigger an unbounded global
+    lookup or get misclassified as an out-of-city property.
+    """
+    if not _OUTSIDE_BOGOTA_CITY_RE.search(normalize_address(q)):
+        return []
+    params = urllib.parse.urlencode({
+        "q": f"{q}, Colombia",
+        "format": "json",
+        "limit": 3,
+        "countrycodes": "co",
+        "addressdetails": 1,
+    })
+    req = urllib.request.Request(
+        f"{_NOMINATIM}?{params}",
+        headers={"User-Agent": "BogotaBuildabilityTool/1.0 (imabossgaming123@gmail.com)"},
+    )
+    with urllib.request.urlopen(req, context=_SSL_CTX, timeout=10) as response:
+        results = json.load(response)
+    matches = []
+    for result in results:
+        address = result.get("address") or {}
+        category = str(result.get("class") or result.get("category") or "").lower()
+        result_type = str(result.get("type") or "").lower()
+        addresstype = str(result.get("addresstype") or "").lower()
+        is_property_level = bool(address.get("house_number")) or (
+            category == "building" or result_type in {"house", "building"}
+            or addresstype in {"house", "building"}
+        )
+        # For the coverage-boundary message, an explicitly named Colombian
+        # city plus a recognized road is sufficient. We do not return the
+        # road coordinate as a parcel candidate; it only proves this is an
+        # out-of-scope locality instead of a malformed Bogotá search.
+        if not is_property_level and not address.get("road"):
+            continue
+        lat, lng = float(result["lat"]), float(result["lon"])
+        if _in_bogota(lat, lng):
+            continue
+        locality = (
+            address.get("city") or address.get("town") or address.get("municipality")
+            or address.get("county") or "otra ciudad de Colombia"
+        )
+        matches.append({"lat": lat, "lng": lng, "locality": locality})
+    return matches
+
+
 # -----------------------------------------------------------------------
 # Public API
 # -----------------------------------------------------------------------
@@ -576,6 +714,25 @@ def geocode_detailed(address: str) -> dict:
     Empty list means no results found or query was rejected (e.g. intersection input).
     Raises on network / parse errors.
     """
+    # CHIP is not an address plate. Resolve it before the street-format guard.
+    chip = _normalize_chip(address)
+    if chip:
+        key = f"chip:{chip}"
+        cached = _cache_get(key)
+        if cached is not None:
+            return cached
+        try:
+            candidates = _catastro_chip_query(chip)
+            resolution = "exact_chip" if candidates else "chip_not_found"
+        except Exception:
+            return {"candidates": [], "resolution": "catastro_unavailable"}
+        result = {
+            "candidates": candidates,
+            "resolution": resolution,
+        }
+        _cache_set(key, result)
+        return result
+
     # Intersection queries ("Calle 60 Carrera 7") cannot resolve to a unique lot.
     # Return empty so the frontend asks the user to click on the map instead.
     if _is_intersection_query(address):
@@ -588,6 +745,24 @@ def geocode_detailed(address: str) -> dict:
     cached = _cache_get(key)
     if cached is not None:
         return cached
+
+
+    # An explicitly named non-Bogotá city gets a Colombia-wide property-level
+    # probe. We report the coverage boundary without ever surfacing that remote
+    # coordinate as if it were a Bogotá lot.
+    try:
+        outside_matches = _nominatim_outside_bogota_query(address)
+    except Exception:
+        outside_matches = []
+    if outside_matches:
+        result = {
+            "candidates": [],
+            "resolution": "outside_bogota",
+            "locality": outside_matches[0].get("locality"),
+        }
+        _cache_set(key, result)
+        return result
+
     if not _is_complete_street_plate(normalised):
         result = {"candidates": [], "resolution": "incomplete_address"}
         _cache_set(key, result)
