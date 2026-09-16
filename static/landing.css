@@ -188,3 +188,9 @@
   .hero h1 { font-size: 45px; }
   .report-card-head { align-items: flex-start; }
 }
+
+/* The masthead wordmark uses the site's muted pearl spectrum, not a neon rainbow. */
+:root {
+  --brand-pearl: linear-gradient(100deg, #d9987f 0%, #cfb574 24%, #82ae91 48%, #72a8b9 72%, #9a8cba 100%);
+}
+.site-nav .logo { background-image: var(--brand-pearl); }
