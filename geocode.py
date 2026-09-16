@@ -396,7 +396,7 @@ def _catastro_query(
         if key in seen_coords:
             continue
         seen_coords.add(key)
-        label = f"{a['PDONVIAL']} # {a['PDOTEXTO'].strip()}".strip()
+        label = canonical_catastro_address(a.get("PDONVIAL"), a.get("PDOTEXTO"))
         candidates.append({
             "lat": lat,
             "lng": lng,

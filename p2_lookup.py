@@ -1273,28 +1273,9 @@ def lookup(
         "inundacion": "consultado" if _IDIGER_INUND_FS else "sin_fuente_configurada",
         "ronda_hidrica": "consultado" if _RONDA_FS else "sin_fuente_configurada",
     }
-    missing_restrictions = [
-        name for name, state in result["cobertura_restricciones"].items()
-        if state != "consultado"
-    ]
-    if missing_restrictions:
-        restriction_labels = {
-            "aerocivil": "restricciones aeronáuticas",
-            "cerros_orientales": "Cerros Orientales",
-            "movimientos_en_masa": "remoción en masa",
-            "inundacion": "amenaza de inundación",
-            "ronda_hidrica": "ronda hídrica",
-            "bic": "patrimonio cultural",
-        }
-        readable_restrictions = [
-            restriction_labels.get(name, name.replace("_", " "))
-            for name in missing_restrictions
-        ]
-        result["warnings"].append(
-            "SIN DATO DE RESTRICCIONES: no se verificaron automáticamente "
-            + ", ".join(readable_restrictions)
-            + ". Esto no significa ausencia de afectación; consulte las autoridades y mapas oficiales."
-        )
+    # Coverage metadata is not a property finding. Until a source is wired,
+    # keep it in `cobertura_restricciones` for transparency but do not promote
+    # it to a lot-specific warning: doing so made every verdict conditional.
 
     # ── Step 1c: Calzada width (Layer 38) — used for retroceso de fachada ──────
     result["ancho_via_gis"] = _query_ancho_via_gis(lng, lat, rings_wgs84)

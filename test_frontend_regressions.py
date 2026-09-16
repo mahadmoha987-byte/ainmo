@@ -10,6 +10,29 @@ def test_map_click_clears_stale_address_and_lookup_freezes_request_identity():
     assert "const resultAddress = d.direccion || requestAddress || `Predio ${d.lote?.lotcodigo || 'consultado'}`" in HTML
 
 
+def test_near_match_keeps_searched_and_resolved_addresses_distinct():
+    assert "const requestResolvedAddress = requestAddressContext?.resolved || requestAddress" in HTML
+    assert "params.set('searched_address', requestSearchedAddress)" in HTML
+    assert "params.set('resolved_address', requestResolvedAddress)" in HTML
+    assert "params.set('near_match', 'true')" in HTML
+    assert "Buscó ${escHtml(addressResolution.searched_address)}" in HTML
+    assert "Analizando" in HTML
+    assert "_selectedAddressContext = null;" in HTML
+
+
+def test_unconfigured_restriction_coverage_does_not_force_amber_verdict():
+    start = HTML.index("function _verdictBlockers(d)")
+    end = HTML.index("function verdictBanner(d)", start)
+    function = HTML[start:end]
+    assert "sin dato de restricciones" in function
+    assert "actionableWarnings" in function
+    verdict_start = HTML.index("function verdictBanner(d)")
+    verdict_end = HTML.index("function blockedBanner", verdict_start)
+    verdict = HTML[verdict_start:verdict_end]
+    assert "_bindingMetricNeedsReview(d)" in verdict
+    assert "Object.values(m).some" not in verdict
+
+
 def test_financial_cards_have_no_area_and_timeout_fallbacks():
     assert "No se pudo calcular — área base no disponible" in HTML
     assert "async function _fetchJsonWithTimeout(url, timeoutMs = 12000)" in HTML
@@ -99,6 +122,7 @@ def test_api_has_specific_outside_bogota_and_chip_messages():
     assert 'resolution == "outside_bogota"' in api
     assert "Ainmo solo cubre predios en Bogotá D.C. por ahora." in api
     assert 'resolution == "chip_not_found"' in api
+    assert "def _apply_address_identity" in api
 
 
 def test_outside_bogota_message_has_an_explicit_frontend_path():

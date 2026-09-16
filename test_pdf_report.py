@@ -97,6 +97,35 @@ def test_pdf_humanizes_restriction_warning_and_groups_sources():
     assert "<h3>Decretos y artículos</h3>" in html
 
 
+def test_pdf_uses_resolved_near_match_address_and_discloses_substitution():
+    calculated, lookup = _fixture_payload()
+    calculated["direccion"] = "KR 7 # 32-12"
+    calculated["address_resolution"] = {
+        "near_match": True,
+        "searched_address": "KR 7 # 32-16",
+        "resolved_address": "KR 7 # 32-12",
+        "relation": "mismo bloque",
+    }
+    html = pdf_report.generate_html_preview(calculated, lookup, "KR 7 # 32-12")
+    assert "<h1>KR 7 # 32-12</h1>" in html
+    assert "Buscó KR 7 # 32-16." in html
+    assert "Analizando <strong>KR 7 # 32-12</strong> (mismo bloque)." in html
+
+
+def test_address_identity_helper_titles_near_match_with_real_plate():
+    result = {}
+    api._apply_address_identity(
+        result,
+        address="KR 7 # 32-12",
+        searched_address="KR 7 # 32-16",
+        resolved_address="KR 7 # 32-12",
+        near_match=True,
+    )
+    assert result["direccion"] == "KR 7 # 32-12"
+    assert result["address_resolution"]["searched_address"] == "KR 7 # 32-16"
+    assert result["address_resolution"]["relation"] == "mismo bloque"
+
+
 def test_json_and_pdf_routes_share_calculation_helper(monkeypatch):
     calculated, lookup = _fixture_payload()
     monkeypatch.setattr(api, "_gis_lookup_cached", lambda *_args: lookup)

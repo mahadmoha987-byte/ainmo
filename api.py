@@ -78,6 +78,36 @@ async def _calculate_current_lot(
     return lookup_snapshot, result
 
 
+def _apply_address_identity(
+    result: dict,
+    *,
+    address: str = "",
+    searched_address: str = "",
+    resolved_address: str = "",
+    near_match: bool = False,
+) -> dict:
+    """Attach the address that actually owns the analysed lot.
+
+    A near-match search has two valid identities: what the user entered and
+    the official Catastro plate they deliberately selected.  The latter must
+    always be the report title; the former is retained only for disclosure.
+    """
+    actual = str(resolved_address or address or "").strip()
+    searched = str(searched_address or actual).strip()
+    if actual:
+        result["direccion"] = actual
+    if near_match and searched and actual and searched.casefold() != actual.casefold():
+        result["address_resolution"] = {
+            "near_match": True,
+            "searched_address": searched,
+            "resolved_address": actual,
+            "relation": "mismo bloque",
+        }
+    else:
+        result.pop("address_resolution", None)
+    return result
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.init()
@@ -416,6 +446,9 @@ async def calc_endpoint(
     frente_m: float | None = Query(None),
     ancho_via_m: float | None = Query(None),
     address: str = Query(""),
+    searched_address: str = Query(""),
+    resolved_address: str = Query(""),
+    near_match: bool = Query(False),
     expected_lotcodigo: str | None = Query(None),
     scenario_only: bool = Query(False),
 ):
@@ -438,6 +471,13 @@ async def calc_endpoint(
             anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m,
             expected_lotcodigo=expected_lotcodigo,
         )
+        _apply_address_identity(
+            result,
+            address=address,
+            searched_address=searched_address,
+            resolved_address=resolved_address,
+            near_match=near_match,
+        )
 
         analysis_id = None
         usage_this_month = 0
@@ -454,7 +494,7 @@ async def calc_endpoint(
             if user["plan"] == "pro":
                 analysis_id = await db.save_analysis(
                     user_id=user["id"],
-                    direccion=address,
+                    direccion=result.get("direccion") or address,
                     lat=lat,
                     lng=lng,
                     lookup_snapshot=lu,
@@ -758,6 +798,9 @@ async def report_endpoint(
     frente_m: float | None = Query(None),
     ancho_via_m: float | None = Query(None),
     address: str = Query("Dirección no especificada"),
+    searched_address: str = Query(""),
+    resolved_address: str = Query(""),
+    near_match: bool = Query(False),
     expected_lotcodigo: str | None = Query(None),
     preview: bool = Query(False),
 ):
@@ -769,9 +812,20 @@ async def report_endpoint(
             anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m,
             expected_lotcodigo=expected_lotcodigo,
         )
+        _apply_address_identity(
+            result,
+            address=address,
+            searched_address=searched_address,
+            resolved_address=resolved_address,
+            near_match=near_match,
+        )
         loop = asyncio.get_event_loop()
         pdf_bytes = await loop.run_in_executor(
-            None, lambda: pdf_report.generate_pdf(calc_result=result, lookup_snapshot=lu, address=address)
+            None, lambda: pdf_report.generate_pdf(
+                calc_result=result,
+                lookup_snapshot=lu,
+                address=result.get("direccion") or address,
+            )
         )
         disposition = "inline" if preview else 'attachment; filename="prefactibilidad.pdf"'
         from fastapi.responses import Response
@@ -804,6 +858,9 @@ async def report_html_endpoint(
     frente_m: float | None = Query(None),
     ancho_via_m: float | None = Query(None),
     address: str = Query("Dirección no especificada"),
+    searched_address: str = Query(""),
+    resolved_address: str = Query(""),
+    near_match: bool = Query(False),
     expected_lotcodigo: str | None = Query(None),
 ):
     try:
@@ -812,7 +869,18 @@ async def report_html_endpoint(
             anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m,
             expected_lotcodigo=expected_lotcodigo,
         )
-        html_str = pdf_report.generate_html_preview(calc_result=result, lookup_snapshot=lu, address=address)
+        _apply_address_identity(
+            result,
+            address=address,
+            searched_address=searched_address,
+            resolved_address=resolved_address,
+            near_match=near_match,
+        )
+        html_str = pdf_report.generate_html_preview(
+            calc_result=result,
+            lookup_snapshot=lu,
+            address=result.get("direccion") or address,
+        )
         from fastapi.responses import Response
         return Response(content=html_str, media_type="text/html; charset=utf-8")
     except CadastralMismatchError as exc:

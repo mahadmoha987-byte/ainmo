@@ -1418,6 +1418,8 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
 .cover-kv td:first-child { color:var(--muted); width:52mm; padding-right:7pt; }
 .cover-disclaimer { margin-top:14mm; padding-top:7pt; border-top:1pt solid var(--ink); font-size:7.5pt; color:var(--muted); }
 .site-assumption { margin-top:7pt; padding:7pt 9pt; border:1pt solid var(--amber-b); background:var(--amber-bg); color:var(--amber); page-break-inside:avoid; }
+.address-substitution { margin-top:9pt; padding:7pt 9pt; border:1pt solid var(--amber-b); border-left:3pt solid var(--amber); background:var(--amber-bg); color:var(--amber); font-size:8pt; line-height:1.4; page-break-inside:avoid; }
+.address-substitution strong { color:var(--ink); }
 
 /* TOC */
 .toc { margin-top:18pt; }
@@ -1486,6 +1488,7 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
   <div class="eyebrow">Informe de prefactibilidad urbanística · Bogotá D.C.</div>
   <h1>{{ report_title }}</h1>
   <p class="cover-sub">Análisis de edificabilidad y controles volumétricos</p>
+  {% if near_match %}<div class="address-substitution"><strong>Buscó {{ searched_address }}.</strong> No existe. Analizando <strong>{{ resolved_address }}</strong> ({{ address_relation }}).</div>{% endif %}
   <table class="cover-kv">
     <tr><td>Fecha del informe</td><td>{{ date_label }}</td></tr>
     <tr><td>Coordenadas WGS84</td><td class="mono">{{ lat }}, {{ lng }} · grados decimales</td></tr>
@@ -1782,6 +1785,11 @@ def _render_html(
     aa_name    = _get(lu, "area_actividad", "nombre") or ""
     area_act   = f"{aa_code}" + (f" — {aa_name[:45]}" if aa_name else "")
     address_text = (address or "").strip()
+    address_resolution = d.get("address_resolution") or {}
+    near_match = bool(address_resolution.get("near_match"))
+    searched_address = str(address_resolution.get("searched_address") or "").strip()
+    resolved_address = str(address_resolution.get("resolved_address") or address_text).strip()
+    address_relation = str(address_resolution.get("relation") or "mismo bloque").strip()
     coordinate_query = (
         not address_text
         or address_text.lower().startswith("predio ")
@@ -1999,6 +2007,10 @@ def _render_html(
         address      = address_text,
         address_display = address_display,
         report_title = report_title,
+        near_match = near_match,
+        searched_address = searched_address,
+        resolved_address = resolved_address,
+        address_relation = address_relation,
         lotcodigo    = lotcodigo,
         lot_area     = lot_area,
         tratamiento  = trat,

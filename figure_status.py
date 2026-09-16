@@ -227,7 +227,7 @@ def annotate_result(result, lookup=None):
         if coverage == "consultado":
             continue
         # A successfully queried layer is not evidence of absence of a restriction.
-        figures.append(dict(id=f"cobertura_restricciones.{key}", etiqueta=restriction_names.get(key,key), valor=None, unidad="", seccion="restricciones", articulo_id=None,
+        figures.append(dict(id=f"cobertura_restricciones.{key}", etiqueta=restriction_names.get(key,key), valor=None, unidad="", seccion="restricciones", articulo_id=None, incluye_en_veredicto=False,
             fuente_dato="Cobertura de consulta GIS; no es un concepto de la autoridad.", fecha_consulta=(d.get("consulta") or {}).get("fecha"),
             **_status("requiere_concepto" if coverage == "consultado" else "insuficiente",
                 "Se consultó la capa; la aplicabilidad y las condiciones del instrumento deben verificarse." if coverage == "consultado" else "No se verificó espacialmente esta restricción; SIN_DATO no significa ausencia de afectación.",
@@ -241,7 +241,11 @@ def annotate_result(result, lookup=None):
             meta = _status("resuelto", "La fuente automatizada configurada fue consultada; revise el resultado específico de la capa.")
         else:
             meta = _status("insuficiente", "No hay verificación espacial automatizada completa para esta restricción.", "Realizar la verificación espacial en la fuente oficial aplicable.", "profesional")
-        d["cobertura_restricciones_detalle"][key] = {"codigo": coverage, **meta}
+        d["cobertura_restricciones_detalle"][key] = {
+            "codigo": coverage,
+            "incluye_en_veredicto": False,
+            **meta,
+        }
     if d.get("metrics") is None:
         heritage = "CONSERVACION" in trat
         figures.append(dict(id="edificabilidad", etiqueta="Edificabilidad", valor=None, unidad="", seccion="volumetria", articulo_id=None,

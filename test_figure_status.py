@@ -120,6 +120,9 @@ def test_exact_consolidacion_contract_and_allowed_resolvers():
     assert d['metrics']['area_construible_estimada']['estado']=='derivado'
     hazard=d['cobertura_restricciones_detalle']['cerros_orientales']
     assert hazard['motivo']=='No hay fuente automatizada configurada para esta verificación.'
+    assert hazard['incluye_en_veredicto'] is False
+    coverage_figure=next(f for f in d['figuras'] if f['id']=='cobertura_restricciones.cerros_orientales')
+    assert coverage_figure['incluye_en_veredicto'] is False
     allowed={'SDP','curaduría','IDPC','topógrafo','profesional',None}
     for obj in list(d['metrics'].values())+list(d['cobertura_restricciones_detalle'].values()):
         assert obj['estado'] in {e.value for e in Estado}

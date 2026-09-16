@@ -534,6 +534,8 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
 .result-context h1{font-size:var(--ts-2xl);line-height:1.15;letter-spacing:-.025em;margin:0 0 var(--sp-2);word-break:break-word}
 .result-context-meta{display:flex;flex-wrap:wrap;gap:var(--sp-1)}
 .result-context-pill{display:inline-flex;align-items:center;padding:2px 7px;background:var(--paper-1);border:var(--rule);font-family:var(--ff-mono);font-size:var(--ts-2xs);color:var(--ink-3)}
+.address-substitution-banner{margin:0 0 var(--sp-4);padding:var(--sp-3) var(--sp-4);background:var(--c-m-bg);border:1px solid var(--c-m-b);border-left:4px solid var(--c-m-fg);color:var(--c-m-fg);font-size:var(--ts-sm);line-height:1.55}
+.address-substitution-banner strong{color:var(--ink-0)}
 .result-anchor-rail{position:sticky;top:0;z-index:80;display:flex;gap:0;overflow-x:auto;margin:0 0 var(--sp-4);background:rgba(250,250,248,.97);border:var(--rule);box-shadow:0 6px 16px rgba(17,19,24,.07);scrollbar-width:thin;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .result-anchor-rail a{display:flex;align-items:center;min-height:42px;padding:0 11px;border-right:var(--rule);color:var(--ink-3);font-size:var(--ts-xs);font-weight:var(--fw-6);white-space:nowrap;text-decoration:none}
 .result-anchor-rail a:last-child{border-right:0}.result-anchor-rail a:hover{background:var(--paper-1);color:var(--ink-0)}
@@ -753,6 +755,8 @@ let _session = null;            // current Supabase session
 let _lastLookupCoords = null;   // {lat, lng, vis} of most recent successful lookup
 let _lastResolvedAddress = '';  // immutable identity shown for the current report
 let _lastResolvedLotCodigo = null;
+let _activeSearchAddress = '';  // exact text entered before geocoding
+let _selectedAddressContext = null; // searched/resolved identity for selected candidate
 let _hasAnalyzed = false;       // true after first successful analysis (hides welcome card)
 let _massingInst = null;        // active buildMassing() instance (disposed on new lookup)
 let _massingView = '3d';        // '3d' | '2d'
@@ -936,6 +940,13 @@ async function _selectAddressSuggestion(index) {
     lotcodigo: suggestion.lot_code || null,
   };
   _expectedLotCodigo = suggestion.lot_code || null;
+  _activeSearchAddress = suggestion.address;
+  _selectedAddressContext = {
+    searched: suggestion.address,
+    resolved: suggestion.address,
+    nearMatch: false,
+    matchType: suggestion.match_type || 'exact_address',
+  };
   _closeAddressSuggestions(true);
   const geoDiv = document.getElementById('geo-results');
   if (geoDiv) {
@@ -997,6 +1008,8 @@ async function submitGeoSearch() {
   _closeAddressSuggestions(true);
   const q = document.getElementById('addr-input')?.value?.trim();
   if (!q) return;
+  _activeSearchAddress = q;
+  _selectedAddressContext = null;
 
   _geoSearchInFlight = true;
   const btn = document.getElementById('geo-btn');
@@ -1057,6 +1070,13 @@ async function submitGeoSearch() {
 function _showGeoConfirm(candidate) {
   _confirmedCoords = { lat: candidate.lat, lng: candidate.lng, lotcodigo: candidate.lotcodigo || null };
   _expectedLotCodigo = candidate.lotcodigo || null;
+  const searched = _activeSearchAddress || document.getElementById('addr-input')?.value?.trim() || candidate.label;
+  _selectedAddressContext = {
+    searched,
+    resolved: candidate.label,
+    nearMatch: candidate.near_match === true,
+    matchType: candidate.match_type || null,
+  };
   const src = candidate.source === 'catastro' ? 'Catastro Bogotá' : 'OpenStreetMap';
   const quality = _geoQualityLabel(candidate);
   const lotMeta = candidate.lotcodigo ? ` · lote ${escHtml(candidate.lotcodigo)}` : '';
@@ -1151,6 +1171,7 @@ function showGeoError(msg, query, kind) {
 function resetGeoResults() {
   _confirmedCoords = null;
   _expectedLotCodigo = null;
+  _selectedAddressContext = null;
   const div = document.getElementById('geo-results');
   div.style.display = 'none';
   div.innerHTML = '';
@@ -1193,12 +1214,18 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
   // change the input while the GIS calls are still in flight; reading the DOM
   // again after the response used to mix an old address with a new lot.
   const requestAddress = document.getElementById('addr-input')?.value?.trim() || '';
+  const requestAddressContext = _selectedAddressContext ? {..._selectedAddressContext} : null;
+  const requestResolvedAddress = requestAddressContext?.resolved || requestAddress;
+  const requestSearchedAddress = requestAddressContext?.searched || requestAddress;
   const requestExpectedLotCodigo = _expectedLotCodigo;
   const params = new URLSearchParams({ lat, lng, vis_en_sitio: vis });
   if (anu       != null) params.set('anu_m2',      anu);
   if (frente    != null) params.set('frente_m',    frente);
   if (anchoVia  != null) params.set('ancho_via_m', anchoVia);
-  if (requestAddress) params.set('address', requestAddress);
+  if (requestResolvedAddress) params.set('address', requestResolvedAddress);
+  if (requestSearchedAddress) params.set('searched_address', requestSearchedAddress);
+  if (requestResolvedAddress) params.set('resolved_address', requestResolvedAddress);
+  if (requestAddressContext?.nearMatch) params.set('near_match', 'true');
   if (requestExpectedLotCodigo) params.set('expected_lotcodigo', requestExpectedLotCodigo);
   if (scenarioOnly)      params.set('scenario_only', 'true');
 
@@ -1251,7 +1278,7 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
         if (welcome) welcome.style.display = 'none';
       }
       const d = json.data || {};
-      const address = d.direccion || requestAddress || '';
+      const address = d.direccion || requestResolvedAddress || '';
       _lastResolvedAddress = address;
       _lastResolvedLotCodigo = d.lote?.lotcodigo || requestExpectedLotCodigo || null;
       if (_isSuccessfulHistoryResult(d)) {
@@ -1263,7 +1290,7 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
         });
       }
     }
-    render(json, lat, lng, vis, anu, frente, anchoVia, requestAddress);
+    render(json, lat, lng, vis, anu, frente, anchoVia, requestResolvedAddress);
   } catch (err) {
     console.error('[edificabilidad] render error:', err);
     showRenderError(err);
@@ -1287,6 +1314,7 @@ function enterLanding() {
   document.getElementById('geo-results').style.display = 'none';
   document.getElementById('addr-input').value = '';
   _confirmedCoords = null; _expectedLotCodigo = null; _pendingAnu = null; _pendingFrente = null;
+  _activeSearchAddress = ''; _selectedAddressContext = null;
   _lastResolvedAddress = ''; _lastResolvedLotCodigo = null;
   if (_lotLayer) { _map.removeLayer(_lotLayer); _lotLayer = null; }
   if (_markerLayer) { _map.removeLayer(_markerLayer); _markerLayer = null; }
@@ -1684,6 +1712,7 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
   _lastResolvedAddress = resultAddress;
   _lastResolvedLotCodigo = d.lote?.lotcodigo || null;
   const consultedAt = d.consulta?.fecha || d.contexto_regulatorio?.corte_normativo || 'sin fecha';
+  const addressResolution = d.address_resolution;
 
   parts.push(`<header class="result-context">
     <div class="result-context-kicker">Informe de prefactibilidad · consulta ${escHtml(consultedAt)}</div>
@@ -1694,6 +1723,12 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
       <span class="result-context-pill">${d.lote?.area_m2?.valor != null ? `${fmt(d.lote.area_m2.valor)} m²` : 'Área SIN_DATO'}</span>
     </div>
   </header>`);
+  if (addressResolution?.near_match) {
+    parts.push(`<div class="address-substitution-banner" role="alert">
+      <strong>Buscó ${escHtml(addressResolution.searched_address)}.</strong> No existe. Analizando
+      <strong>${escHtml(addressResolution.resolved_address)}</strong> (${escHtml(addressResolution.relation || 'mismo bloque')}).
+    </div>`);
+  }
   if (d.figuras) parts.push(AinmoFigures.summary(d));
   parts.push(`<nav class="result-anchor-rail" aria-label="Secciones del resultado" role="tablist">
     <a class="is-active" id="tab-resumen" role="tab" aria-selected="true" aria-controls="result-resumen" tabindex="0" href="#result-resumen">Resumen</a>
@@ -1826,7 +1861,8 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
   if (d.warnings?.length) {
     const filteredWarnings = d.warnings.filter(w => {
       const wl = w.toLowerCase();
-      return !wl.includes('antejardin') && !wl.includes('antejardín');
+      return !wl.includes('antejardin') && !wl.includes('antejardín')
+        && !wl.includes('sin dato de restricciones');
     });
     if (filteredWarnings.length) {
       const whtml = filteredWarnings.map(w => `<div class="warn-item">${escHtml(plainUiText(w))}</div>`).join('');
@@ -2585,11 +2621,14 @@ async function _fetchKpiFinancials(d) {
 function _verdictBlockers(d) {
   const blockers = [];
   const bc = d.binding_constraint;
+  const actionableWarnings = (d.warnings || []).filter(w =>
+    !String(w).toLowerCase().includes('sin dato de restricciones')
+  );
   if (d.metrics?.area_construible_estimada?.fuera_de_rango) {
     blockers.push('Predio mayor a 1 ha: fuera del rango del modelo automatizado');
   }
   if (bc === 'indeterminado') blockers.push('Edificabilidad requiere modelado volumétrico específico');
-  for (const w of (d.warnings || [])) {
+  for (const w of actionableWarnings) {
     const wl = w.toLowerCase();
     if ((wl.includes('antejardín') || wl.includes('antejardin')) && !blockers.some(b => b.includes('Antejardín'))) {
       blockers.push('Antejardín sin dato: confirme el retiro frontal');
@@ -2601,8 +2640,21 @@ function _verdictBlockers(d) {
       blockers.push('ANU del Plan Parcial por verificar');
   }
   if (d.lote?.consulta_catastro) blockers.push('Predio catastral seleccionado por proximidad');
-  if ((d.warnings || []).length && !blockers.length) blockers.push('Hay datos por confirmar');
+  if (actionableWarnings.length && !blockers.length) blockers.push('Hay datos por confirmar');
   return blockers;
+}
+
+function _bindingMetricNeedsReview(d) {
+  const m = d.metrics || {};
+  const keysByConstraint = {
+    height: ['altura_base_pisos', 'altura_maxima_pisos'],
+    footprint: ['planta_maxima_m2'],
+    footprint_and_height: ['planta_maxima_m2', 'altura_base_pisos', 'altura_maxima_pisos'],
+    total_area: ['area_construible_max_m2', 'area_construible_max_sin_manzana_completa_m2'],
+    total_area_and_footprint: ['area_construible_max_m2', 'area_construible_max_sin_manzana_completa_m2', 'planta_maxima_m2'],
+  };
+  const candidates = (keysByConstraint[d.binding_constraint] || []).map(key => m[key]).filter(Boolean);
+  return candidates.some(metric => ['insuficiente', 'requiere_concepto', 'error'].includes(metric.estado));
 }
 
 function verdictBanner(d) {
@@ -2612,7 +2664,7 @@ function verdictBanner(d) {
   const hardStops = ['restriccion_bloqueante','tratamiento_no_implementado','conservacion_no_soportado'];
   const no = hardStops.includes(bc);
   const conditional = !no && (bc === 'indeterminado' || bc === 'anu_required' || blockers.length > 0
-    || Object.values(m).some(x => x?.estado === 'insuficiente' || x?.estado === 'requiere_concepto'));
+    || _bindingMetricNeedsReview(d));
   const answer = no ? 'No' : conditional ? 'Con condiciones' : 'Sí';
   const tone = no ? 'vb-bloqueado' : conditional ? 'vb-condiciones' : 'vb-viable';
   const icon = no ? '✕' : conditional ? '⚠' : '✓';
@@ -3709,6 +3761,12 @@ async function downloadPdf(lat, lng, vis) {
 
   const address = _lastResolvedAddress || `Predio ${_lastResolvedLotCodigo || 'consultado'}`;
   params.set('address', address);
+  const addressResolution = d.address_resolution;
+  if (addressResolution?.near_match) {
+    params.set('searched_address', addressResolution.searched_address);
+    params.set('resolved_address', addressResolution.resolved_address);
+    params.set('near_match', 'true');
+  }
 
   const btn = document.activeElement;
   const origText = btn.textContent;
@@ -4162,6 +4220,8 @@ function _runHistItem(i) {
   if (!h) return;
   const inp = document.getElementById('addr-input');
   if (inp) inp.value = h.address || '';
+  _activeSearchAddress = h.address || '';
+  _selectedAddressContext = null;
   _expectedLotCodigo = /^\d{12}$/.test(String(h.lotcodigo || '')) ? h.lotcodigo : null;
   runLookup(h.lat, h.lng, !!h.vis, null, null, null);
 }
@@ -4528,6 +4588,8 @@ function _initMap() {
     _pendingFrente = null;
     _confirmedCoords = null;
     _expectedLotCodigo = null;
+    _activeSearchAddress = '';
+    _selectedAddressContext = null;
     // A direct parcel click starts a coordinate lookup, not another lookup for
     // the address that happened to be searched previously.
     const addressInput = document.getElementById('addr-input');
