@@ -198,3 +198,21 @@ def test_nominatim_keeps_property_level_result(monkeypatch):
     result = geocode._nominatim_query("Cl. 85 # 11-53")
     assert result[0]["match_type"] == "osm_address"
     assert result[0]["match_confidence"] == "baja"
+
+
+def test_real_street_is_not_mislabeled_when_first_like_row_is_a_variant(monkeypatch):
+    geocode._cache.clear()
+    calls = []
+
+    def fake_query(via, text, limit=20, *, exact=True):
+        calls.append((via, text, limit, exact))
+        if not text and via == "CL 106" and limit >= 100:
+            return [{"label": "CL 106 # 7-10"}]
+        return []
+
+    monkeypatch.setattr(geocode, "_catastro_query", fake_query)
+    monkeypatch.setattr(geocode, "_catastro_near", lambda *_args: [])
+    monkeypatch.setattr(geocode, "_nominatim_query", lambda *_args: [])
+    result = geocode.geocode_detailed("Calle 106 # 5-40")
+    assert result["resolution"] == "street_recognized"
+    assert any(via == "CL 106" and not text and limit >= 100 for via, text, limit, _ in calls)

@@ -342,11 +342,11 @@ async def geocode_endpoint(q: str = Query(..., description="Dirección en Bogot�
         if not candidates:
             resolution = result.get("resolution")
             if resolution == "street_recognized":
-                message = "Catastro reconoce la vía, pero no encontró ese número de puerta. Verifique la placa o seleccione el lote en el mapa."
+                message = "Catastro reconoce la vía, pero no encontró ese número de puerta. Verifique la dirección o seleccione el predio en el mapa."
             elif resolution == "intersection":
-                message = "Una intersección no identifica un lote único. Ingrese una placa completa o seleccione el lote en el mapa."
+                message = "Una intersección no identifica un predio único. Ingrese una dirección predial completa o seleccione el predio en el mapa."
             elif resolution == "incomplete_address":
-                message = "Ingrese una placa completa con vía, cruce y número de puerta (por ejemplo: Calle 85 # 11-53), o seleccione el lote en el mapa."
+                message = "Ingrese una dirección completa con vía, cruce y número de puerta (por ejemplo: Calle 85 # 11-53), o seleccione el predio en el mapa."
             elif resolution == "outside_bogota":
                 message = "Ainmo solo cubre predios en Bogotá D.C. por ahora."
             elif resolution == "chip_not_found":

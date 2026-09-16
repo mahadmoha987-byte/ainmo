@@ -31,9 +31,20 @@ def test_near_match_keeps_searched_and_resolved_addresses_distinct():
     assert "params.set('searched_address', requestSearchedAddress)" in HTML
     assert "params.set('resolved_address', requestResolvedAddress)" in HTML
     assert "params.set('near_match', 'true')" in HTML
-    assert "Buscó ${escHtml(addressResolution.searched_address)}" in HTML
+    assert "const searchedAddressLabel = formatAddressLabel(addressResolution.searched_address)" in HTML
+    assert "${escHtml(searchedAddressLabel)}</span>" in HTML
     assert "Analizando" in HTML
+    assert 'class="notranslate" translate="no"' in HTML
     assert "_selectedAddressContext = null;" in HTML
+
+
+def test_user_copy_avoids_literal_browser_mistranslations():
+    api = Path(__file__).with_name("api.py").read_text()
+    assert "Verifique la dirección o seleccione el predio en el mapa." in api
+    assert "Verifique la placa o seleccione el lote en el mapa." not in api
+    assert "No podemos calcular este predio todavía" in HTML
+    assert "No podemos calcular este lote todavía" not in HTML
+    assert "function formatAddressLabel(value)" in HTML
 
 
 def test_unconfigured_restriction_coverage_does_not_force_amber_verdict():

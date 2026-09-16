@@ -1670,9 +1670,11 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
     </div>
   </header>`);
   if (addressResolution?.near_match) {
+    const searchedAddressLabel = formatAddressLabel(addressResolution.searched_address);
+    const resolvedAddressLabel = formatAddressLabel(addressResolution.resolved_address);
     parts.push(`<div class="address-substitution-banner" role="alert">
-      <strong>Buscó ${escHtml(addressResolution.searched_address)}.</strong> No existe. Analizando
-      <strong>${escHtml(addressResolution.resolved_address)}</strong> (${escHtml(addressResolution.relation || 'mismo bloque')}).
+      <strong>Buscó <span class="notranslate" translate="no">${escHtml(searchedAddressLabel)}</span>.</strong> No existe. Analizando
+      <strong><span class="notranslate" translate="no">${escHtml(resolvedAddressLabel)}</span></strong> (${escHtml(addressResolution.relation || 'mismo bloque')}).
     </div>`);
   }
   if (d.figuras) parts.push(AinmoFigures.summary(d));
@@ -2480,7 +2482,7 @@ function blockedBanner(sub) {
   return `<div class="verdict-banner vb-bloqueado" role="status">
     <div class="vb-icon" aria-hidden="true">✕</div>
     <div class="vb-content">
-      <div class="vb-headline">No podemos calcular este lote todavía</div>
+      <div class="vb-headline">No podemos calcular este predio todavía</div>
       <div class="vb-sub">${escHtml(sub)}</div>
     </div>
   </div>`;
@@ -3998,6 +4000,13 @@ function set(html) { document.getElementById('results').innerHTML = html; }
 function clearResults() { document.getElementById('results').innerHTML = ''; _pendingAnu = null; _pendingFrente = null; }
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatAddressLabel(value) {
+  return String(value ?? '').trim().replace(
+    /^(calle|carrera|avenida|diagonal|transversal)\b/i,
+    streetType => streetType.charAt(0).toUpperCase() + streetType.slice(1).toLowerCase()
+  );
 }
 
 function plainUiText(value) {

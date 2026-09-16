@@ -783,13 +783,18 @@ def geocode_detailed(address: str) -> dict:
             if not candidates:
                 # Distinguish a valid Catastro street with an unresolved door
                 # number from a street token absent from the address registry.
-                recognized = bool(_catastro_query(pdonvial, "", limit=1, exact=False))
+                # A one-row LIKE query is unsafe here: ArcGIS may return
+                # ``CL 106A`` before ``CL 106``, which our exact Python filter
+                # correctly discards and then falsely labels the real street as
+                # unknown. Inspect a useful page before deciding the street is
+                # absent from Catastro.
+                recognized = bool(_catastro_query(pdonvial, "", limit=100, exact=False))
                 if not recognized:
                     code = pdonvial.split()[0]
                     alt = _ALT_CODE.get(code)
                     if alt:
                         alt_via = pdonvial.replace(code + " ", alt + " ", 1)
-                        recognized = bool(_catastro_query(alt_via, "", limit=1, exact=False))
+                        recognized = bool(_catastro_query(alt_via, "", limit=100, exact=False))
                 resolution = "street_recognized" if recognized else "unrecognized_street"
         except Exception:
             resolution = "catastro_unavailable"
