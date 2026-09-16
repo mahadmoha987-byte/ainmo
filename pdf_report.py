@@ -1552,8 +1552,8 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
     <tr><td>Área del lote</td><td class="mono">{{ lot_area }}</td></tr>
     <tr><td>Unidades prediales registradas</td><td class="mono">{{ predial_units }}</td></tr>
   </table>
-  {% if chip_consultado %}<div class="site-assumption"><strong>Identidad del encargo.</strong> Informe generado para CHIP: <span class="mono">{{ chip_consultado }}</span> (código de lote: <span class="mono">{{ lotcodigo }}</span>).</div>{% endif %}
-  {% if existing_units_warning %}<div class="site-assumption"><strong>Predio probablemente desarrollado.</strong> {{ existing_units_warning }}</div>{% endif %}
+  {% if chip_consultado %}<div class="site-assumption"><strong>Identidad del encargo.</strong> Informe generado para CHIP: <span class="mono">{{ chip_consultado }}</span> (Lote: <span class="mono">{{ lotcodigo }}</span>).</div>{% endif %}
+  {% if ph_acquisition_statement %}<div class="site-assumption"><strong>{{ ph_acquisition_statement }}</strong><br>{{ ph_assumption_statement }}</div>{% endif %}
   <div class="cover-disclaimer"><strong>Alcance.</strong> {{ disclaimer }}</div>
 </section>
 
@@ -1630,7 +1630,11 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
 <section class="page">
   <div class="avoid">
     <div class="section-head"><span class="section-no">05</span><div class="eyebrow">Cabida preliminar</div><h2>Área construible / unidades estimadas</h2></div>
-    <div class="site-assumption"><strong>Supuesto de sitio libre.</strong> {{ vacant_site_warning }}{% if existing_units_warning %}<br><strong>Alerta catastral:</strong> {{ existing_units_warning }}{% endif %}</div>
+    {% if ph_acquisition_statement %}
+    <div class="site-assumption"><strong>{{ ph_acquisition_statement }}</strong><br>{{ ph_assumption_statement }}</div>
+    {% else %}
+    <div class="site-assumption"><strong>Supuesto de sitio libre.</strong> {{ vacant_site_warning }}</div>
+    {% endif %}
     <div class="callout-grid">
     <div class="callout">
       <div class="callout-label">{{ area_label }}</div>
@@ -1934,12 +1938,20 @@ def _render_html(
         "La cabida supone un lote libre, disponible y sin cargas. No incorpora edificaciones existentes, "
         "demolición, englobe, desenglobe, propiedad horizontal, servidumbres ni afectaciones de título."
     )
-    existing_units_warning = ""
-    if lot_units_count is not None and lot_units_count > 1:
-        existing_units_warning = (
-            f"Este lote registra {lot_units_count} unidades prediales. Es probable que se trate de un predio ya "
-            "desarrollado en propiedad horizontal; la cabida estimada asume un lote libre y no considera "
-            "demolición, englobe ni el régimen de propiedad horizontal existente."
+    try:
+        linked_unit_count = int(chip_total) if chip_total is not None else lot_units_count
+    except (TypeError, ValueError):
+        linked_unit_count = lot_units_count
+    ph_acquisition_statement = ""
+    ph_assumption_statement = ""
+    if linked_unit_count is not None and linked_unit_count > 1:
+        ph_acquisition_statement = (
+            f"Para redesarrollar este lote se requiere la compra de {linked_unit_count} "
+            "unidades prediales independientes."
+        )
+        ph_assumption_statement = (
+            "La cabida estimada asume un lote vacante y no considera demolición, englobe ni el régimen "
+            "de propiedad horizontal existente."
         )
 
     # Verdict
@@ -2146,7 +2158,8 @@ def _render_html(
         lng          = lng,
         predial_units = predial_units,
         vacant_site_warning = vacant_site_warning,
-        existing_units_warning = existing_units_warning,
+        ph_acquisition_statement = ph_acquisition_statement,
+        ph_assumption_statement = ph_assumption_statement,
         map_img      = map_img,
         area_max     = area_max,
         area_label   = area_label,

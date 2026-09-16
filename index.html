@@ -551,11 +551,17 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
 .property-identity p{margin:var(--sp-3) 0 0;font-size:var(--ts-sm);line-height:1.55;color:var(--ink-3)}
 .property-identity details{margin-top:var(--sp-3);border-top:var(--rule-light);padding-top:var(--sp-3)}
 .property-identity summary{cursor:pointer;font-weight:var(--fw-6);font-size:var(--ts-sm)}
+.property-unit-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--sp-3);margin-top:var(--sp-3)}
+.property-unit-toolbar p{margin:0;max-width:70ch}
+.property-unit-export{flex:0 0 auto;border:var(--rule);background:var(--paper);padding:7px 11px;font-family:var(--ff-mono);font-size:var(--ts-xs);font-weight:var(--fw-6);cursor:pointer}
+.property-unit-export:hover,.property-unit-export:focus-visible{background:var(--ink-0);color:var(--paper)}
 .property-unit-list{margin-top:var(--sp-2);max-height:240px;overflow:auto;border:var(--rule-light);background:var(--paper)}
-.property-unit-row{display:grid;grid-template-columns:minmax(120px,.75fr) minmax(0,1.5fr);gap:var(--sp-3);padding:8px var(--sp-3);border-bottom:var(--rule-light);font-size:var(--ts-sm)}
+.property-unit-row{display:grid;grid-template-columns:minmax(115px,.65fr) minmax(125px,.75fr) minmax(0,1.5fr);gap:var(--sp-3);padding:8px var(--sp-3);border-bottom:var(--rule-light);font-size:var(--ts-sm)}
 .property-unit-row:last-child{border-bottom:0}.property-unit-row strong{font-family:var(--ff-mono)}
 .property-unit-row.is-selected{background:var(--accent-bg)}
-@media(max-width:600px){.property-identity-grid{grid-template-columns:1fr}.property-unit-row{grid-template-columns:1fr;gap:2px}}
+.ph-summary-card{margin:0 0 var(--sp-4);padding:var(--sp-4);border:1px solid var(--c-m-b);border-left:4px solid var(--c-m-fg);background:var(--c-m-bg);color:var(--ink-1)}
+.ph-summary-card p{margin:0;font-size:var(--ts-sm);line-height:1.55}.ph-summary-card p+p{margin-top:var(--sp-2)}
+@media(max-width:600px){.property-identity-grid{grid-template-columns:1fr}.property-unit-toolbar{display:block}.property-unit-export{margin-top:var(--sp-2)}.property-unit-row{grid-template-columns:1fr;gap:2px}}
 .result-anchor-rail{position:sticky;top:0;z-index:80;display:flex;gap:0;overflow-x:auto;margin:0 0 var(--sp-4);background:rgba(250,250,248,.97);border:var(--rule);box-shadow:0 6px 16px rgba(17,19,24,.07);scrollbar-width:thin;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .result-anchor-rail a{display:flex;align-items:center;min-height:42px;padding:0 11px;border-right:var(--rule);color:var(--ink-3);font-size:var(--ts-xs);font-weight:var(--fw-6);white-space:nowrap;text-decoration:none}
 .result-anchor-rail a:last-child{border-right:0}.result-anchor-rail a:hover{background:var(--paper-1);color:var(--ink-0)}
@@ -1701,13 +1707,17 @@ function cadastralIdentityBlock(d) {
       : count > 1
         ? 'No se eligió un CHIP arbitrariamente; todos se conservan en la relación predial.'
         : (identity.motivo || 'Catastro no devolvió una identificación predial para este lote.');
-  const rows = records.map(item => `<div class="property-unit-row${item.chip === selected ? ' is-selected' : ''}">
+  const rows = records.map(item => `<div class="property-unit-row${item.chip === selected ? ' is-selected' : ''}" role="listitem">
     <strong>${escHtml(item.chip)}</strong>
+    <span>${escHtml(item.lotcodigo || identity.codigo_lote || lot.lotcodigo || 'LOTCODIGO no disponible')}</span>
     <span>${escHtml(item.direccion || 'Dirección predial no publicada')}${item.chip === selected ? ' · consultado' : ''}</span>
   </div>`).join('');
   const multiple = count > 1 ? `<details>
-    <summary>Este lote contiene ${count} identificaciones prediales (CHIP) registradas</summary>
-    <p>La multiplicidad puede corresponder a propiedad horizontal u otras unidades prediales. La norma urbanística se calcula sobre el polígono físico; confirme el régimen jurídico y la titularidad por separado.</p>
+    <summary>Este lote contiene ${count} unidades prediales registradas</summary>
+    <div class="property-unit-toolbar">
+      <p>La multiplicidad puede corresponder a propiedad horizontal u otras unidades prediales. La norma urbanística se calcula sobre el polígono físico; confirme el régimen jurídico y la titularidad por separado.</p>
+      <button type="button" class="property-unit-export" onclick="exportPropertyUnitsCsv()">Exportar CSV</button>
+    </div>
     <div class="property-unit-list" role="list" aria-label="CHIP vinculados al código de lote">${rows}</div>
   </details>` : '';
   return `<section class="property-identity" aria-labelledby="property-identity-title">
@@ -1722,6 +1732,15 @@ function cadastralIdentityBlock(d) {
     <p><strong>Distinción:</strong> el código de lote identifica el polígono físico; cada CHIP identifica una unidad predial tributaria registrada dentro de ese lote.</p>
     ${multiple}
   </section>`;
+}
+
+function phSummaryCard(d) {
+  const count = d?.lote?.identidad_predial?.total_chips;
+  if (!(count > 1)) return '';
+  return `<aside class="ph-summary-card" aria-label="Resumen de unidades prediales">
+    <p><strong>Para redesarrollar este lote se requiere la compra de ${fmt(count)} unidades prediales independientes.</strong></p>
+    <p>La cabida estimada asume un lote vacante y no considera demolición, englobe ni el régimen de propiedad horizontal existente.</p>
+  </aside>`;
 }
 
 function showResult(d, lat, lng, vis, anu, requestAddress = '') {
@@ -1740,6 +1759,7 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
     <div class="result-context-meta">
       <span class="result-context-pill">${escHtml(d.tratamiento || 'Tratamiento sin dato')}</span>
       <span class="result-context-pill">Código de lote ${escHtml(d.lote?.lotcodigo || 'sin identificar')}</span>
+      ${d.lote?.identidad_predial?.chip_consultado ? `<span class="result-context-pill">CHIP ${escHtml(d.lote.identidad_predial.chip_consultado)}</span>` : ''}
       <span class="result-context-pill">${d.lote?.area_m2?.valor != null ? `${fmt(d.lote.area_m2.valor)} m²` : 'Área sin dato'}</span>
     </div>
   </header>`);
@@ -1752,6 +1772,7 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
     </div>`);
   }
   parts.push(cadastralIdentityBlock(d));
+  parts.push(phSummaryCard(d));
   if (d.figuras) parts.push(AinmoFigures.summary(d));
   parts.push(`<nav class="result-anchor-rail" aria-label="Secciones del resultado" role="tablist">
     <a class="is-active" id="tab-resumen" role="tab" aria-selected="true" aria-controls="result-resumen" tabindex="0" href="#result-resumen">Resumen</a>
@@ -3613,6 +3634,35 @@ function exportJson() {
   const a = document.createElement('a');
   a.href = url; a.download = 'edificabilidad.json'; a.click();
   URL.revokeObjectURL(url);
+}
+
+function exportPropertyUnitsCsv() {
+  const d = _lastRaw?.data || _lastRaw;
+  const identity = d?.lote?.identidad_predial || {};
+  const records = Array.isArray(identity.chips) ? identity.chips : [];
+  if (!records.length) {
+    alert('No hay identificaciones prediales vinculadas para exportar.');
+    return;
+  }
+  const csvCell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
+  const lines = [
+    ['CHIP', 'LOTCODIGO', 'direccion_unidad'],
+    ...records.map(item => [
+      item.chip || '',
+      item.lotcodigo || identity.codigo_lote || d?.lote?.lotcodigo || '',
+      item.direccion || '',
+    ]),
+  ];
+  const csv = '\uFEFF' + lines.map(row => row.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `chips_${identity.codigo_lote || d?.lote?.lotcodigo || 'lote'}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function downloadPdf(lat, lng, vis) {

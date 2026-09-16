@@ -74,8 +74,8 @@ def test_pdf_discloses_coordinate_lookup_existing_units_and_facade_height():
         calculated, lookup, "Predio 009241036001 · Suba, Bogotá D.C."
     )
     assert "Consultado por coordenada; sin dirección catastral asociada" in html
-    assert "Este lote registra 197 unidades prediales" in html
-    assert "Supuesto de sitio libre" in html
+    assert "Para redesarrollar este lote se requiere la compra de 197 unidades prediales independientes." in html
+    assert "La cabida estimada asume un lote vacante" in html
     assert "Altura máxima de fachada" in html
     assert "no es un retiro horizontal" in html
 
@@ -96,6 +96,7 @@ def test_pdf_separates_chip_from_lot_and_preserves_searched_chip():
     assert "Código de lote (LOTCODIGO)" in html
     assert "Identificación predial (CHIP)" in html
     assert "Informe generado para CHIP:" in html
+    assert "(Lote:" in html
     assert "AAA0002BBBB" in html
     assert "009241036001" in html
     assert "CHIP / código de lote" not in html

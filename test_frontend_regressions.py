@@ -161,8 +161,24 @@ def test_chip_is_preserved_and_multi_unit_identity_is_rendered():
     assert "function cadastralIdentityBlock(d)" in HTML
     assert "Código de lote (LOTCODIGO)" in HTML
     assert "Identificación predial (CHIP)" in HTML
-    assert "identificaciones prediales (CHIP) registradas" in HTML
+    assert "unidades prediales registradas" in HTML
     assert "No se eligió un CHIP arbitrariamente" in HTML
+    assert "item.lotcodigo || identity.codigo_lote" in HTML
+    assert "function phSummaryCard(d)" in HTML
+    assert "Para redesarrollar este lote se requiere la compra de ${fmt(count)} unidades prediales independientes." in HTML
+    assert "La cabida estimada asume un lote vacante" in HTML
+
+
+def test_multi_chip_csv_has_only_the_three_required_columns():
+    start = HTML.index("function exportPropertyUnitsCsv()")
+    end = HTML.index("async function downloadPdf", start)
+    function = HTML[start:end]
+    assert "['CHIP', 'LOTCODIGO', 'direccion_unidad']" in function
+    assert "item.chip || ''" in function
+    assert "item.lotcodigo || identity.codigo_lote" in function
+    assert "item.direccion || ''" in function
+    assert "Exportar CSV" in HTML
+    assert "chips_${identity.codigo_lote" in function
 
 
 def test_blocked_reports_are_not_saved_as_successful_recents():
