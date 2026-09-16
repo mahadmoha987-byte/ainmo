@@ -540,6 +540,22 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
 .result-context-pill{display:inline-flex;align-items:center;padding:2px 7px;background:var(--paper-1);border:var(--rule);font-family:var(--ff-mono);font-size:var(--ts-2xs);color:var(--ink-3)}
 .address-substitution-banner{margin:0 0 var(--sp-4);padding:var(--sp-3) var(--sp-4);background:var(--c-m-bg);border:1px solid var(--c-m-b);border-left:4px solid var(--c-m-fg);color:var(--c-m-fg);font-size:var(--ts-sm);line-height:1.55}
 .address-substitution-banner strong{color:var(--ink-0)}
+.property-identity{margin:0 0 var(--sp-4);padding:var(--sp-4);border:var(--rule);background:linear-gradient(120deg,#fffaf2,#f3f7f2 48%,#f1f5fa 75%,#f6f2fa)}
+.property-identity-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--sp-3);margin-bottom:var(--sp-3)}
+.property-identity-head h2{margin:0;font-size:var(--ts-md);font-weight:var(--fw-7)}
+.property-identity-state{font-family:var(--ff-mono);font-size:var(--ts-2xs);text-transform:uppercase;letter-spacing:.04em;padding:3px 7px;background:var(--paper);border:var(--rule);white-space:nowrap}
+.property-identity-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--sp-3)}
+.property-id-cell{padding:var(--sp-3);background:#ffffffb8;border:var(--rule-light)}
+.property-id-label{display:block;font-family:var(--ff-mono);font-size:var(--ts-2xs);text-transform:uppercase;letter-spacing:.05em;color:var(--ink-4);margin-bottom:4px}
+.property-id-value{display:block;font-family:var(--ff-mono);font-size:var(--ts-base);overflow-wrap:anywhere}
+.property-identity p{margin:var(--sp-3) 0 0;font-size:var(--ts-sm);line-height:1.55;color:var(--ink-3)}
+.property-identity details{margin-top:var(--sp-3);border-top:var(--rule-light);padding-top:var(--sp-3)}
+.property-identity summary{cursor:pointer;font-weight:var(--fw-6);font-size:var(--ts-sm)}
+.property-unit-list{margin-top:var(--sp-2);max-height:240px;overflow:auto;border:var(--rule-light);background:var(--paper)}
+.property-unit-row{display:grid;grid-template-columns:minmax(120px,.75fr) minmax(0,1.5fr);gap:var(--sp-3);padding:8px var(--sp-3);border-bottom:var(--rule-light);font-size:var(--ts-sm)}
+.property-unit-row:last-child{border-bottom:0}.property-unit-row strong{font-family:var(--ff-mono)}
+.property-unit-row.is-selected{background:var(--accent-bg)}
+@media(max-width:600px){.property-identity-grid{grid-template-columns:1fr}.property-unit-row{grid-template-columns:1fr;gap:2px}}
 .result-anchor-rail{position:sticky;top:0;z-index:80;display:flex;gap:0;overflow-x:auto;margin:0 0 var(--sp-4);background:rgba(250,250,248,.97);border:var(--rule);box-shadow:0 6px 16px rgba(17,19,24,.07);scrollbar-width:thin;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .result-anchor-rail a{display:flex;align-items:center;min-height:42px;padding:0 11px;border-right:var(--rule);color:var(--ink-3);font-size:var(--ts-xs);font-weight:var(--fw-6);white-space:nowrap;text-decoration:none}
 .result-anchor-rail a:last-child{border-right:0}.result-anchor-rail a:hover{background:var(--paper-1);color:var(--ink-0)}
@@ -716,6 +732,8 @@ let _geoCandidates = [];        // disambiguation list from geocoder
 let _lastLookupCoords = null;   // {lat, lng, vis} of most recent successful lookup
 let _lastResolvedAddress = '';  // immutable identity shown for the current report
 let _lastResolvedLotCodigo = null;
+let _selectedChip = null;       // exact CHIP selected by the geocoder, if any
+let _lastResolvedChip = null;   // verified CHIP preserved for report/PDF export
 let _activeSearchAddress = '';  // exact text entered before geocoding
 let _selectedAddressContext = null; // searched/resolved identity for selected candidate
 let _hasAnalyzed = false;       // true after first successful analysis (hides welcome card)
@@ -904,6 +922,7 @@ async function _selectAddressSuggestion(index) {
     lotcodigo: suggestion.lot_code || null,
   };
   _expectedLotCodigo = suggestion.lot_code || null;
+  _selectedChip = null;
   _activeSearchAddress = suggestion.address;
   _selectedAddressContext = {
     searched: suggestion.address,
@@ -991,10 +1010,12 @@ async function submitGeoSearch() {
   _lastRaw = null;
   _lastCalcData = null;
   _lastLookupCoords = null;
+  _lastResolvedChip = null;
   if (_lotLayer) { _map.removeLayer(_lotLayer); _lotLayer = null; }
   if (_markerLayer) { _map.removeLayer(_markerLayer); _markerLayer = null; }
   _confirmedCoords = null;
   _expectedLotCodigo = null;
+  _selectedChip = null;
 
   // Do NOT append ", Bogotá" here — geocode.py already scopes Catastro queries
   // to Bogotá and appends "Bogotá, Colombia" to Nominatim internally.
@@ -1032,14 +1053,16 @@ async function submitGeoSearch() {
 }
 
 function _showGeoConfirm(candidate) {
-  _confirmedCoords = { lat: candidate.lat, lng: candidate.lng, lotcodigo: candidate.lotcodigo || null };
+  _confirmedCoords = { lat: candidate.lat, lng: candidate.lng, lotcodigo: candidate.lotcodigo || null, chip: candidate.chip || null };
   _expectedLotCodigo = candidate.lotcodigo || null;
+  _selectedChip = candidate.chip || null;
   const searched = _activeSearchAddress || document.getElementById('addr-input')?.value?.trim() || candidate.label;
   _selectedAddressContext = {
     searched,
     resolved: candidate.label,
     nearMatch: candidate.near_match === true,
     matchType: candidate.match_type || null,
+    chip: candidate.chip || null,
   };
   const src = candidate.source === 'catastro' ? 'Catastro Bogotá' : 'OpenStreetMap';
   const quality = _geoQualityLabel(candidate);
@@ -1135,6 +1158,7 @@ function showGeoError(msg, query, kind) {
 function resetGeoResults() {
   _confirmedCoords = null;
   _expectedLotCodigo = null;
+  _selectedChip = null;
   _selectedAddressContext = null;
   const div = document.getElementById('geo-results');
   div.style.display = 'none';
@@ -1182,6 +1206,7 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
   const requestResolvedAddress = requestAddressContext?.resolved || requestAddress;
   const requestSearchedAddress = requestAddressContext?.searched || requestAddress;
   const requestExpectedLotCodigo = _expectedLotCodigo;
+  const requestChip = requestAddressContext?.chip || _selectedChip || null;
   const params = new URLSearchParams({ lat, lng, vis_en_sitio: vis });
   if (anu       != null) params.set('anu_m2',      anu);
   if (frente    != null) params.set('frente_m',    frente);
@@ -1191,6 +1216,7 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
   if (requestResolvedAddress) params.set('resolved_address', requestResolvedAddress);
   if (requestAddressContext?.nearMatch) params.set('near_match', 'true');
   if (requestExpectedLotCodigo) params.set('expected_lotcodigo', requestExpectedLotCodigo);
+  if (requestChip) params.set('searched_chip', requestChip);
   if (scenarioOnly)      params.set('scenario_only', 'true');
 
   let json;
@@ -1226,11 +1252,13 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
       const address = d.direccion || requestResolvedAddress || '';
       _lastResolvedAddress = address;
       _lastResolvedLotCodigo = d.lote?.lotcodigo || requestExpectedLotCodigo || null;
+      _lastResolvedChip = d.lote?.identidad_predial?.chip_consultado || requestChip || null;
       if (_isSuccessfulHistoryResult(d)) {
         saveToHistory({
           lat, lng, vis, address,
           tratamiento: d.tratamiento,
           lotcodigo: d.lote?.lotcodigo || requestExpectedLotCodigo || null,
+          chip: _lastResolvedChip,
           ts: Date.now(),
         });
       }
@@ -1258,9 +1286,9 @@ function enterLanding() {
   document.getElementById('results').innerHTML = '';
   document.getElementById('geo-results').style.display = 'none';
   document.getElementById('addr-input').value = '';
-  _confirmedCoords = null; _expectedLotCodigo = null; _pendingAnu = null; _pendingFrente = null;
+  _confirmedCoords = null; _expectedLotCodigo = null; _selectedChip = null; _pendingAnu = null; _pendingFrente = null;
   _activeSearchAddress = ''; _selectedAddressContext = null;
-  _lastResolvedAddress = ''; _lastResolvedLotCodigo = null;
+  _lastResolvedAddress = ''; _lastResolvedLotCodigo = null; _lastResolvedChip = null;
   if (_lotLayer) { _map.removeLayer(_lotLayer); _lotLayer = null; }
   if (_markerLayer) { _map.removeLayer(_markerLayer); _markerLayer = null; }
   _map.setView([4.6534, -74.0831], 12);
@@ -1274,7 +1302,7 @@ function enterLanding() {
 /* ejemplo: Consolidación lot in Chicó / Barrio El Refugio */
 async function loadEjemplo() {
   const EJ_LAT = 4.6736, EJ_LNG = -74.0503;
-  _pendingAnu = null; _pendingFrente = null; _confirmedCoords = null; _expectedLotCodigo = null;
+  _pendingAnu = null; _pendingFrente = null; _confirmedCoords = null; _expectedLotCodigo = null; _selectedChip = null;
   document.getElementById('addr-input').value = 'Ej: Calle 90 # 11-73 (Chicó)';
   document.getElementById('geo-results').style.display = 'none';
   await runLookup(EJ_LAT, EJ_LNG, false, null, null, null);
@@ -1630,11 +1658,12 @@ async function submitManualCoords() {
   const lng = parseFloat(document.getElementById('lng').value);
   if (isNaN(lat) || isNaN(lng)) { return; }
   const vis = document.getElementById('vis-check').checked;
-  _pendingAnu = null; _pendingFrente = null; _confirmedCoords = null; _expectedLotCodigo = null;
+  _pendingAnu = null; _pendingFrente = null; _confirmedCoords = null; _expectedLotCodigo = null; _selectedChip = null;
   // Manual coordinates identify the analysed lot. They must never inherit the
   // address or near-match identity from the previous report.
   _activeSearchAddress = '';
   _selectedAddressContext = null;
+  _lastResolvedChip = null;
   const addressInput = document.getElementById('addr-input');
   if (addressInput) addressInput.value = '';
   await runLookup(lat, lng, vis, null, null, null);
@@ -1650,6 +1679,51 @@ async function submitAnchoVia() {
 /* ══════════════════════════════════════════════════════════════════════════
    Main result renderer
 ══════════════════════════════════════════════════════════════════════════ */
+function cadastralIdentityBlock(d) {
+  const lot = d?.lote || {};
+  const identity = lot.identidad_predial || {};
+  const records = Array.isArray(identity.chips) ? identity.chips : [];
+  const count = identity.total_chips;
+  const selected = identity.chip_consultado || null;
+  const state = identity.estado || 'insuficiente';
+  const selectedRecord = selected ? records.find(item => item.chip === selected) : null;
+  const chipHeadline = selected
+    ? selected
+    : count === 1
+      ? records[0]?.chip || 'No disponible'
+      : count > 1
+        ? `${count} identificaciones vinculadas`
+        : 'No disponible';
+  const chipContext = selected
+    ? `CHIP consultado${selectedRecord?.direccion ? ` · ${selectedRecord.direccion}` : ''}`
+    : count === 1
+      ? 'Única identificación predial devuelta por Catastro'
+      : count > 1
+        ? 'No se eligió un CHIP arbitrariamente; todos se conservan en la relación predial.'
+        : (identity.motivo || 'Catastro no devolvió una identificación predial para este lote.');
+  const rows = records.map(item => `<div class="property-unit-row${item.chip === selected ? ' is-selected' : ''}">
+    <strong>${escHtml(item.chip)}</strong>
+    <span>${escHtml(item.direccion || 'Dirección predial no publicada')}${item.chip === selected ? ' · consultado' : ''}</span>
+  </div>`).join('');
+  const multiple = count > 1 ? `<details>
+    <summary>Este lote contiene ${count} identificaciones prediales (CHIP) registradas</summary>
+    <p>La multiplicidad puede corresponder a propiedad horizontal u otras unidades prediales. La norma urbanística se calcula sobre el polígono físico; confirme el régimen jurídico y la titularidad por separado.</p>
+    <div class="property-unit-list" role="list" aria-label="CHIP vinculados al código de lote">${rows}</div>
+  </details>` : '';
+  return `<section class="property-identity" aria-labelledby="property-identity-title">
+    <div class="property-identity-head">
+      <h2 id="property-identity-title">Identidad catastral y predial</h2>
+      <span class="property-identity-state">${state === 'resuelto' ? 'Vínculo Catastro verificado' : 'Vínculo por verificar'}</span>
+    </div>
+    <div class="property-identity-grid">
+      <div class="property-id-cell"><span class="property-id-label">Código de lote (LOTCODIGO)</span><strong class="property-id-value">${escHtml(identity.codigo_lote || lot.lotcodigo || 'No disponible')}</strong></div>
+      <div class="property-id-cell"><span class="property-id-label">Identificación predial (CHIP)</span><strong class="property-id-value">${escHtml(chipHeadline)}</strong><span class="property-id-label" style="margin:5px 0 0;text-transform:none;letter-spacing:0">${escHtml(chipContext)}</span></div>
+    </div>
+    <p><strong>Distinción:</strong> el código de lote identifica el polígono físico; cada CHIP identifica una unidad predial tributaria registrada dentro de ese lote.</p>
+    ${multiple}
+  </section>`;
+}
+
 function showResult(d, lat, lng, vis, anu, requestAddress = '') {
   const parts = [];
   const _tratUpper = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
@@ -1665,7 +1739,7 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
     <h1>${escHtml(resultAddress)}</h1>
     <div class="result-context-meta">
       <span class="result-context-pill">${escHtml(d.tratamiento || 'Tratamiento sin dato')}</span>
-      <span class="result-context-pill">Lote ${escHtml(d.lote?.lotcodigo || 'sin identificar')}</span>
+      <span class="result-context-pill">Código de lote ${escHtml(d.lote?.lotcodigo || 'sin identificar')}</span>
       <span class="result-context-pill">${d.lote?.area_m2?.valor != null ? `${fmt(d.lote.area_m2.valor)} m²` : 'Área sin dato'}</span>
     </div>
   </header>`);
@@ -1677,6 +1751,7 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
       <strong><span class="notranslate" translate="no">${escHtml(resolvedAddressLabel)}</span></strong> (${escHtml(addressResolution.relation || 'mismo bloque')}).
     </div>`);
   }
+  parts.push(cadastralIdentityBlock(d));
   if (d.figuras) parts.push(AinmoFigures.summary(d));
   parts.push(`<nav class="result-anchor-rail" aria-label="Secciones del resultado" role="tablist">
     <a class="is-active" id="tab-resumen" role="tab" aria-selected="true" aria-controls="result-resumen" tabindex="0" href="#result-resumen">Resumen</a>
@@ -2075,7 +2150,7 @@ function lotIdFull(d, lat, lng) {
   const anu = d.anu?.valor_m2;
 
   let items = [
-    { label: 'LOTE (LOTCODIGO)', val: lote.lotcodigo || 'Identificador catastral sin dato' },
+    { label: 'Código de lote (LOTCODIGO)', val: lote.lotcodigo || 'Identificador catastral sin dato' },
     { label: 'Área del lote', val: area != null ? `${fmt(area)} m²` : 'Área sin dato: verificar polígono catastral' },
     { label: 'Tratamiento', val: trat },
   ];
@@ -2278,7 +2353,7 @@ function acquisitionBrief(d) {
       <div class="deal-brief-kicker">Semáforo de adquisición · ${level === 'red' ? 'alto' : level === 'yellow' ? 'revisión' : 'continuar'}</div>
       <div class="deal-brief-title">${title}</div></div></div>
     <div class="deal-brief-body"><div>
-      <div class="deal-fact"><span>Predio</span><strong>${escHtml(d.lote?.lotcodigo || 'Sin dato')}</strong></div>
+      <div class="deal-fact"><span>Código de lote</span><strong>${escHtml(d.lote?.lotcodigo || 'Sin dato')}</strong></div>
       <div class="deal-fact"><span>Área catastral</span><strong>${area != null ? `${fmt(area)} m²` : 'Sin dato'}</strong></div>
       <div class="deal-fact"><span>Tratamiento</span><strong>${escHtml(d.tratamiento || 'Sin dato')}</strong></div>
       <div class="deal-fact"><span>Altura base</span><strong>${pisos != null ? `${pisos} pisos` : 'Resultante'}</strong></div>
@@ -3550,6 +3625,7 @@ async function downloadPdf(lat, lng, vis) {
   if (inp.frente_m_supplied)  params.set('frente_m',    inp.frente_m_supplied);
   if (inp.ancho_via_m_supplied) params.set('ancho_via_m', inp.ancho_via_m_supplied);
   if (_lastResolvedLotCodigo) params.set('expected_lotcodigo', _lastResolvedLotCodigo);
+  if (_lastResolvedChip) params.set('searched_chip', _lastResolvedChip);
 
   const address = _lastResolvedAddress || `Predio ${_lastResolvedLotCodigo || 'consultado'}`;
   params.set('address', address);
@@ -3801,6 +3877,7 @@ function _runHistItem(i) {
   _activeSearchAddress = h.address || '';
   _selectedAddressContext = null;
   _expectedLotCodigo = /^\d{12}$/.test(String(h.lotcodigo || '')) ? h.lotcodigo : null;
+  _selectedChip = h.chip || null;
   runLookup(h.lat, h.lng, !!h.vis, null, null, null);
 }
 
@@ -3974,6 +4051,7 @@ let _autoSearchFired = false;
       _activeSearchAddress = '';
       _selectedAddressContext = null;
       _expectedLotCodigo = null;
+      _selectedChip = null;
       const inp = document.getElementById('addr-input');
       if (inp) inp.value = '';
     }
@@ -4149,6 +4227,8 @@ function _initMap() {
     _expectedLotCodigo = null;
     _activeSearchAddress = '';
     _selectedAddressContext = null;
+    _selectedChip = null;
+    _lastResolvedChip = null;
     // A direct parcel click starts a coordinate lookup, not another lookup for
     // the address that happened to be searched previously.
     const addressInput = document.getElementById('addr-input');

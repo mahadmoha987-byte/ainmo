@@ -6,7 +6,7 @@ Priority:
 2. Nominatim / OpenStreetMap (street-level fallback)
 """
 
-import re, ssl, json, unicodedata, urllib.request, urllib.parse, difflib
+import re, ssl, json, time, unicodedata, urllib.request, urllib.parse, difflib
 
 _SSL_CTX = ssl.create_default_context()
 _SSL_CTX.check_hostname = False
@@ -45,6 +45,8 @@ _BOGOTA_LNG = (-74.25, -73.99)
 # UAECD's Código Homologado de Identificación Predial is an 11-character
 # cadastral identifier. The current public Predio table stores it in PRECHIP.
 _CHIP_RE = re.compile(r"^[A-Z]{3}\d{4}[A-Z]{4}$", re.I)
+_LOT_PROPERTIES_CACHE_TTL = 86_400
+_lot_properties_cache: dict[str, tuple[float, list[dict]]] = {}
 _OUTSIDE_BOGOTA_CITY_RE = re.compile(
     r"\b(?P<city>MEDELLIN|BELLO|ENVIGADO|ITAGUI|SABANETA|RIONEGRO|CALI|PALMIRA|"
     r"BARRANQUILLA|SOLEDAD|CARTAGENA|BUCARAMANGA|FLORIDABLANCA|CUCUTA|"
@@ -629,6 +631,74 @@ def _catastro_chip_query(chip: str) -> list[dict]:
             "match_confidence": "alta",
         })
     return candidates
+
+
+def catastro_properties_for_lot(lotcodigo: str) -> list[dict]:
+    """Return every unique official CHIP associated with a cadastral lot.
+
+    Catastro's spatial lot layer identifies a physical polygon with
+    ``LOTCODIGO``.  Property units live in the non-spatial Predio table and
+    link back to that polygon through ``BARMANPRE``.  The two identifiers are
+    deliberately kept separate here because a PH lot can contain many CHIPs.
+
+    The first request obtains every object id, then fetches records in batches;
+    this avoids silently truncating a large propiedad-horizontal building at
+    the ArcGIS service's record limit.
+    """
+    code = str(lotcodigo or "").strip()
+    if not re.fullmatch(r"\d{12}", code):
+        return []
+
+    cached = _lot_properties_cache.get(code)
+    if cached and time.time() - cached[0] < _LOT_PROPERTIES_CACHE_TTL:
+        return [dict(item) for item in cached[1]]
+
+    safe_code = code.replace("'", "''")
+    id_params = urllib.parse.urlencode({
+        "where": f"BARMANPRE='{safe_code}'",
+        "returnIdsOnly": "true",
+        "f": "json",
+    })
+    with urllib.request.urlopen(
+        f"{_CATASTRO_PREDIO}/query?{id_params}", context=_SSL_CTX, timeout=12
+    ) as response:
+        id_data = json.load(response)
+    if id_data.get("error"):
+        raise RuntimeError(f"Catastro Predio error: {id_data['error']}")
+
+    object_ids = sorted({int(value) for value in id_data.get("objectIds", [])})
+    records: dict[str, dict] = {}
+    for start in range(0, len(object_ids), 200):
+        batch = object_ids[start:start + 200]
+        record_params = urllib.parse.urlencode({
+            "objectIds": ",".join(str(value) for value in batch),
+            "outFields": "PRECHIP,PREDIRECC,BARMANPRE",
+            "returnGeometry": "false",
+            "f": "json",
+        })
+        with urllib.request.urlopen(
+            f"{_CATASTRO_PREDIO}/query?{record_params}", context=_SSL_CTX, timeout=12
+        ) as response:
+            record_data = json.load(response)
+        if record_data.get("error"):
+            raise RuntimeError(f"Catastro Predio error: {record_data['error']}")
+        for feature in record_data.get("features", []):
+            attributes = feature.get("attributes") or {}
+            chip = str(attributes.get("PRECHIP") or "").strip().upper()
+            linked_lot = str(attributes.get("BARMANPRE") or "").strip()
+            if not _CHIP_RE.fullmatch(chip) or linked_lot != code:
+                continue
+            # PRECHIP is the property-unit identity. Duplicate service rows are
+            # collapsed instead of inflating the number of registered units.
+            records.setdefault(chip, {
+                "chip": chip,
+                "direccion": str(attributes.get("PREDIRECC") or "").strip() or None,
+                "lotcodigo": code,
+            })
+
+    result = sorted(records.values(), key=lambda item: item["chip"])
+    _lot_properties_cache[code] = (time.time(), result)
+    return [dict(item) for item in result]
 
 
 # -----------------------------------------------------------------------

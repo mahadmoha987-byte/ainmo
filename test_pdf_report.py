@@ -78,6 +78,27 @@ def test_pdf_discloses_coordinate_lookup_existing_units_and_facade_height():
     assert "Supuesto de sitio libre" in html
     assert "Altura máxima de fachada" in html
     assert "no es un retiro horizontal" in html
+
+
+def test_pdf_separates_chip_from_lot_and_preserves_searched_chip():
+    calculated, lookup = _fixture_payload()
+    calculated["lote"]["identidad_predial"] = {
+        "codigo_lote": "009241036001",
+        "chip_consultado": "AAA0002BBBB",
+        "total_chips": 2,
+        "chips": [
+            {"chip": "AAA0001AAAA", "direccion": "CL 1 1 01", "lotcodigo": "009241036001"},
+            {"chip": "AAA0002BBBB", "direccion": "CL 1 1 02", "lotcodigo": "009241036001"},
+        ],
+        "estado": "resuelto",
+    }
+    html = pdf_report.generate_html_preview(calculated, lookup, "CL 1 # 1-02")
+    assert "Código de lote (LOTCODIGO)" in html
+    assert "Identificación predial (CHIP)" in html
+    assert "Informe generado para CHIP:" in html
+    assert "AAA0002BBBB" in html
+    assert "009241036001" in html
+    assert "CHIP / código de lote" not in html
     assert "Retroceso de fachada</strong>" not in html
 
 
@@ -149,6 +170,39 @@ def test_address_identity_helper_titles_near_match_with_real_plate():
     assert result["direccion"] == "KR 7 # 32-12"
     assert result["address_resolution"]["searched_address"] == "KR 7 # 32-16"
     assert result["address_resolution"]["relation"] == "mismo bloque"
+
+
+def test_property_identity_keeps_chip_separate_from_lot_and_detects_ph(monkeypatch):
+    calculated, lookup = _fixture_payload()
+    monkeypatch.setattr(api.geocode, "catastro_properties_for_lot", lambda _code: [
+        {"chip": "AAA0001AAAA", "direccion": "CL 1 1 01", "lotcodigo": "009241036001"},
+        {"chip": "AAA0002BBBB", "direccion": "CL 1 1 02", "lotcodigo": "009241036001"},
+    ])
+    asyncio.run(api._attach_property_identity(
+        calculated, lookup, searched_chip="CHIP AAA0002BBBB",
+    ))
+    identity = calculated["lote"]["identidad_predial"]
+    assert identity["codigo_lote"] == "009241036001"
+    assert identity["chip_consultado"] == "AAA0002BBBB"
+    assert identity["total_chips"] == 2
+    assert identity["multiples_unidades_prediales"] is True
+    assert [item["chip"] for item in identity["chips"]] == ["AAA0001AAAA", "AAA0002BBBB"]
+
+
+def test_property_identity_rejects_chip_from_another_lot(monkeypatch):
+    calculated, lookup = _fixture_payload()
+    monkeypatch.setattr(api.geocode, "catastro_properties_for_lot", lambda _code: [
+        {"chip": "AAA0001AAAA", "direccion": "CL 1 1 01", "lotcodigo": "009241036001"},
+    ])
+    try:
+        asyncio.run(api._attach_property_identity(
+            calculated, lookup, searched_chip="AAA0002BBBB",
+        ))
+    except api.ChipLotMismatchError as exc:
+        assert exc.chip == "AAA0002BBBB"
+        assert exc.lotcodigo == "009241036001"
+    else:
+        raise AssertionError("a mismatched CHIP must never be attached to a different lot")
 
 
 def test_json_and_pdf_routes_share_calculation_helper(monkeypatch):

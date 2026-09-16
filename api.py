@@ -58,6 +58,13 @@ class CadastralMismatchError(RuntimeError):
         super().__init__(f"Expected lot {expected}, resolved {resolved or 'SIN_DATO'}")
 
 
+class ChipLotMismatchError(RuntimeError):
+    def __init__(self, chip: str, lotcodigo: str):
+        self.chip = chip
+        self.lotcodigo = lotcodigo
+        super().__init__(f"CHIP {chip} is not associated with lot {lotcodigo}")
+
+
 async def _calculate_current_lot(
     *, lng: float, lat: float, vis_en_sitio: bool,
     anu_m2: float | None, frente_m: float | None, ancho_via_m: float | None,
@@ -114,6 +121,80 @@ def _apply_address_identity(
         }
     else:
         result.pop("address_resolution", None)
+    return result
+
+
+async def _attach_property_identity(
+    result: dict,
+    lookup_snapshot: dict,
+    *,
+    searched_chip: str = "",
+) -> dict:
+    """Attach the official lot-to-property-unit relationship to a result.
+
+    ``LOTCODIGO`` identifies the physical Catastro polygon. ``CHIP`` identifies
+    a property unit and is therefore one-to-many on many PH lots.  Never copy
+    one identifier into the other's field or choose an arbitrary CHIP.
+    """
+    result_lot = result.setdefault("lote", {})
+    lookup_lot = lookup_snapshot.setdefault("lote", {})
+    lotcodigo = str(
+        result_lot.get("lotcodigo") or lookup_lot.get("lotcodigo") or ""
+    ).strip()
+    if not lotcodigo:
+        return result
+
+    raw_chip = searched_chip if isinstance(searched_chip, str) else ""
+    selected_chip = geocode._normalize_chip(raw_chip) if raw_chip else None
+    consultation_date = (
+        (result.get("consulta") or {}).get("fecha")
+        or (lookup_snapshot.get("consulta") or {}).get("fecha")
+    )
+    try:
+        properties = await asyncio.to_thread(
+            geocode.catastro_properties_for_lot, lotcodigo,
+        )
+    except Exception:
+        logger.exception("Catastro property-unit lookup failed for lot %s", lotcodigo)
+        identity = {
+            "codigo_lote": lotcodigo,
+            "chip_consultado": selected_chip,
+            "chips": [],
+            "total_chips": None,
+            "multiples_unidades_prediales": None,
+            "estado": "insuficiente",
+            "motivo": "Catastro no respondió al consultar las identificaciones prediales vinculadas al lote.",
+            "que_se_necesita": "Reintentar la consulta y confirmar los CHIP en Catastro Bogotá.",
+            "quien_lo_resuelve": "Catastro",
+            "fuente": "Catastro Bogotá · tabla Predio (PRECHIP, BARMANPRE)",
+            "fecha_consulta": consultation_date,
+        }
+    else:
+        available_chips = {item["chip"] for item in properties}
+        if selected_chip and selected_chip not in available_chips:
+            raise ChipLotMismatchError(selected_chip, lotcodigo)
+        total = len(properties)
+        identity = {
+            "codigo_lote": lotcodigo,
+            "chip_consultado": selected_chip,
+            "chips": properties,
+            "total_chips": total,
+            "multiples_unidades_prediales": total > 1,
+            "estado": "resuelto" if total else "insuficiente",
+            "motivo": (
+                f"Catastro vincula {total} identificación predial (CHIP) a este código de lote."
+                if total == 1 else
+                f"Catastro vincula {total} identificaciones prediales (CHIP) a este código de lote."
+                if total > 1 else
+                "Catastro no devolvió identificaciones prediales (CHIP) vinculadas a este código de lote."
+            ),
+            "que_se_necesita": None if total else "Confirmar la relación predio-lote en Catastro Bogotá.",
+            "quien_lo_resuelve": None if total else "Catastro",
+            "fuente": "Catastro Bogotá · tabla Predio (PRECHIP, PREDIRECC, BARMANPRE)",
+            "fecha_consulta": consultation_date,
+        }
+    result_lot["identidad_predial"] = identity
+    lookup_lot["identidad_predial"] = identity
     return result
 
 
@@ -466,6 +547,7 @@ async def calc_endpoint(
     address: str = Query(""),
     searched_address: str = Query(""),
     resolved_address: str = Query(""),
+    searched_chip: str = Query(""),
     near_match: bool = Query(False),
     expected_lotcodigo: str | None = Query(None),
     scenario_only: bool = Query(False),
@@ -482,6 +564,9 @@ async def calc_endpoint(
             searched_address=searched_address,
             resolved_address=resolved_address,
             near_match=near_match,
+        )
+        await _attach_property_identity(
+            result, lu, searched_chip=searched_chip,
         )
 
         return {
@@ -502,6 +587,17 @@ async def calc_endpoint(
             },
         }
 
+    except ChipLotMismatchError as exc:
+        return JSONResponse(status_code=200, content={
+            "ok": False,
+            "error": "chip_lot_mismatch",
+            "message": (
+                f"El CHIP {exc.chip} no está vinculado en Catastro al código de lote "
+                f"{exc.lotcodigo}. No se emitió el resultado para evitar mezclar identidades prediales."
+            ),
+            "chip": exc.chip,
+            "lotcodigo": exc.lotcodigo,
+        })
     except CadastralMismatchError as exc:
         return JSONResponse(status_code=200, content={
             "ok": False,
@@ -778,6 +874,7 @@ async def report_endpoint(
     address: str = Query(""),
     searched_address: str = Query(""),
     resolved_address: str = Query(""),
+    searched_chip: str = Query(""),
     near_match: bool = Query(False),
     expected_lotcodigo: str | None = Query(None),
     preview: bool = Query(False),
@@ -797,6 +894,9 @@ async def report_endpoint(
             resolved_address=resolved_address,
             near_match=near_match,
         )
+        await _attach_property_identity(
+            result, lu, searched_chip=searched_chip,
+        )
         loop = asyncio.get_event_loop()
         pdf_bytes = await loop.run_in_executor(
             None, lambda: pdf_report.generate_pdf(
@@ -809,6 +909,12 @@ async def report_endpoint(
         from fastapi.responses import Response
         return Response(content=pdf_bytes, media_type="application/pdf",
                         headers={"Content-Disposition": disposition})
+    except ChipLotMismatchError as exc:
+        return JSONResponse(status_code=200, content={
+            "ok": False, "error": "chip_lot_mismatch",
+            "chip": exc.chip, "lotcodigo": exc.lotcodigo,
+            "message": "El CHIP no corresponde al código de lote resuelto; no se generó el informe.",
+        })
     except CadastralMismatchError as exc:
         return JSONResponse(status_code=200, content={
             "ok": False, "error": "cadastral_mismatch",
@@ -841,6 +947,7 @@ async def report_html_endpoint(
     address: str = Query(""),
     searched_address: str = Query(""),
     resolved_address: str = Query(""),
+    searched_chip: str = Query(""),
     near_match: bool = Query(False),
     expected_lotcodigo: str | None = Query(None),
 ):
@@ -857,6 +964,9 @@ async def report_html_endpoint(
             resolved_address=resolved_address,
             near_match=near_match,
         )
+        await _attach_property_identity(
+            result, lu, searched_chip=searched_chip,
+        )
         html_str = pdf_report.generate_html_preview(
             calc_result=result,
             lookup_snapshot=lu,
@@ -864,6 +974,12 @@ async def report_html_endpoint(
         )
         from fastapi.responses import Response
         return Response(content=html_str, media_type="text/html; charset=utf-8")
+    except ChipLotMismatchError as exc:
+        return JSONResponse(status_code=200, content={
+            "ok": False, "error": "chip_lot_mismatch",
+            "chip": exc.chip, "lotcodigo": exc.lotcodigo,
+            "message": "El CHIP no corresponde al código de lote resuelto; no se generó la vista previa.",
+        })
     except CadastralMismatchError as exc:
         return JSONResponse(status_code=200, content={
             "ok": False, "error": "cadastral_mismatch",

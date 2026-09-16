@@ -298,9 +298,18 @@ def _param_rows(d: dict, lu: dict) -> list[dict]:
     pk   = d.get("parking") or {}
 
     # ── Predio ──
-    rows.append(row("Predio", "LOTCODIGO",
+    rows.append(row("Predio", "Código de lote (LOTCODIGO)",
                     lote.get("lotcodigo") or "No disponible",
                     "Catastro MapServer Layer 0", "alta"))
+    identity = lote.get("identidad_predial") or {}
+    if identity.get("chip_consultado"):
+        rows.append(row("Predio", "Identificación predial consultada (CHIP)",
+                        identity["chip_consultado"],
+                        "Catastro tabla Predio (PRECHIP → BARMANPRE)", "alta"))
+    if identity.get("total_chips") is not None:
+        rows.append(row("Predio", "CHIP vinculados al código de lote",
+                        str(identity["total_chips"]),
+                        "Catastro tabla Predio (BARMANPRE)", "alta"))
     area_val = _get(lote, "area_m2", "valor")
     rows.append(row("Predio", "Área catastral",
                     _area(area_val),
@@ -804,6 +813,16 @@ def _used_sources(d: dict, lu: dict, rows: list[dict], param_rows: list[dict]) -
         "Catastro Bogotá · MapServer capa 0 (polígono, área, código de lote y unidades prediales).",
         "SDP · POT FeatureServer capa 15 (tratamiento, tipología y altura máxima).",
     ]
+    property_identity = (
+        (lu.get("lote") or {}).get("identidad_predial")
+        or (d.get("lote") or {}).get("identidad_predial")
+        or {}
+    )
+    if property_identity:
+        gis.append(
+            "Catastro Bogotá · MapServer tabla 3 Predio "
+            "(PRECHIP, PREDIRECC y BARMANPRE; vínculo entre identificación predial y código de lote)."
+        )
     if ant or _get(m, "area_construible_estimada", default={}):
         gis.append("SDP · POT FeatureServer capa 22, mapa CU-5.5 (antejardín).")
     if _get(m, "retroceso_fachada_A_m", "D_m") is not None:
@@ -1109,7 +1128,7 @@ body {
   <div class="sub">Edificabilidad Bogotá · {{ decree_short }}</div>
   <div class="cover-meta">
     <div class="tag">Dir <span>{{ address }}</span></div>
-    <div class="tag">Lote <span class="mono">{{ lotcodigo }}</span></div>
+    <div class="tag">Código de lote <span class="mono">{{ lotcodigo }}</span></div>
     <div class="tag">Fecha <span>{{ date_label }}</span></div>
     <div class="tag">Área <span class="mono">{{ lot_area }}</span></div>
     <div class="tag">Trat. <span>{{ tratamiento }}</span></div>
@@ -1121,7 +1140,7 @@ body {
   <div class="cover-left">
     <div class="sh">Identificación del predio</div>
     <table class="id-table">
-      <tr><td>LOTCODIGO</td><td>{{ lotcodigo }}</td></tr>
+      <tr><td>Código de lote (LOTCODIGO)</td><td>{{ lotcodigo }}</td></tr>
       <tr><td>Área catastral</td><td>{{ lot_area }}</td></tr>
       <tr><td>Tratamiento</td><td>{{ tratamiento }}</td></tr>
       <tr><td>Tipología</td><td>{{ tipologia }}</td></tr>
@@ -1526,11 +1545,14 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
   <table class="cover-kv">
     <tr><td>Fecha del informe</td><td>{{ date_label }}</td></tr>
     <tr><td>Coordenadas WGS84</td><td class="mono">{{ lat }}, {{ lng }} · grados decimales</td></tr>
-    <tr><td>CHIP / código de lote</td><td class="mono">{{ lotcodigo }}</td></tr>
+    <tr><td>Código de lote (LOTCODIGO)</td><td class="mono">{{ lotcodigo }}</td></tr>
+    <tr><td>Identificación predial (CHIP)</td><td class="mono">{{ chip_display }}</td></tr>
+    <tr><td>CHIP vinculados al lote</td><td class="mono">{{ chip_count }}</td></tr>
     <tr><td>Tratamiento</td><td>{{ tratamiento }}</td></tr>
     <tr><td>Área del lote</td><td class="mono">{{ lot_area }}</td></tr>
     <tr><td>Unidades prediales registradas</td><td class="mono">{{ predial_units }}</td></tr>
   </table>
+  {% if chip_consultado %}<div class="site-assumption"><strong>Identidad del encargo.</strong> Informe generado para CHIP: <span class="mono">{{ chip_consultado }}</span> (código de lote: <span class="mono">{{ lotcodigo }}</span>).</div>{% endif %}
   {% if existing_units_warning %}<div class="site-assumption"><strong>Predio probablemente desarrollado.</strong> {{ existing_units_warning }}</div>{% endif %}
   <div class="cover-disclaimer"><strong>Alcance.</strong> {{ disclaimer }}</div>
 </section>
@@ -1550,7 +1572,9 @@ td { vertical-align:top; border:0.5pt solid var(--line); padding:4pt; }
     <div class="summary-left">
       <table class="kv">
         <tr><td>Dirección</td><td>{{ address_display }}</td></tr>
-        <tr><td>CHIP / código de lote</td><td class="mono">{{ lotcodigo }}</td></tr>
+        <tr><td>Código de lote (LOTCODIGO)</td><td class="mono">{{ lotcodigo }}</td></tr>
+        <tr><td>Identificación predial (CHIP)</td><td class="mono">{{ chip_display }}</td></tr>
+        <tr><td>CHIP vinculados al lote</td><td class="mono">{{ chip_count }}</td></tr>
         <tr><td>Localidad / UPZ</td><td>{{ locality_upz }}</td></tr>
         <tr><td>Tratamiento</td><td>{{ tratamiento }}</td></tr>
         <tr><td>Tipología</td><td>{{ tipologia }}</td></tr>
@@ -1834,6 +1858,19 @@ def _render_html(
 
     # Identity
     lotcodigo  = lote.get("lotcodigo") or "No disponible"
+    property_identity = lote.get("identidad_predial") or {}
+    chip_records = property_identity.get("chips") or []
+    chip_consultado = property_identity.get("chip_consultado") or None
+    chip_total = property_identity.get("total_chips")
+    if chip_consultado:
+        chip_display = chip_consultado
+    elif chip_total == 1 and chip_records:
+        chip_display = chip_records[0].get("chip") or "No disponible"
+    elif chip_total and chip_total > 1:
+        chip_display = "Múltiples; no se seleccionó uno arbitrariamente"
+    else:
+        chip_display = "No disponible"
+    chip_count = str(chip_total) if chip_total is not None else "No disponible"
     lot_area   = _area(_get(lote, "area_m2", "valor"))
     tip        = _get(lu, "tipologia", "valor") or "No disponible"
     aa_code    = _get(lu, "area_actividad", "codigo") or "No disponible"
@@ -2093,6 +2130,10 @@ def _render_html(
         resolved_address = resolved_address,
         address_relation = address_relation,
         lotcodigo    = lotcodigo,
+        chip_consultado = chip_consultado,
+        chip_display = chip_display,
+        chip_count = chip_count,
+        chip_records = chip_records,
         lot_area     = lot_area,
         tratamiento  = trat,
         tipologia    = tip,

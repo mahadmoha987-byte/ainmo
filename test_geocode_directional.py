@@ -109,6 +109,39 @@ def test_chip_label_prefix_is_ignored(raw):
     assert geocode._normalize_chip(raw) == "AAA0044ODRJ"
 
 
+def test_lot_property_lookup_returns_every_unique_chip(monkeypatch):
+    geocode._lot_properties_cache.clear()
+    payloads = iter([
+        {"objectIds": [3, 1, 2]},
+        {"features": [
+            {"attributes": {"PRECHIP": "AAA0001AAAA", "PREDIRECC": "CL 1 1 01", "BARMANPRE": "001001001001"}},
+            {"attributes": {"PRECHIP": "AAA0002BBBB", "PREDIRECC": "CL 1 1 02", "BARMANPRE": "001001001001"}},
+            # ArcGIS can expose duplicate records; one CHIP is one unit here.
+            {"attributes": {"PRECHIP": "AAA0001AAAA", "PREDIRECC": "CL 1 1 01", "BARMANPRE": "001001001001"}},
+        ]},
+    ])
+    urls = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    def fake_open(url, **_kwargs):
+        urls.append(url)
+        return Response()
+
+    monkeypatch.setattr(geocode.urllib.request, "urlopen", fake_open)
+    monkeypatch.setattr(geocode.json, "load", lambda _response: next(payloads))
+    records = geocode.catastro_properties_for_lot("001001001001")
+    assert [record["chip"] for record in records] == ["AAA0001AAAA", "AAA0002BBBB"]
+    assert all(record["lotcodigo"] == "001001001001" for record in records)
+    assert "returnIdsOnly=true" in urls[0]
+    assert "objectIds=1%2C2%2C3" in urls[1]
+
+
 def test_compound_avenue_without_hash_is_not_mistaken_for_intersection():
     assert not geocode._is_intersection_query("Avenida Carrera 11 109 32")
     assert not geocode._is_intersection_query("Avenida Calle 13 16A 12")

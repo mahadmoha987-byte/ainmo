@@ -153,6 +153,18 @@ def test_search_supports_chip_and_vis_scenario_is_explained():
     assert "case 'exact_chip': return 'CHIP exacto'" in HTML
 
 
+def test_chip_is_preserved_and_multi_unit_identity_is_rendered():
+    assert "_selectedChip = candidate.chip || null" in HTML
+    assert "params.set('searched_chip', requestChip)" in HTML
+    assert "d.lote?.identidad_predial?.chip_consultado" in HTML
+    assert "params.set('searched_chip', _lastResolvedChip)" in HTML
+    assert "function cadastralIdentityBlock(d)" in HTML
+    assert "Código de lote (LOTCODIGO)" in HTML
+    assert "Identificación predial (CHIP)" in HTML
+    assert "identificaciones prediales (CHIP) registradas" in HTML
+    assert "No se eligió un CHIP arbitrariamente" in HTML
+
+
 def test_blocked_reports_are_not_saved_as_successful_recents():
     helper_start = HTML.index("function _isSuccessfulHistoryResult(data)")
     helper_end = HTML.index("function saveToHistory", helper_start)
