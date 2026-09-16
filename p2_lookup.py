@@ -91,7 +91,7 @@ _L_AEROCIVIL_BLOCK = 25   # Cono de aproximación / servidumbres aeronáuticas E
 
 # External services — set each URL to a verified ArcGIS FeatureServer root
 # ("https://<host>/arcgis/rest/services/<name>/FeatureServer") or leave as None.
-# When None, that check is silently skipped (graceful degradation).
+# When None, the capability gap is returned explicitly in coverage metadata.
 #
 # Reserva Forestal Protectora Bosque Oriental de Bogotá (Cerros Orientales)
 #   Authority: Res. Min. Ambiente 463/2005; Administrator: SDA Bogotá
@@ -927,7 +927,8 @@ def _query_external_fs(
 ) -> list[dict] | None:
     """
     Query any ArcGIS FeatureServer for features intersecting (lng, lat).
-    Returns feature list or None on zero features / any error.
+    Returns feature list or None on zero features. Service errors propagate so
+    the caller can distinguish "no finding" from "the check did not run".
     Uses the same SSL-tolerant _fetch_json as the POT queries.
     """
     try:
@@ -940,8 +941,6 @@ def _query_external_fs(
             "returnGeometry": "false",
         })
     except ZeroFeaturesError:
-        return None
-    except Exception:
         return None
 
 
@@ -982,8 +981,6 @@ def _check_bic_restriction(lng: float, lat: float) -> dict | None:
             "confianza": "alta",
         }
     except ZeroFeaturesError:
-        return None
-    except Exception:
         return None
 
 
@@ -1150,7 +1147,9 @@ def _check_ronda_hidrica_restriction(lng: float, lat: float) -> dict | None:
     }
 
 
-def check_blocking_restrictions(lng: float, lat: float) -> list[dict]:
+def check_blocking_restrictions(
+    lng: float, lat: float, *, include_coverage: bool = False
+) -> list[dict] | tuple[list[dict], dict[str, str]]:
     """
     Check a WGS84 point against layers that impose hard restrictions on urban
     development. Returns a (possibly empty) list of active restriction dicts.
@@ -1159,26 +1158,35 @@ def check_blocking_restrictions(lng: float, lat: float) -> list[dict]:
     layer_id, confianza.
 
     Checks run independently — one failing or unconfigured layer never aborts
-    the others. External-service checks are skipped when the endpoint URL is None.
+    the others. Coverage records whether each source actually ran, preventing a
+    failed request from being misreported as a clean property finding.
     """
     active: list[dict] = []
-    for checker in (
-        _check_bic_restriction,
+    coverage: dict[str, str] = {
+        "aerocivil": "sin_validacion_espacial",
+    }
+    checks = (
+        ("bic", _check_bic_restriction, True),
         # _check_aerocivil_restriction disabled: Layer 25 covers the entire urban area,
         # not just the airport cone — every lot in the city was being blocked.
         # Re-enable once a GIS specialist validates the correct spatial filter.
-        _check_cerros_restriction,
-        _check_idiger_mrm_restriction,
-        _check_idiger_inundacion_restriction,
-        _check_ronda_hidrica_restriction,
-    ):
+        ("cerros_orientales", _check_cerros_restriction, bool(_CERROS_FS)),
+        ("movimientos_en_masa", _check_idiger_mrm_restriction, bool(_IDIGER_MRM_FS)),
+        ("inundacion", _check_idiger_inundacion_restriction, bool(_IDIGER_INUND_FS)),
+        ("ronda_hidrica", _check_ronda_hidrica_restriction, bool(_RONDA_FS)),
+    )
+    for key, checker, configured in checks:
+        if not configured:
+            coverage[key] = "sin_fuente_configurada"
+            continue
         try:
             result = checker(lng, lat)
+            coverage[key] = "consultado"
             if result:
                 active.append(result)
         except Exception:
-            pass  # never let a single check crash the whole lookup
-    return active
+            coverage[key] = "consulta_fallida"
+    return (active, coverage) if include_coverage else active
 
 
 # ── Main lookup ──────────────────────────────────────────────────────────────
@@ -1264,15 +1272,11 @@ def lookup(
     # ── Step 1b: Blocking restrictions — BIC, Aerocivil, Cerros, amenaza, ronda
     # Run after catastro confirms the lot exists. Results are independent of
     # treatment and do not raise — each check degrades silently on failure.
-    result["restricciones_bloqueantes"] = check_blocking_restrictions(lng, lat)
-    result["cobertura_restricciones"] = {
-        "bic": "consultado",
-        "aerocivil": "sin_validacion_espacial",
-        "cerros_orientales": "consultado" if _CERROS_FS else "sin_fuente_configurada",
-        "movimientos_en_masa": "consultado" if _IDIGER_MRM_FS else "sin_fuente_configurada",
-        "inundacion": "consultado" if _IDIGER_INUND_FS else "sin_fuente_configurada",
-        "ronda_hidrica": "consultado" if _RONDA_FS else "sin_fuente_configurada",
-    }
+    restrictions, restriction_coverage = check_blocking_restrictions(
+        lng, lat, include_coverage=True
+    )
+    result["restricciones_bloqueantes"] = restrictions
+    result["cobertura_restricciones"] = restriction_coverage
     # Coverage metadata is not a property finding. Until a source is wired,
     # keep it in `cobertura_restricciones` for transparency but do not promote
     # it to a lot-specific warning: doing so made every verdict conditional.

@@ -1225,11 +1225,12 @@ function computeRow(lot) {
   const m  = (cr.metrics || ls.metrics) || {};
 
   const areaLote  = cr.lote?.area_m2?.valor ?? ls.lote?.area_m2?.valor ?? null;
-  const areaConst = m.area_construible_max_m2?.valor ?? null;
+  const areaInfo  = portfolioArea(m);
+  const areaConst = areaInfo.valor;
   const pisos     = m.altura_base_pisos?.valor ?? m.altura_maxima_pisos?.valor ?? null;
   const ic        = m.ic_maximo?.valor ?? m.ic?.valor ?? null;
   const trat      = cr.tratamiento || ls.tratamiento || '';
-  const addr      = lot.direccion || lot.lote_codigo || '';
+  const addr      = canonicalLotAddress(lot);
   const localidad = extractLocalidad(addr);
 
   // Proforma blocked: no area_construible
@@ -1256,7 +1257,35 @@ function computeRow(lot) {
   const unidades = areaConst ? Math.floor(areaConst / s.unidad_m2) : null;
   const confianza = worstConfianza(m);
 
-  return { lot, areaLote, areaConst, pisos, ic, trat, addr, localidad, blocked, vrl, precio, delta, margen, unidades, confianza, s };
+  return { lot, areaLote, areaConst, areaEstimated: areaInfo.estimada, pisos, ic, trat, addr, localidad, blocked, vrl, precio, delta, margen, unidades, confianza, s };
+}
+
+function portfolioArea(metrics) {
+  const regulatory = [
+    metrics?.area_construible_max_sin_manzana_completa_m2,
+    metrics?.area_construible_max_m2,
+  ].find(obj => obj && Number(obj.valor) > 0 && ['resuelto', 'derivado'].includes(obj.estado));
+  if (regulatory) return { valor: Number(regulatory.valor), estimada: regulatory.estado === 'derivado' };
+
+  const derived = metrics?.area_construible_estimada;
+  const derivedValue = Number(derived?.valor_m2);
+  if (derived?.estado === 'derivado' && derived?.fuera_de_rango !== true && derivedValue > 0) {
+    return { valor: derivedValue, estimada: true };
+  }
+  return { valor: null, estimada: false };
+}
+
+function storedCalc(lot) {
+  const stored = lot?.result_json || {};
+  return stored.calc_result || stored;
+}
+
+function canonicalLotCode(lot) {
+  return storedCalc(lot)?.lote?.lotcodigo || lot?.lote_codigo || '';
+}
+
+function canonicalLotAddress(lot) {
+  return storedCalc(lot)?.direccion || lot?.direccion || canonicalLotCode(lot) || '';
 }
 
 function getLotSup(id) {
@@ -1444,7 +1473,7 @@ function renderTable() {
   document.getElementById('dt-table').style.display = '';
   empty.style.display = 'none';
 
-  const BLOCKED_TIP = 'ProformaBlocked — sin área construible calculable';
+  const BLOCKED_TIP = 'No hay un área construible válida para calcular la prefactibilidad financiera.';
 
   tbody.innerHTML = sorted.map(r => {
     const id  = r.lot.id;
@@ -1453,7 +1482,7 @@ function renderTable() {
 
     // Dirección cell
     const addrHtml = `<div class="td-addr-main" title="${esc(r.addr)}">${esc(r.addr.length > 28 ? r.addr.slice(0,26)+'…' : r.addr)}</div>`
-      + (lot.lote_codigo ? `<div class="td-addr-code">${esc(lot.lote_codigo)}</div>` : '');
+      + (canonicalLotCode(lot) ? `<div class="td-addr-code">${esc(canonicalLotCode(lot))}</div>` : '');
 
     // Delta badge
     const deltaHtml = r.delta == null
@@ -1489,7 +1518,7 @@ function renderTable() {
       <td class="td-mono">${r.areaLote != null ? fmtNum(Math.round(r.areaLote)) : '—'}</td>
       <td><span class="trat-badge ${tratClass(r.trat)}">${esc(r.trat || '—')}</span></td>
       <td class="td-mono">${r.pisos ?? '—'}</td>
-      <td class="td-mono">${r.areaConst != null ? fmtNum(Math.round(r.areaConst)) : '—'}</td>
+      <td class="td-mono">${r.areaConst != null ? `${fmtNum(Math.round(r.areaConst))}${r.areaEstimated ? ' <small title="Basado en un área estimada, no en un tope normativo">estimada</small>' : ''}` : '—'}</td>
       <td class="td-mono">${r.unidades ?? '—'}</td>
       <td class="td-precio" data-id="${id}" onclick="event.stopPropagation()">${precioHtml}</td>
       <td class="td-mono">${vrlHtml}</td>
@@ -1647,12 +1676,13 @@ function renderRPanel(lot) {
   const rj  = lot.result_json || {};
   const cr  = rj.calc_result || rj;
   const ls  = rj.lookup_snapshot || {};
-  const addr = lot.direccion || lot.lote_codigo || `${lot.lat?.toFixed(5)},${lot.lng?.toFixed(5)}`;
+  const addr = canonicalLotAddress(lot) || `${lot.lat?.toFixed(5)},${lot.lng?.toFixed(5)}`;
+  const lotCode = canonicalLotCode(lot);
 
   document.getElementById('rp-lot-addr').innerHTML = `
     <div class="rp-lot-addr">
       <div class="rp-lot-addr-main">${esc(addr)}</div>
-      ${lot.lote_codigo ? `<div class="rp-lot-addr-code">${esc(lot.lote_codigo)}</div>` : ''}
+      ${lotCode ? `<div class="rp-lot-addr-code">${esc(lotCode)}</div>` : ''}
     </div>`;
 
   const poly = ls.lote?.geojson_polygon || cr.lote?.geojson_polygon;
@@ -1882,7 +1912,7 @@ const CMP_GROUPS = [
     { id:'addr',     label:'Dirección',            fn:(r)    => r.addr || '—',                                             fmt:'text', better:null },
     { id:'localidad',label:'Localidad',             fn:(r)    => r.localidad || '—',                                        fmt:'text', better:null },
     { id:'trat',     label:'Tratamiento',           fn:(r)    => r.trat || '—',                                             fmt:'text', better:null },
-    { id:'cod',      label:'Código lote',           fn:(r)    => r.lot.lote_codigo || '—',                                  fmt:'text', better:null },
+    { id:'cod',      label:'Código lote',           fn:(r)    => canonicalLotCode(r.lot) || '—',                            fmt:'text', better:null },
     { id:'fecha',    label:'Fecha análisis',        fn:(r)    => fmtDate(r.lot.created_at),                                 fmt:'text', better:null },
   ]},
   { id:'norma', label:'Norma', rows:[
@@ -1894,7 +1924,7 @@ const CMP_GROUPS = [
     { id:'ant',      label:'Antejardín (m)',        fn:(r)    => _cmpCr(r).antejardin?.dimension_m ?? null,                 fmt:'dec1', better:'min' },
     { id:'aisl_p',   label:'Aisl. posterior (m)',   fn:(r)    => _cmpm(r,'aislamiento_posterior_m'),                        fmt:'dec1', better:'min' },
     { id:'aisl_l',   label:'Aisl. lateral (m)',     fn:(r)    => _cmpm(r,'aislamiento_lateral_m'),                          fmt:'dec1', better:'min' },
-    { id:'fach_a',   label:'Retroceso fachada A',   fn:(r)    => _cmpm(r,'retroceso_fachada_A_m'),                          fmt:'dec1', better:null  },
+    { id:'fach_a',   label:'Altura máxima de fachada A', fn:(r) => _cmpm(r,'retroceso_fachada_A_m'),                      fmt:'dec1', better:null  },
   ]},
   { id:'vol', label:'Volumen', rows:[
     { id:'area_l',   label:'Área lote (m²)',        fn:(r)    => r.areaLote,                                                fmt:'int',  better:'max', normable:false },
@@ -1975,10 +2005,10 @@ function _renderCmpTable() {
 
   // Header row
   const thCols = rows.map(r => {
-    const addr  = r.addr || r.lot.lote_codigo || '';
+    const addr  = r.addr || canonicalLotCode(r.lot) || '';
     const short = addr.length > 22 ? addr.slice(0,20)+'…' : addr;
     return `<th class="cmp-lot-hdr"><span class="addr-main" title="${esc(addr)}">${esc(short)}</span>`
-      + (r.lot.lote_codigo ? `<br><span class="addr-code">${esc(r.lot.lote_codigo)}</span>` : '') + `</th>`;
+      + (canonicalLotCode(r.lot) ? `<br><span class="addr-code">${esc(canonicalLotCode(r.lot))}</span>` : '') + `</th>`;
   }).join('');
   document.getElementById('cmp-thead').innerHTML =
     `<tr><th style="position:sticky;left:0;z-index:15;background:var(--paper-1);border-right:var(--rule-heavy);min-width:188px">Parámetro</th>${thCols}</tr>`;
@@ -2111,7 +2141,7 @@ function resetCmpScenario() {
 function exportCmpCsv() {
   if (!_cmpLots.length) return;
   const sc = _cmpScenario;
-  const headers = ['Grupo', 'Parámetro', ..._cmpLots.map(r => r.addr || r.lot.lote_codigo || r.lot.id)];
+  const headers = ['Grupo', 'Parámetro', ..._cmpLots.map(r => r.addr || canonicalLotCode(r.lot) || r.lot.id)];
   const data = [];
   for (const grp of CMP_GROUPS) {
     for (const row of grp.rows) {
@@ -2142,7 +2172,7 @@ function renderAnalysisPane(lot) {
   const rj  = lot.result_json || {};
   const cr  = rj.calc_result || rj;
   const trat = row.trat || '';
-  const addr = lot.direccion || lot.lote_codigo || `${lot.lat?.toFixed(5)},${lot.lng?.toFixed(5)}`;
+  const addr = canonicalLotAddress(lot) || `${lot.lat?.toFixed(5)},${lot.lng?.toFixed(5)}`;
   const m = (cr.metrics || {});
   const pk = cr.parking || {};
 
@@ -2293,7 +2323,7 @@ async function loadRiskHazards(lotId, lat, lng) {
     } else {
       badges.push('<span class="risk-badge desconocido">⛰ Pendiente N/D</span>');
     }
-    // Flood
+    // Flood. A missing configured source is not evidence of no threat.
     if (d.inundacion) {
       const level = /alta|alto/i.test(d.inundacion) ? 'alta' : /media|mod/i.test(d.inundacion) ? 'media' : 'media';
       badges.push(`<span class="risk-badge ${level}">💧 Inundación: ${esc(d.inundacion)}</span>`);
@@ -2304,7 +2334,7 @@ async function loadRiskHazards(lotId, lat, lng) {
       badges.push(`<span class="risk-badge ${level}">⛰ Deslizamiento: ${esc(d.deslizamiento)}</span>`);
     }
     if (!d.inundacion && !d.deslizamiento) {
-      badges.push('<span class="risk-badge baja">✓ Sin amenaza registrada (inundación/deslizamiento)</span>');
+      badges.push('<span class="risk-badge desconocido" title="Estas verificaciones no están automatizadas">Inundación y movimientos en masa: verificación pendiente</span>');
     }
     strip.innerHTML = badges.join('');
   } catch (_) {
@@ -2321,6 +2351,7 @@ async function loadVisComparison(lotId, areaM2, areaVisM2, lat, lng) {
   if (areaVisM2) url += `&area_vis_m2=${areaVisM2}`;
   if (lat) url += `&lng=${lng}&lat=${lat}`;
   url += `&precio_venta_cop_m2=${s.precio_venta}&costo_construccion_cop_m2=${s.costo_constr}`;
+  url += `&precio_venta_vis_cop_m2=${s.precio_venta}`;
   url += `&costos_blandos_pct=${s.indirectos_pct/100}&margen_objetivo_pct=${s.utilidad_pct/100}`;
   try {
     const r = await fetch(url, { headers: authHeaders() });
@@ -2407,7 +2438,7 @@ function renderReportes() {
   if (!_lots.length) { el.style.display='none'; emp.style.display=''; return; }
   el.style.display=''; emp.style.display='none';
   el.innerHTML = _lots.map(lot => {
-    const addr = lot.direccion || lot.lote_codigo || `${lot.lat?.toFixed(4)},${lot.lng?.toFixed(4)}`;
+    const addr = canonicalLotAddress(lot) || `${lot.lat?.toFixed(4)},${lot.lng?.toFixed(4)}`;
     return `<div class="report-item">
       <span class="report-addr" title="${esc(addr)}">${esc(addr)}</span>
       <span class="report-date">${fmtDate(lot.created_at)}</span>
@@ -2653,7 +2684,12 @@ async function downloadLotPdf(id) {
 async function downloadLotDxf(id) {
   const lot = _lots.find(l => l.id === id);
   if (!lot) return;
-  await _dl(`/api/dxf?lat=${lot.lat}&lng=${lot.lng}&vis_en_sitio=false`, `edificabilidad_${id.slice(0,8)}.dxf`);
+  const stored = lot.result_json || {};
+  const calc = stored.calc_result || stored;
+  const expected = calc?.lote?.lotcodigo || canonicalLotCode(lot);
+  const params = new URLSearchParams({lat: lot.lat, lng: lot.lng, vis_en_sitio: 'false'});
+  if (expected) params.set('expected_lotcodigo', expected);
+  await _dl(`/api/dxf?${params}`, `edificabilidad_${id.slice(0,8)}.dxf`);
 }
 async function downloadRpPdf() { if (_activeLot) await downloadLotPdf(_activeLot.id); }
 async function downloadRpDxf() { if (_activeLot) await downloadLotDxf(_activeLot.id); }
@@ -2666,10 +2702,10 @@ async function _dl(url, filename) {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(a.href);
-  } catch (e) { alert('Error de red: ' + e.message); }
+  } catch (e) { console.error(e); alert('No se pudo descargar el archivo. Intente de nuevo.'); }
 }
 function openInTool() {
-  if (_activeLot) window.open(`/?lat=${_activeLot.lat}&lng=${_activeLot.lng}`, '_blank');
+  if (_activeLot) window.open(`/app?lat=${_activeLot.lat}&lng=${_activeLot.lng}`, '_blank');
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -2703,7 +2739,7 @@ function clearRPanel() {
 }
 function openSheet(lot) {
   const row = _computedRows.find(r => r.lot.id === lot.id);
-  const addr = lot.direccion || lot.lote_codigo || '';
+  const addr = canonicalLotAddress(lot);
   document.getElementById('sheet-lot-addr').innerHTML = `<strong style="font-size:var(--ts-sm)">${esc(addr)}</strong>`;
   const rpRows = buildRpRows(row);
   document.getElementById('sheet-metrics').innerHTML = rpRows.map(([n,v]) =>
@@ -3020,14 +3056,24 @@ async function _batchProcessRow(row) {
         return;
       }
       row.lat=exact[0].lat; row.lng=exact[0].lng;
+      row.resolvedAddress=exact[0].label || row.direccion;
+      row.expectedLotCodigo=exact[0].lotcodigo || '';
     }
     // Analyze + auto-save
-    const p=new URLSearchParams({lat:row.lat,lng:row.lng,address:row.direccion});
+    const p=new URLSearchParams({
+      lat:row.lat,
+      lng:row.lng,
+      address:row.resolvedAddress || row.direccion,
+      searched_address:row.direccion,
+      resolved_address:row.resolvedAddress || row.direccion,
+      near_match:'false',
+    });
+    if(row.expectedLotCodigo) p.set('expected_lotcodigo',row.expectedLotCodigo);
     const cr=await fetch('/api/calc?'+p,{headers:authHeaders()}).then(r=>r.json());
     if(!cr.ok){
       const e=cr.error||'';
       if(/zero_features|layer_error|layer_parse/.test(e)){row.status='sin_dato';row.error=cr.message?.slice(0,90)||'Sin datos GIS';}
-      else if(e==='input_required'){row.status='sin_dato';row.error=cr.message||`Requiere ${cr.field||'datos adicionales'}`;}
+      else if(e==='input_required'){row.status='sin_dato';row.error=cr.message||cr.que_se_necesita||'Requiere un dato adicional';}
       else if(e==='usage_limit'){row.status='error';row.error='Límite de uso alcanzado';_batchCancelled=true;}
       else{row.status='error';row.error=cr.message?.slice(0,90)||'Error';}
       return;
@@ -3044,7 +3090,7 @@ async function _batchProcessRow(row) {
     if(row.precio_lote&&row.precio_lote>0&&row.analysisId){
       try{const p=JSON.parse(localStorage.getItem('edif_precios_v1')||'{}');p[row.analysisId]=row.precio_lote;localStorage.setItem('edif_precios_v1',JSON.stringify(p));}catch(_){}
     }
-  } catch(e){row.status='error';row.error=e.message||'Error de red';}
+  } catch(e){console.error(e);row.status='error';row.error='No se pudo completar la consulta. Intente de nuevo.';}
   finally {
     _batchRunning--;
     updateBatchRow(row); updateBatchProgress();
@@ -3099,7 +3145,8 @@ function updateBatchRow(row) {
 function batchRowHtml(row) {
   const m=row.result?.metrics||{};
   const al=row.result?.lote?.area_m2?.valor??null;
-  const ac=m?.area_construible_max_m2?.valor??null;
+  const areaInfo=portfolioArea(m);
+  const ac=areaInfo.valor;
   const pi=m?.altura_base_pisos?.valor??m?.altura_maxima_pisos?.valor??null;
   let vrl=null;
   if(ac){const s=_supuestos;const ing=ac*s.precio_venta;const cd=ac*s.costo_constr;vrl=ing-cd-cd*(s.indirectos_pct/100)-ing*(s.utilidad_pct/100);}
@@ -3109,7 +3156,7 @@ function batchRowHtml(row) {
   const tipAttr=row.error?` data-tip="${esc(row.error)}"`:'';
   const addr=row.direccion.length>38?row.direccion.slice(0,36)+'…':row.direccion;
   const acts=row.status==='ok'&&row.lat
-    ?`<button class="row-btn" onclick="window.open('/?lat=${row.lat}&lng=${row.lng}','_blank')" title="Abrir en herramienta">↗</button>`
+    ?`<button class="row-btn" onclick="window.open('/app?lat=${row.lat}&lng=${row.lng}','_blank')" title="Abrir en herramienta">↗</button>`
     :['error','sin_dato','review'].includes(row.status)
     ?`<button class="row-btn" onclick="retryBatchRow(${row.id})" title="Reintentar">↺</button>`:'';
   const dHtml=delta!=null
@@ -3120,7 +3167,7 @@ function batchRowHtml(row) {
     <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis" title="${esc(row.direccion)}"${tipAttr}>${esc(addr)}</td>
     <td><span class="bst bst-${row.status}">${esc(SLBL[row.status]||row.status)} ${spin}</span></td>
     <td class="td-mono">${al!=null?fmtNum(Math.round(al)):'—'}</td>
-    <td class="td-mono">${ac!=null?fmtNum(Math.round(ac)):'—'}</td>
+    <td class="td-mono">${ac!=null?`${fmtNum(Math.round(ac))}${areaInfo.estimada?' <small>estimada</small>':''}`:'—'}</td>
     <td class="td-mono">${pi??'—'}</td>
     <td class="td-mono">${vrl!=null?fmtCOP(vrl):'—'}</td>
     <td style="text-align:right">${dHtml}</td>
@@ -3137,11 +3184,11 @@ function onBatchFinished() {
   const errs=_batchRows.filter(r=>r.status==='error').length;
   const s=_supuestos;
   const withVrl=ok.map(r=>{
-    const ac=r.result?.metrics?.area_construible_max_m2?.valor??null; if(!ac) return null;
+    const areaInfo=portfolioArea(r.result?.metrics||{}); const ac=areaInfo.valor; if(!ac) return null;
     const ing=ac*s.precio_venta; const cd=ac*s.costo_constr;
     const vrl=ing-cd-cd*(s.indirectos_pct/100)-ing*(s.utilidad_pct/100);
     const delta=r.precio_lote&&vrl!==0?(r.precio_lote-vrl)/Math.abs(vrl)*100:null;
-    return{...r,vrl,delta,viable:vrl!=null&&(delta==null||delta<=10)};
+    return{...r,vrl,delta,areaEstimated:areaInfo.estimada,viable:vrl!=null&&(delta==null||delta<=10)};
   }).filter(Boolean);
   const viables=withVrl.filter(r=>r.viable).length;
   const top5=[...withVrl].sort((a,b)=>b.vrl-a.vrl).slice(0,5);
@@ -3157,8 +3204,8 @@ function onBatchFinished() {
         return `<div class="batch-top5-item">
           <span class="top5-rank">#${i+1}</span>
           <span class="top5-addr" title="${esc(r.direccion)}">${esc(r.direccion)}</span>
-          <span class="top5-vrl">${fmtCOP(r.vrl)}</span>${dHtml}
-          ${r.lat?`<button class="row-btn" onclick="window.open('/?lat=${r.lat}&lng=${r.lng}','_blank')" title="Abrir">↗</button>`:''}
+          <span class="top5-vrl">${fmtCOP(r.vrl)}${r.areaEstimated?' <small title="Basado en un área estimada">estimado</small>':''}</span>${dHtml}
+          ${r.lat?`<button class="row-btn" onclick="window.open('/app?lat=${r.lat}&lng=${r.lng}','_blank')" title="Abrir">↗</button>`:''}
         </div>`;
       }).join('')
     :'<div style="color:var(--ink-4);font-size:var(--ts-xs)">Sin resultados con VRL calculable.</div>';

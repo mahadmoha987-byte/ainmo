@@ -7,7 +7,7 @@ HTML = Path(__file__).with_name("index.html").read_text()
 def test_map_click_clears_stale_address_and_lookup_freezes_request_identity():
     assert "const requestAddress = document.getElementById('addr-input')" in HTML
     assert "if (addressInput) addressInput.value = '';" in HTML
-    assert "const resultAddress = d.direccion || requestAddress || `Predio ${d.lote?.lotcodigo || 'consultado'}`" in HTML
+    assert "const resultAddress = d.direccion || `Predio ${d.lote?.lotcodigo || 'consultado'}`" in HTML
 
 
 def test_near_match_keeps_searched_and_resolved_addresses_distinct():
@@ -31,6 +31,24 @@ def test_unconfigured_restriction_coverage_does_not_force_amber_verdict():
     verdict = HTML[verdict_start:verdict_end]
     assert "_bindingMetricNeedsReview(d)" in verdict
     assert "Object.values(m).some" not in verdict
+    assert "Coberturas aún no automatizadas" in HTML
+    assert "Estas coberturas no cuentan como hallazgos" in HTML
+
+
+def test_derived_buildable_area_is_a_conditional_not_green_verdict():
+    verdict_start = HTML.index("function verdictBanner(d)")
+    verdict_end = HTML.index("function blockedBanner", verdict_start)
+    verdict = HTML[verdict_start:verdict_end]
+    assert "const hasDerivedArea = m.area_construible_estimada?.estado === 'derivado'" in verdict
+    assert "|| _bindingMetricNeedsReview(d) || hasDerivedArea || outOfRange" in verdict
+
+
+def test_figure_cards_deduplicate_identical_source_text():
+    status_js = Path(__file__).with_name("static").joinpath("figure-status.js").read_text()
+    assert "function citationLine(f)" in status_js
+    assert "raw.indexOf(value)===index" in status_js
+    assert "f.fuente_verificada||f.articulo," in status_js
+    assert ".replace(/\\baltura_m\\b/gi,'altura en metros')" in status_js
 
 
 def test_financial_cards_have_no_area_and_timeout_fallbacks():
@@ -144,6 +162,24 @@ def test_megalot_and_negative_residuals_render_as_stops_not_estimates():
     assert "Alto — fuera del rango del modelo" in HTML
     assert "function _kpiNegative" in HTML
     assert "Alto — valor residual negativo" in HTML
+    assert "La vista 3D se detuvo" in HTML
+
+
+def test_financial_area_requires_a_valid_server_status():
+    start = HTML.index("function _areaForFinancials(d)")
+    end = HTML.index("function kpiStrip(d)", start)
+    function = HTML[start:end]
+    assert "estimate?.estado === 'derivado'" in function
+    assert "!estimate?.fuera_de_rango" in function
+
+
+def test_render_errors_do_not_expose_internal_exception_text():
+    start = HTML.index("function showRenderError(err)")
+    end = HTML.index("function showError", start)
+    function = HTML[start:end]
+    assert "console.error" in function
+    assert "Detalle técnico" not in function
+    assert "<pre" not in function
 
 
 def test_internal_antejardin_citation_note_is_not_user_facing():
@@ -192,3 +228,31 @@ def test_batch4_internal_parking_note_is_not_user_facing():
     assert "área_construible_max como proxy" not in calc
     assert "Los metros cuadrados " in calc
     assert "solo pueden calcularse cuando el proyecto define esa área cubierta" in calc
+
+
+def test_dead_browser_footprint_calculator_was_removed():
+    for obsolete in ("_computeLotFootprint", "_bestPisos", "_updateKpiFromFootprint", "_tryComputeFootprintArea"):
+        assert obsolete not in HTML
+
+
+def test_financial_and_height_kpis_require_explicit_valid_statuses():
+    start = HTML.index("function _areaForFinancials(d)")
+    end = HTML.index("function kpiStrip(d)", start)
+    area_function = HTML[start:end]
+    assert "regulatoryMetric?.estado || 'resuelto'" not in area_function
+    assert "['resuelto','derivado'].includes(regulatoryMetric?.estado)" in area_function
+    assert "estimate?.estado === 'derivado'" in area_function
+    kpi = HTML[end:HTML.index("function acquisitionBrief", end)]
+    assert "['resuelto','derivado'].includes(heightMetric?.estado)" in kpi
+
+
+def test_dashboard_uses_resolved_identity_and_status_checked_area():
+    dashboard = Path(__file__).with_name("dashboard.html").read_text()
+    assert "function canonicalLotAddress(lot)" in dashboard
+    assert "return storedCalc(lot)?.direccion" in dashboard
+    assert "function portfolioArea(metrics)" in dashboard
+    assert "['resuelto', 'derivado'].includes(obj.estado)" in dashboard
+    assert "derived?.fuera_de_rango !== true" in dashboard
+    assert "window.open(`/app?lat=" in dashboard
+    assert "window.open('/?lat=" not in dashboard
+    assert "ProformaBlocked" not in dashboard

@@ -121,9 +121,42 @@ def test_exact_consolidacion_contract_and_allowed_resolvers():
     hazard=d['cobertura_restricciones_detalle']['cerros_orientales']
     assert hazard['motivo']=='No hay fuente automatizada configurada para esta verificación.'
     assert hazard['incluye_en_veredicto'] is False
-    coverage_figure=next(f for f in d['figuras'] if f['id']=='cobertura_restricciones.cerros_orientales')
-    assert coverage_figure['incluye_en_veredicto'] is False
+    assert not any(f['id'].startswith('cobertura_restricciones.') for f in d['figuras'])
+    assert hazard['incluye_en_resumen_estados'] is False
+    assert hazard['es_hallazgo_del_predio'] is False
     allowed={'SDP','curaduría','IDPC','topógrafo','profesional',None}
     for obj in list(d['metrics'].values())+list(d['cobertura_restricciones_detalle'].values()):
         assert obj['estado'] in {e.value for e in Estado}
         assert obj['quien_lo_resuelve'] in allowed
+
+
+def test_metric_objects_keep_their_citation_and_trace_no_aplica_is_consistent():
+    raw = result({
+        'area_construible_max_m2': {'valor': None, 'nota': 'IC resultante'},
+        'retroceso_fachada_A_m': {
+            'valor': 42.1,
+            'confianza': 'media',
+            'fuente_D': 'SDP · Capa 38 · ANCHO',
+        },
+    }, formula_trace=[{
+        'descripcion': 'Índices de construcción y ocupación',
+        'expresion': 'No aplica: IC e IO son resultantes',
+        'resultado': None,
+        'nota': 'El Decreto no fija valores numéricos.',
+    }, {
+        'descripcion': 'Aislamiento lateral',
+        'expresion': 'tipología_continua → no_exigido',
+        'resultado': 0,
+        'unidad': 'm',
+        'nota': 'No se exige aislamiento lateral.',
+    }])
+    d = annotate_result(raw)
+    area = d['metrics']['area_construible_max_m2']
+    facade = d['metrics']['retroceso_fachada_A_m']
+    assert area['articulo_id'] == '555:310'
+    assert 'Capa 15' in area['fuente']
+    assert area['fecha_consulta'] == '2026-09-14'
+    assert facade['articulo_id'] == '466:1.11.a'
+    assert 'Capa 38' in facade['fuente']
+    assert d['formula_trace'][0]['estado'] == 'no_aplica'
+    assert d['formula_trace'][1]['estado'] == 'no_aplica'

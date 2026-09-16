@@ -63,8 +63,11 @@ def _inset_polygon(pts: list[tuple], d: float) -> list[tuple]:
         e2 = (nxt[0] - curr[0], nxt[1] - curr[1])
         l1 = math.hypot(*e1) or 1e-9
         l2 = math.hypot(*e2) or 1e-9
-        n1 = (e1[1] / l1, -e1[0] / l1)
-        n2 = (e2[1] / l2, -e2[0] / l2)
+        # For a CCW ring the interior lies to the left of each edge.
+        # The previous right-hand normal expanded the polygon and could produce
+        # a plausible-looking but larger-than-lot floor plate.
+        n1 = (-e1[1] / l1, e1[0] / l1)
+        n2 = (-e2[1] / l2, e2[0] / l2)
         bx, by = n1[0] + n2[0], n1[1] + n2[1]
         bl = math.hypot(bx, by)
         if bl < 1e-9:
@@ -113,6 +116,8 @@ def generate_dxf(calc_result: dict, lookup_snapshot: dict) -> bytes:
         return _to_bytes(doc)
 
     raw = rings[0]
+    if len(raw) > 1 and raw[0] == raw[-1]:
+        raw = raw[:-1]
     lon0 = sum(p[0] for p in raw) / len(raw)
     lat0 = sum(p[1] for p in raw) / len(raw)
     lot_pts = _ensure_ccw(_project_ring(raw, lon0, lat0))
@@ -128,9 +133,25 @@ def generate_dxf(calc_result: dict, lookup_snapshot: dict) -> bytes:
     height_m   = pisos * FLOOR_H if pisos else None
     facade_a   = metrics.get("retroceso_fachada_A_m", {}).get("valor")
 
+    area_estimate = metrics.get("area_construible_estimada") or {}
+    regulatory_footprint = metrics.get("planta_maxima_m2", {}).get("valor")
+    estimate_is_usable = (
+        area_estimate.get("estado") == "derivado"
+        and not area_estimate.get("fuera_de_rango")
+        and (area_estimate.get("valor_m2") or 0) > 0
+    )
+    can_model_building = bool(
+        isinstance(regulatory_footprint, (int, float)) and regulatory_footprint > 0
+        or estimate_is_usable
+    )
+
     known = [v for v in (ant, aisl_post, aisl_lat or 0) if v is not None and v >= 0]
     uniform_inset = max(known) if known else 0
     footprint = _inset_polygon(lot_pts, uniform_inset) if uniform_inset > 0.5 else lot_pts
+    lot_area = abs(_signed_area(lot_pts))
+    footprint_area = abs(_signed_area(footprint))
+    if not can_model_building or footprint_area <= 0 or footprint_area > lot_area * 1.001:
+        can_model_building = False
 
     # ── Plan view (Z = 0) ─────────────────────────────────────────────────────
 
@@ -138,15 +159,15 @@ def generate_dxf(calc_result: dict, lookup_snapshot: dict) -> bytes:
     _polyline(msp, lot_pts, layer="LOT", closed=True, z=0)
 
     # SETBACK zone outline (if any)
-    if uniform_inset > 0.5 and footprint is not lot_pts:
+    if can_model_building and uniform_inset > 0.5 and footprint is not lot_pts:
         _polyline(msp, footprint, layer="SETBACK", closed=True, z=0)
 
     # FOOTPRINT (at grade)
-    if footprint is not lot_pts:
+    if can_model_building and footprint is not lot_pts:
         _polyline(msp, footprint, layer="FOOTPRINT", closed=True, z=0)
 
     # ── 3-D view: floor plates and top ────────────────────────────────────────
-    if height_m and pisos:
+    if can_model_building and height_m and pisos:
         for f in range(1, int(pisos) + 1):
             z = f * FLOOR_H
             _polyline(msp, footprint, layer="FLOORS", closed=True, z=z)
@@ -157,6 +178,11 @@ def generate_dxf(calc_result: dict, lookup_snapshot: dict) -> bytes:
         corners = [(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)]
         for cx_, cy_ in corners:
             msp.add_line((cx_, cy_, 0), (cx_, cy_, height_m), dxfattribs={"layer": "FOOTPRINT"})
+    elif not can_model_building:
+        reason = area_estimate.get("motivo") or (
+            "No se dibujó una envolvente: falta una huella normativa o una estimación geométrica válida."
+        )
+        _add_note(msp, reason, (0, 0, 0))
 
     # FACADE PLANE — horizontal rectangle at height A
     if facade_a and facade_a > 0:
@@ -194,7 +220,7 @@ def generate_dxf(calc_result: dict, lookup_snapshot: dict) -> bytes:
         notes.append(f"Altura: {pisos} pisos × {FLOOR_H} m = {height_m:.0f} m")
     if facade_a:
         notes.append(f"Retroceso fachada A: {facade_a:.1f} m (altura máx fachada sobre espacio público)")
-    fp_area = abs(_signed_area(footprint)) if footprint else None
+    fp_area = abs(_signed_area(footprint)) if can_model_building and footprint else None
     if fp_area:
         notes.append(f"Planta libre aprox.: {fp_area:,.0f} m²")
 

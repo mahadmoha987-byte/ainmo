@@ -9,9 +9,9 @@
     .replace(/área_construible_max(?:_m2)?/gi,'área construible usada como base')
     .replace(/huella_x_pisos/gi,'huella edificable × pisos permitidos')
     .replace(/sin_fuente_configurada/gi,'sin fuente automatizada')
-    .replace(/ancho_via_m/gi,'ancho total de la vía')
-    .replace(/frente_m/gi,'frente del lote')
-    .replace(/altura_m/gi,'altura en metros')
+    .replace(/\bancho_via_m\b/gi,'ancho total de la vía')
+    .replace(/\bfrente_m\b/gi,'frente del lote')
+    .replace(/\baltura_m\b/gi,'altura en metros')
     .replace(/\b([a-záéíóúñ]+(?:_[a-záéíóúñ0-9]+)+)\b/gi,match=>match.replaceAll('_',' '));
   const sourceText=value=>value==='sin_dato'?'Fuente no disponible':value;
   const humanKey=key=>({
@@ -74,6 +74,14 @@
       return `<div><dt>${esc(item.etiqueta)}</dt><dd class="${itemNumeric?'':'figure-text-value'}">${display(item)}${itemNumeric&&item.unidad?` <small>${esc(item.unidad)}</small>`:''}</dd></div>`;
     }).join('')}</dl>`;
   }
+  function citationLine(f){
+    const raw=[f.fuente_verificada||f.articulo,
+      sourceText(f.fuente_dato||f.fuente||'Consulte la trazabilidad para verificar esta fuente')]
+      .map(value=>plain(value)).filter(Boolean);
+    const unique=raw.filter((value,index)=>raw.indexOf(value)===index);
+    unique.push(`consulta ${f.fecha_consulta||'fecha no disponible'}`);
+    return unique.map(esc).join(' · ');
+  }
   function card(f,compact=false,headingLevel=3,primary=false){
     const numeric=numericFigure(f);
     const heading=`h${Math.min(6,Math.max(2,headingLevel))}`;
@@ -98,9 +106,9 @@
       ${f.advertencia?`<p class="derived-warning">${esc(plain(f.advertencia))}</p>`:''}
       ${f.metodo?`<p class="m-note">Método: ${esc(plain(f.metodo))} · confianza ${esc(plain(f.confianza))}</p>`:''}
       ${f.supuestos?.length?`<details><summary>Supuestos y entradas</summary><ul>${f.supuestos.map(x=>`<li>${esc(plain(x))}</li>`).join('')}</ul>${renderEntries(f.entradas??{})}</details>`:''}
-      <p class="figure-source">${esc(f.fuente_verificada||f.articulo||f.fuente||f.articulo_id||'Fuente del dato')} · ${esc(sourceText(f.fuente_dato||'Fuente pendiente de individualizar'))} · consulta ${esc(f.fecha_consulta||'fecha no disponible')}</p>
+      <p class="figure-source">${citationLine(f)}</p>
       <details class="figure-article" data-article-id="${esc(f.articulo_id||'')}"><summary>Ver el texto del artículo ▾</summary>
-        <div class="article-text">${f.articulo_id?'Abra para consultar el corpus local.':'No hay una transcripción normativa cotejada para esta figura. Los datos catastrales y las estimaciones no son cifras literales del decreto; las referencias pendientes deben verificarse en la fuente.'}</div>
+        <div class="article-text">${f.articulo_id?'Abra para consultar el corpus local.':'Esta figura no corresponde a una cita literal del decreto. Verifique su fuente en la trazabilidad del informe.'}</div>
         <p><strong>Aplicado a este predio:</strong> ${esc(f.etiqueta)}: ${applied}. ${esc(plain(f.motivo))}</p>
       </details></article>`;
   }
@@ -196,7 +204,7 @@
     try{
       corpusPromise ||= fetch('/static/article-corpus.json?v=20260914').then(r=>{if(!r.ok)throw Error('corpus');return r.json();}).catch(e=>{corpusPromise=null;throw e;});
       const a=(await corpusPromise).articulos[id];
-      details.querySelector('.article-text').innerHTML=a?`<strong>${esc(a.titulo)}</strong><p class="m-note">${esc(a.alcance)} · ${esc(a.version)} · cotejo ${esc(a.fecha_cotejo)}</p><blockquote>${esc(a.texto)}</blockquote><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">Abrir fuente oficial ↗</a>`:'Transcripción pendiente de cotejo; consulte la fuente indicada. No se presenta un texto inventado.';
+      details.querySelector('.article-text').innerHTML=a?`<strong>${esc(a.titulo)}</strong><p class="m-note">${esc(a.alcance)} · ${esc(a.version)} · verificado ${esc(a.fecha_cotejo)}</p><blockquote>${esc(a.texto)}</blockquote><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">Abrir fuente oficial ↗</a>`:'El texto normativo no está incorporado en el corpus local. Consulte directamente la fuente oficial indicada.';
     }catch(_){details.querySelector('.article-text').textContent='No se pudo cargar el corpus local. Cierre y vuelva a abrir para reintentar.';}
   }
   function init(){

@@ -3,7 +3,7 @@
 api.py — FastAPI backend for the Bogotá buildability tool
 Run: uvicorn api:app --reload --port 8765
 """
-import os, sys, json
+import os, sys, json, logging
 sys.path.insert(0, os.path.dirname(__file__))
 
 from contextlib import asynccontextmanager
@@ -22,6 +22,8 @@ import home_news
 from cabida import proforma as proforma_mod
 from cabida.market_defaults import MARKET_DEFAULTS, get_sale_price_default
 from regulatory import context as regulatory_context
+
+logger = logging.getLogger("ainmo.api")
 
 # ── GIS response cache (24 h TTL, keyed by rounded coords) ────────────────────
 _GIS_CACHE: dict = {}          # key → (timestamp, result_dict)
@@ -92,7 +94,11 @@ def _apply_address_identity(
     the official Catastro plate they deliberately selected.  The latter must
     always be the report title; the former is retained only for disclosure.
     """
-    actual = str(resolved_address or address or "").strip()
+    # A near match is never allowed to inherit the typed query as its title.
+    # If the caller omitted the resolved candidate, use the cadastral lot label
+    # instead of silently presenting the unverified input as the analysed place.
+    lot_label = f"Predio {(result.get('lote') or {}).get('lotcodigo')}" if (result.get("lote") or {}).get("lotcodigo") else ""
+    actual = str((resolved_address if near_match else (resolved_address or address)) or lot_label).strip()
     searched = str(searched_address or actual).strip()
     if actual:
         result["direccion"] = actual
@@ -122,7 +128,10 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["*"],
-    allow_credentials=True,
+    # Authentication is carried explicitly in the Authorization header; the
+    # public API does not use cross-origin cookies. Wildcard origins and
+    # credentialed CORS are an invalid/ambiguous browser combination.
+    allow_credentials=False,
 )
 
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -353,8 +362,9 @@ async def geocode_endpoint(q: str = Query(..., description="Dirección en Bogot�
                 "message": message,
             })
         return {"ok": True, "candidates": candidates, "resolution": result.get("resolution")}
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": str(exc)})
+    except Exception:
+        logger.exception("Geocoding failed")
+        return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": "No se pudo consultar el servicio de direcciones. Intente de nuevo."})
 
 
 @app.get("/api/address-suggest")
@@ -534,7 +544,7 @@ async def calc_endpoint(
             "message": (
                 "La placa domiciliaria de Catastro identifica el lote "
                 f"{exc.expected}, pero su punto publicado cae dentro del lote "
-                f"{exc.resolved or 'SIN_DATO'}. No se calcularon normas para evitar "
+                f"{exc.resolved or 'un lote sin código resuelto'}. No se calcularon normas para evitar "
                 "mostrar por error las del predio vecino. Seleccione el polígono correcto "
                 "en el mapa o verifique el CHIP/código de lote en Catastro."
             ),
@@ -546,7 +556,7 @@ async def calc_endpoint(
         return JSONResponse(status_code=200, content={
             "ok": False, "error": "input_required",
             "estado": "insuficiente", "motivo": str(exc),
-            "que_se_necesita": f"Aportar {field} según el mensaje del cálculo.", "quien_lo_resuelve": "arquitecto / SDP",
+            "que_se_necesita": _missing_field_label(field), "quien_lo_resuelve": "profesional",
             "field": field, "message": str(exc),
         })
     except p2_lookup.ZeroFeaturesError as exc:
@@ -555,13 +565,13 @@ async def calc_endpoint(
             return JSONResponse(status_code=200, content={
                 "ok": False,
                 "error": "layer_zero_features",
-                "estado": "insuficiente", "motivo": "La capa consultada no contiene un registro aplicable; es SIN_DATO.",
+                "estado": "insuficiente", "motivo": "La capa consultada no contiene un registro aplicable para este predio.",
                 "que_se_necesita": "Confirmar el dato en la cartografía oficial.", "quien_lo_resuelve": "SDP",
                 "layer_name": layer_info["name"],
                 "layer_id": layer_info["id"],
                 "message": (
                     f"El predio existe en Catastro, pero {layer_info['name']} no contiene "
-                    "un registro aplicable en este punto. Esto es SIN_DATO, no ausencia de restricción."
+                    "un registro aplicable en este punto. El dato no está disponible; esto no significa que la restricción no exista."
                 ),
             })
         return JSONResponse(status_code=200, content={
@@ -604,6 +614,7 @@ async def calc_endpoint(
             "message": f"{layer_info['name']} no devolvió información para este lote. {layer_info['action']}",
         })
     except Exception:
+        logger.exception("Calculation endpoint failed")
         return JSONResponse(status_code=500, content={
             "ok": False, "error": "internal",
             "estado": "error", "motivo": "El motor no pudo completar el cálculo por un error interno.",
@@ -644,8 +655,9 @@ async def units_endpoint(
         return {"ok": True, "data": result}
     except ValueError as exc:
         return JSONResponse(status_code=200, content={"ok": False, "error": "validation_error", "message": str(exc)})
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": str(exc)})
+    except Exception:
+        logger.exception("Unit estimation failed")
+        return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": "No se pudo calcular la mezcla de unidades. Intente de nuevo."})
 
 
 # ── Pro-forma (land residual) ─────────────────────────────────────────────────
@@ -782,8 +794,9 @@ async def proforma_endpoint(
         }
     except proforma_mod.ProformaBlocked as exc:
         return JSONResponse(status_code=200, content={"ok": False, "error": "blocked", "message": str(exc)})
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": str(exc)})
+    except Exception:
+        logger.exception("Pro-forma failed")
+        return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": "No se pudo calcular el escenario financiero. Intente de nuevo."})
 
 
 # ── PDF report ────────────────────────────────────────────────────────────────
@@ -845,8 +858,11 @@ async def report_endpoint(
         })
     except p2_lookup.ZeroFeaturesError as exc:
         return JSONResponse(status_code=200, content={"ok": False, "error": "zero_features", "message": str(exc)})
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": str(exc)})
+    except p2_lookup.BuildabilityLookupError:
+        return JSONResponse(status_code=200, content={"ok": False, "error": "layer_error", "message": "Una fuente cartográfica no respondió. Intente de nuevo."})
+    except Exception:
+        logger.exception("PDF report generation failed")
+        return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": "No se pudo generar el informe PDF."})
 
 
 @app.get("/api/report/html")
@@ -890,8 +906,19 @@ async def report_html_endpoint(
             "resolved_lotcodigo": exc.resolved or None,
             "message": "El punto no corresponde al lote esperado; no se generó la vista previa.",
         })
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": str(exc)})
+    except calc.InputRequired as exc:
+        field = _detect_missing_field(str(exc))
+        return JSONResponse(status_code=200, content={
+            "ok": False, "error": "input_required", "field": field,
+            "message": str(exc), "que_se_necesita": _missing_field_label(field),
+        })
+    except p2_lookup.ZeroFeaturesError as exc:
+        return JSONResponse(status_code=200, content={"ok": False, "error": "zero_features", "message": str(exc)})
+    except p2_lookup.BuildabilityLookupError:
+        return JSONResponse(status_code=200, content={"ok": False, "error": "layer_error", "message": "Una fuente cartográfica no respondió. Intente de nuevo."})
+    except Exception:
+        logger.exception("HTML report generation failed")
+        return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": "No se pudo generar la vista previa del informe."})
 
 
 # ── Saved analyses ────────────────────────────────────────────────────────────
@@ -964,7 +991,9 @@ async def update_analysis_endpoint(analysis_id: str, request: Request):
     except Exception:
         return JSONResponse(status_code=400, content={"ok": False, "message": "JSON inválido"})
     if "tags" in body:
-        tags = [str(t) for t in body["tags"] if t]
+        if not isinstance(body["tags"], list):
+            return JSONResponse(status_code=400, content={"ok": False, "error": "validation_error", "message": "Las etiquetas deben enviarse como una lista."})
+        tags = [str(t).strip()[:60] for t in body["tags"] if str(t).strip()][:20]
         await db.update_analysis_tags(analysis_id, user["id"], tags)
     if "notas" in body or "notes" in body:
         notas = str(body.get("notas", body.get("notes", "")))
@@ -989,14 +1018,26 @@ async def analysis_report_endpoint(analysis_id: str, request: Request, preview: 
     row = await db.get_analysis(analysis_id, user["id"])
     if not row:
         return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
-    stored = row["result_json"]
-    lu = stored["lookup_snapshot"]
-    result = stored["calc_result"]
-    address = row.get("direccion") or "Dirección no especificada"
-    loop = asyncio.get_event_loop()
-    pdf_bytes = await loop.run_in_executor(
-        None, lambda: pdf_report.generate_pdf(calc_result=result, lookup_snapshot=lu, address=address)
-    )
+    try:
+        stored = row.get("result_json") or {}
+        lu = stored.get("lookup_snapshot") or {}
+        result = stored.get("calc_result") or stored
+        if not isinstance(result, dict) or not result.get("metrics"):
+            return JSONResponse(status_code=422, content={
+                "ok": False,
+                "error": "legacy_analysis_incomplete",
+                "message": "Este análisis guardado no contiene un resultado completo. Vuelva a consultar el predio para generar el informe.",
+            })
+        address = result.get("direccion") or row.get("direccion") or f"Predio {row.get('lote_codigo') or 'consultado'}"
+        loop = asyncio.get_event_loop()
+        pdf_bytes = await loop.run_in_executor(
+            None, lambda: pdf_report.generate_pdf(calc_result=result, lookup_snapshot=lu, address=address)
+        )
+    except Exception:
+        logger.exception("Saved analysis PDF generation failed", extra={"analysis_id": analysis_id})
+        return JSONResponse(status_code=500, content={
+            "ok": False, "error": "internal", "message": "No se pudo generar el informe guardado."
+        })
     disposition = "inline" if preview else 'attachment; filename="prefactibilidad.pdf"'
     from fastapi.responses import Response
     return Response(content=pdf_bytes, media_type="application/pdf",
@@ -1020,9 +1061,11 @@ async def dxf_endpoint(
     if not user and not auth.dev_mode():
         return JSONResponse(status_code=401, content={"ok": False, "error": "auth_required"})
     try:
-        expected_lotcodigo = str(expected_lotcodigo or "").strip()
-        lu = await asyncio.to_thread(_gis_lookup_cached, lng, lat, vis_en_sitio, expected_lotcodigo)
-        result = calc.calculate(lu, anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m)
+        lu, result = await _calculate_current_lot(
+            lng=lng, lat=lat, vis_en_sitio=vis_en_sitio,
+            anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m,
+            expected_lotcodigo=expected_lotcodigo,
+        )
         loop = asyncio.get_event_loop()
         dxf_bytes = await loop.run_in_executor(
             None, lambda: dxf_export.generate_dxf(calc_result=result, lookup_snapshot=lu)
@@ -1032,10 +1075,17 @@ async def dxf_endpoint(
             media_type="application/dxf",
             headers={"Content-Disposition": 'attachment; filename="edificabilidad.dxf"'},
         )
+    except CadastralMismatchError as exc:
+        return JSONResponse(status_code=200, content={
+            "ok": False, "error": "cadastral_mismatch",
+            "expected_lotcodigo": exc.expected, "resolved_lotcodigo": exc.resolved or None,
+            "message": "El punto no corresponde al lote esperado; no se generó el DXF.",
+        })
     except calc.InputRequired as exc:
         return JSONResponse(status_code=200, content={"ok": False, "error": "input_required", "message": str(exc)})
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": str(exc)})
+    except Exception:
+        logger.exception("DXF generation failed")
+        return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": "No se pudo generar el archivo DXF."})
 
 
 # ── VIS/VIP vs No-VIS comparison pro-forma ───────────────────────────────────
@@ -1048,13 +1098,14 @@ async def proforma_vis_comparison(
     lat: float | None = Query(None),
     precio_lote_cop: float | None = Query(None),
     precio_venta_cop_m2: float | None = Query(None),
+    precio_venta_vis_cop_m2: float | None = Query(None),
     costo_construccion_cop_m2: float | None = Query(None),
     costos_blandos_pct: float | None = Query(None),
     margen_objetivo_pct: float | None = Query(None),
 ):
     """Run the pro-forma for both the base scenario and the VIS≥75% bonus scenario."""
     md = MARKET_DEFAULTS
-    lookup_snapshot = {"input": {"lng": lng, "lat": lat}} if (lng and lat) else None
+    lookup_snapshot = {"input": {"lng": lng, "lat": lat}} if (lng is not None and lat is not None) else None
 
     def _run(area: float, pv_override: float | None, cc_override: float | None,
              cb_override: float | None, mg_override: float | None) -> dict | None:
@@ -1086,17 +1137,19 @@ async def proforma_vis_comparison(
         except proforma_mod.ProformaBlocked:
             return None
 
-    # VIS market defaults — VIS scenario always uses VIS construction cost and margin
-    vis_precio = md["precio_venta_cop_m2"].get("bosa", {}).get("valor") or 3_500_000
+    # Keep the comparison auditable: never inject a city-wide VIS sale price or
+    # a special target margin that the user did not provide. By default both
+    # scenarios use the same explicit sale-price and margin assumptions; only
+    # area and construction-cost typology differ.
+    vis_precio = precio_venta_vis_cop_m2 if precio_venta_vis_cop_m2 is not None else precio_venta_cop_m2
     vis_costo = md["costos_construccion_cop_m2"]["vis"]["valor"]
-    vis_blandos = costos_blandos_pct or md["costos_blandos_pct"]["valor"]
-    vis_margen = 0.15  # lower target margin for VIS (Art. 310)
+    vis_blandos = costos_blandos_pct if costos_blandos_pct is not None else md["costos_blandos_pct"]["valor"]
+    vis_margen = margen_objetivo_pct if margen_objetivo_pct is not None else md["margen_objetivo_pct"]["valor"]
 
     base_result = _run(area_m2, precio_venta_cop_m2, costo_construccion_cop_m2,
                        costos_blandos_pct, margen_objetivo_pct)
     vis_area = area_vis_m2 or area_m2
-    # VIS price uses market VIS default (not user's No-VIS price override)
-    vis_result = _run(vis_area, vis_precio, vis_costo, vis_blandos, vis_margen)
+    vis_result = _run(vis_area, vis_precio, vis_costo, vis_blandos, vis_margen) if vis_precio is not None else None
 
     return {
         "ok": True,
@@ -1106,8 +1159,9 @@ async def proforma_vis_comparison(
             "vis_area_m2": vis_area,
             "vis_notas": [
                 f"Costo construcción VIS: ${vis_costo:,}/m²".replace(",", "."),
-                f"Precio venta VIS: ${vis_precio:,}/m² (referencia mercado Bogotá)".replace(",", "."),
-                "Margen objetivo VIS: 15% sobre ingresos (vs. " + f"{int((margen_objetivo_pct or md['margen_objetivo_pct']['valor'])*100)}% base)",
+                (f"Precio de venta VIS: ${vis_precio:,.0f}/m² — supuesto ingresado para el escenario".replace(",", ".")
+                 if vis_precio is not None else "Precio de venta VIS pendiente: ingréselo para comparar escenarios"),
+                f"Margen objetivo: {int(vis_margen*100)}% en ambos escenarios; es un supuesto financiero, no una regla del Art. 310.",
                 "Aplica sólo si ≥75% del índice efectivo se destina a VIS/VIP (Art. 310 §3 D.555/2021)",
             ],
         },
@@ -1116,31 +1170,9 @@ async def proforma_vis_comparison(
 
 # ── Risk hazards: flood, landslide, slope ─────────────────────────────────────
 
-# Bogotá IDRD/IDECA SIG layers for amenazas
-_AMENAZA_FS = "https://serviciosgis.ideca.gov.co/arcgis/rest/services"
-
-# Fallback: use the same POT FS — Capa 31 = Localidades, we'll try known amenaza layers
-# From POT Mapas Bogotá: amenaza inundación = IDU/SDP services
-# Use SIG Catastro for amenaza layers (confirmed endpoints from IDECA open data)
-_RISK_FS_BASE = (
-    "https://serviciosgis.ideca.gov.co/arcgis/rest/services/Mapa_Referencia"
-    "/amenazas_bogota/FeatureServer"
-)
-
 # OpenTopoData SRTM 30m
 _TOPO_URL = "https://api.opentopodata.org/v1/srtm30m"
 _SLOPE_OFFSET_DEG = 0.00045   # ~50 m offset in degrees
-
-
-async def _fetch_elevation(lat: float, lng: float) -> float | None:
-    """Query OpenTopoData for a single point elevation in metres."""
-    try:
-        async with httpx.AsyncClient(timeout=8) as c:
-            r = await c.get(_TOPO_URL, params={"locations": f"{lat},{lng}"})
-            data = r.json()
-            return data["results"][0]["elevation"]
-    except Exception:
-        return None
 
 
 async def _calc_slope_pct(lat: float, lng: float) -> float | None:
@@ -1166,52 +1198,16 @@ async def _calc_slope_pct(lat: float, lng: float) -> float | None:
         return None
 
 
-async def _query_amenaza_layer(layer_id: int, lat: float, lng: float) -> str | None:
-    """
-    Query a FeatureServer amenaza layer; return first feature's risk field or None.
-    Tries IDECA endpoint; silently returns None on any error.
-    """
-    try:
-        params = {
-            "geometry": f"{lng},{lat}",
-            "geometryType": "esriGeometryPoint",
-            "inSR": "4326",
-            "spatialRel": "esriSpatialRelIntersects",
-            "outFields": "*",
-            "returnGeometry": "false",
-            "f": "json",
-        }
-        async with httpx.AsyncClient(timeout=4) as c:
-            r = await c.get(f"{_RISK_FS_BASE}/{layer_id}/query", params=params)
-            feats = r.json().get("features", [])
-        if not feats:
-            return None
-        attrs = feats[0].get("attributes", {})
-        # Try common field names for risk category
-        for fld in ("AMENAZA", "CATEGORIA", "NIVEL", "CLASIFICACION", "TIPO_AMENAZA"):
-            if fld in attrs and attrs[fld]:
-                return str(attrs[fld])
-        return "presente"
-    except Exception:
-        return None
-
-
 @app.get("/api/risk/hazards")
 async def risk_hazards_endpoint(
     lat: float = Query(...),
     lng: float = Query(...),
 ):
     """
-    Return flood risk, landslide risk, and slope for a given point.
-    Non-blocking: each sub-query times out independently; missing data = None.
+    Return the one configured terrain-screening signal. Flood and landslide
+    remain explicit coverage gaps until verified official layers are wired.
     """
-    slope_task = asyncio.create_task(_calc_slope_pct(lat, lng))
-    flood_task = asyncio.create_task(_query_amenaza_layer(0, lat, lng))   # layer 0 = inundación
-    landslide_task = asyncio.create_task(_query_amenaza_layer(1, lat, lng))  # layer 1 = movimientos en masa
-
-    slope = await slope_task
-    flood = await flood_task
-    landslide = await landslide_task
+    slope = await _calc_slope_pct(lat, lng)
 
     # Slope risk classification
     slope_flag = None
@@ -1223,25 +1219,26 @@ async def risk_hazards_endpoint(
         else:
             slope_flag = "baja"
 
-    all_missing = slope is None and flood is None and landslide is None
     return {
         "ok": True,
         "data": {
-            "estado": "SIN_DATO" if all_missing else "OK",
-            "nota": (
-                "Las fuentes de amenaza y pendiente no respondieron; no interprete este resultado como ausencia de riesgo."
-                if all_missing else None
-            ),
+            "estado": "insuficiente",
+            "nota": "La pendiente es una aproximación topográfica. Ainmo aún no tiene fuentes oficiales automatizadas para inundación ni movimientos en masa; estos vacíos no significan ausencia de amenaza.",
             "slope_pct": slope,
             "slope_riesgo": slope_flag,
             "slope_nota": (
                 "Pendiente >10%: se recomienda estudio geotécnico (NSR-10 Cap. H)."
                 if slope and slope > 10 else None
             ),
-            "inundacion": flood,
-            "deslizamiento": landslide,
+            "inundacion": None,
+            "deslizamiento": None,
+            "verificaciones": {
+                "pendiente": {"estado": "derivado" if slope is not None else "insuficiente", "valor_pct": slope, "fuente": "OpenTopoData SRTM 30m"},
+                "inundacion": {"estado": "insuficiente", "motivo": "No hay una fuente oficial automatizada configurada para esta verificación."},
+                "movimientos_en_masa": {"estado": "insuficiente", "motivo": "No hay una fuente oficial automatizada configurada para esta verificación."},
+            },
             "fuente_slope": "OpenTopoData SRTM 30m",
-            "fuente_amenaza": "IDECA SIG Bogotá — amenazas_bogota FeatureServer",
+            "fuente_amenaza": None,
         },
     }
 
@@ -1301,6 +1298,15 @@ def _detect_missing_field(msg: str) -> str:
     if "antejard" in msg.lower():
         return "antejardin"
     return "unknown"
+
+
+def _missing_field_label(field: str) -> str:
+    return {
+        "anu_m2": "el Área Neta Urbanizable (ANU) aprobada en el Plan Parcial",
+        "frente_m": "la medida del frente del lote en metros",
+        "ancho_via_m": "el perfil vial completo en metros",
+        "antejardin": "la dimensión oficial del antejardín",
+    }.get(field, "el dato requerido indicado por el cálculo")
 
 
 # ── Share links ───────────────────────────────────────────────────────────────

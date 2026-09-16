@@ -133,6 +133,13 @@ def annotate_result(result, lookup=None):
     def add(path, label, obj, key, unit="", section="volumetria", ref=None, source=None):
         obj.update(_classify(key, obj, trat))
         obj.setdefault("fecha_consulta", (d.get("consulta") or {}).get("fecha"))
+        # Keep the citation on the canonical object as well as on its rendered
+        # figure.  Downstream consumers (PDF, dashboard, exports) should not
+        # need to reverse-map a figure id to recover the source of a value.
+        if source:
+            obj.setdefault("fuente", source)
+        if ref:
+            obj.setdefault("articulo_id", ref)
         figure = dict(obj, id=path, etiqueta=label, unidad=unit, seccion=section,
                       articulo_id=ref, fuente_dato=source or obj.get("fuente") or "Fuente no individualizada en el cálculo; verificar trazabilidad.")
         figures.append(figure)
@@ -186,7 +193,7 @@ def annotate_result(result, lookup=None):
         source = "SDP · Capa 15 · TRATAMIENTO y ALTURA_MAXIMA"
         if "aislamiento" in key or "retroceso" in key:
             ref = None  # Annex quotations require an exact section mapping, not a guessed article.
-            source = obj.get("fuente") or "Anexo 5: sección del cálculo pendiente de cotejo documental."
+            source = obj.get("fuente") or "Anexo 5: consulte la regla aplicable en la trazabilidad del informe."
         if key == "aislamiento_lateral_m":
             ref = "555:310" if obj.get("valor") == 0 and "CONSOLIDACION" in trat else "466:1.9.b"
             source = "SDP · Capa 15 · TIPOLOGIA; Anexo 5 D.466/2024, Sección 1.9.b y Art. 310.3"
@@ -201,14 +208,15 @@ def annotate_result(result, lookup=None):
             ref = "466:3.2.a"
         if key == "retroceso_fachada_A_m":
             ref = "466:1.11.a"
-            source = obj.get("fuente_D") or "SDP · Capa 38 · ANCHO (calzada, no perfil completo)"
+            road_source = obj.get("fuente_D") or "SDP · Capa 38 · ANCHO (calzada, no perfil completo)"
+            source = f"Anexo 5 D.466/2024 · Sección 1.11.a; {road_source}"
         if key == "area_construible_plan_parcial_m2":
             ref = "555:303"
         if key == "area_construible_estimada":
             source = "Catastro Capa 0; SDP Capas 15 ALTURA_MAXIMA, 22 DIMENSION y 38 ANCHO; supuestos geométricos."
         if "253/2026" in str(obj.get("articulo", "")):
             ref = None  # Anexo 36.1 is not Article 310: do not substitute a quote.
-            source = obj.get("fuente") or "Anexo 36.1 D.253/2026; transcripción pendiente de cotejo."
+            source = obj.get("fuente") or "Anexo 36.1 D.253/2026; consulte el acto oficial enlazado."
         add(f"metrics.{key}", LABELS.get(key, key.replace("_", " ")), obj, key, unit, ref=ref, source=source)
     reference = d.get("referencia_obligaciones_urbanisticas_2026") or {}
     if reference:
@@ -222,17 +230,10 @@ def annotate_result(result, lookup=None):
         f = add(f"parking.{key}", label, obj, key, "%" if key.endswith("pct") else "m²", ref="555:389", source="SDP · Capa 14 · CODIGO; base de área Art. 390")
         if key.endswith("m2"):
             f.update(_status("derivado", "Área calculada con el porcentaje y la base de área del escenario.", "Confirmar base cubierta excluyendo estacionamientos y sótanos (Art. 390).", "arquitecto") if _finite(pk.get(key)) else _status("insuficiente", "No se dispone de una base de área para calcular los metros cuadrados de estacionamientos.", "Definir área cubierta del proyecto para estacionamientos según Art. 390.", "arquitecto"))
-    restriction_names = {"bic":"Patrimonio / BIC", "aerocivil":"Restricción aeronáutica", "cerros_orientales":"Cerros Orientales", "movimientos_en_masa":"Amenaza por movimientos en masa", "inundacion":"Amenaza por inundación", "ronda_hidrica":"Ronda hídrica"}
-    for key, coverage in (d.get("cobertura_restricciones") or {}).items():
-        if coverage == "consultado":
-            continue
-        # A successfully queried layer is not evidence of absence of a restriction.
-        figures.append(dict(id=f"cobertura_restricciones.{key}", etiqueta=restriction_names.get(key,key), valor=None, unidad="", seccion="restricciones", articulo_id=None, incluye_en_veredicto=False,
-            fuente_dato="Cobertura de consulta GIS; no es un concepto de la autoridad.", fecha_consulta=(d.get("consulta") or {}).get("fecha"),
-            **_status("requiere_concepto" if coverage == "consultado" else "insuficiente",
-                "Se consultó la capa; la aplicabilidad y las condiciones del instrumento deben verificarse." if coverage == "consultado" else "No se verificó espacialmente esta restricción; SIN_DATO no significa ausencia de afectación.",
-                "Obtener ficha o concepto oficial aplicable al polígono del predio.", "IDPC" if key=="bic" else "Aerocivil" if key=="aerocivil" else "IDIGER" if key in {"inundacion","movimientos_en_masa"} else "SDA / SDP")))
-    # Preserve the legacy coverage codes and expose an additive object contract.
+    # Coverage is product capability metadata, not a lot-specific finding. Keep
+    # it explicit, but never count an unconfigured source as an unresolved
+    # property variable or render it with the same status vocabulary as a check
+    # that actually ran.
     d["cobertura_restricciones_detalle"] = {}
     for key, coverage in (d.get("cobertura_restricciones") or {}).items():
         if coverage == "sin_fuente_configurada":
@@ -244,6 +245,8 @@ def annotate_result(result, lookup=None):
         d["cobertura_restricciones_detalle"][key] = {
             "codigo": coverage,
             "incluye_en_veredicto": False,
+            "incluye_en_resumen_estados": False,
+            "es_hallazgo_del_predio": False,
             **meta,
         }
     if d.get("metrics") is None:
@@ -254,8 +257,14 @@ def annotate_result(result, lookup=None):
     # Trace entries describe the same variables: annotate, but do not double-count.
     for step in d.get("formula_trace", []):
         view = {"valor": step.get("resultado"), "nota": step.get("nota") or step.get("error") or ""}
-        meta = _classify("trace", view, trat)
-        if _finite(step.get("resultado")):
+        trace_text = " ".join(str(step.get(k) or "") for k in ("descripcion", "expresion", "nota", "error")).lower().replace("_", " ")
+        if any(phrase in trace_text for phrase in (
+            "no aplica", "no exigido", "no se exige", "no están fijados", "no estan fijados", "resultantes",
+        )):
+            meta = _status("no_aplica", step.get("nota") or "La norma no fija un valor numérico para este paso.")
+        else:
+            meta = _classify("trace", view, trat)
+        if _finite(step.get("resultado")) and meta.get("estado") != "no_aplica":
             meta = _status("derivado", "Resultado de la operación indicada en este paso del cálculo.", "Verificar entradas, expresión y fuente del paso.", "arquitecto")
         step.update(meta)
     counts = Counter(f["estado"] for f in figures)

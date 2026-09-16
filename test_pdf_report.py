@@ -97,6 +97,31 @@ def test_pdf_humanizes_restriction_warning_and_groups_sources():
     assert "<h3>Decretos y artículos</h3>" in html
 
 
+def test_pdf_source_register_tracks_the_actual_treatment():
+    calculated, lookup = _fixture_payload()
+    calculated["tratamiento"] = lookup["tratamiento"] = "RENOVACION"
+    html = pdf_report.generate_html_preview(calculated, lookup, "Predio Bogotá")
+    assert "Art. 304 (tratamiento de Renovación Urbana)" in html
+    assert "Art. 310 (tratamiento de Consolidación)" not in html
+
+
+def test_pdf_stops_profile_and_units_for_out_of_range_area():
+    calculated, lookup = _fixture_payload()
+    calculated["metrics"]["area_construible_max_m2"] = {
+        "valor": None, "estado": "no_aplica", "motivo": "IC resultante."
+    }
+    calculated["metrics"]["area_construible_estimada"] = {
+        "valor_m2": 2_714_320,
+        "estado": "requiere_concepto",
+        "fuera_de_rango": True,
+        "motivo": "El lote supera el rango del modelo simplificado.",
+    }
+    html = pdf_report.generate_html_preview(calculated, lookup, "Predio fuera de rango")
+    assert "Perfil no generado" in html
+    assert "El lote supera el rango del modelo simplificado" in html
+    assert "2.714.320" not in html
+
+
 def test_pdf_uses_resolved_near_match_address_and_discloses_substitution():
     calculated, lookup = _fixture_payload()
     calculated["direccion"] = "KR 7 # 32-12"
@@ -141,3 +166,45 @@ def test_json_and_pdf_routes_share_calculation_helper(monkeypatch):
     ))
     assert resolved_lookup is lookup
     assert result is calculated
+
+
+def test_pdf_humanizes_nulls_no_aplica_and_internal_trace_names():
+    calculated, lookup = _fixture_payload()
+    calculated['metrics']['aislamiento_lateral_m'] = {
+        'valor': 0,
+        'estado': 'no_aplica',
+        'motivo': 'No se exige aislamiento lateral en este escenario.',
+    }
+    calculated['formula_trace'] = [{
+        'paso': 1,
+        'descripcion': 'Área de referencia',
+        'expresion': 'area_construible_max_m2 = anu_m2_supplied',
+        'resultado': None,
+        'nota': 'tabla_aisl_posterior no aplica',
+        'estado': 'no_aplica',
+    }, {
+        'paso': 2,
+        'descripcion': 'Aislamiento lateral',
+        'expresion': 'tabla_aisl_posterior[pisos_max]',
+        'resultado': 0,
+        'unidad': 'm',
+        'nota': 'No exigido',
+        'estado': 'no_aplica',
+    }, {
+        'paso': 3,
+        'descripcion': 'Estacionamientos',
+        'expresion': 'min = 8% × B',
+        'valores': {'area_actividad': 'AAPRSU', 'B_proxy_m2': None},
+        'resultado': None,
+        'nota': 'área_construible_max_m2 no disponible',
+        'estado': 'insuficiente',
+    }]
+    html = pdf_report.generate_html_preview(calculated, lookup, 'Predio Bogotá')
+    assert 'No exigido' in html
+    assert 'area_construible_max_m2' not in html
+    assert 'anu_m2_supplied' not in html
+    assert 'tabla_aisl_posterior' not in html
+    assert '>None<' not in html
+    assert '= 0 m' not in html
+    assert 'área_construible_max_m2' not in html
+    assert 'Pisos ref' not in html

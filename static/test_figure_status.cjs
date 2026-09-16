@@ -42,6 +42,11 @@ assert(payloadSummary.includes('7 no aplican'));
 const action=ui.card({id:'metrics.x',etiqueta:'X',valor:null,estado:'insuficiente',motivo:'Falta perfil.',que_se_necesita:'Confirmar perfil vial.',quien_lo_resuelve:'topógrafo'});
 assert(action.includes('Se necesita:'));
 assert(action.includes('Confirmar perfil vial. — topógrafo'));
+const cited=ui.card({id:'metrics.altura',etiqueta:'Altura',valor:5,estado:'resuelto',motivo:'Resuelta.',fuente:'SDP · Capa 15 · ALTURA_MAXIMA',fuente_dato:'SDP · Capa 15 · ALTURA_MAXIMA',articulo_id:'555:310',fecha_consulta:'2026-09-15'});
+assert(cited.includes('ALTURA MAXIMA'));
+assert(!cited.includes('metrosAXIMA'));
+assert.equal((cited.match(/SDP · Capa 15 · ALTURA MAXIMA/g)||[]).length,1);
+assert(!cited.includes('555:310 ·'));
 const grouped=ui.grid({figuras:[
   {id:'lote.area_m2',seccion:'volumetria',etiqueta:'Área del lote',valor:7771.7,unidad:'m²',estado:'derivado',motivo:'Área catastral.'},
   {id:'metrics.area_construible_max_m2',seccion:'volumetria',etiqueta:'Área máxima',valor:null,unidad:'m²',estado:'no_aplica',motivo:'El IC/IO es resultante.',articulo_id:'555:310'},
