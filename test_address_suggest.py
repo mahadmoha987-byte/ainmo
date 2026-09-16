@@ -219,6 +219,19 @@ def test_suggestion_endpoint_drops_viewport_outside_bogota(monkeypatch):
     assert captured["lng"] is None
 
 
+def test_suggestion_endpoint_never_offers_bogota_lot_for_named_outside_city(monkeypatch):
+    async def unexpected(*_args, **_kwargs):
+        raise AssertionError("outside-city autocomplete must not query the Bogotá index")
+
+    monkeypatch.setattr(api.db, "search_address_index", unexpected)
+    result = asyncio.run(api.address_suggest_endpoint(
+        q="Cra 7 # 15-20, Soacha", lat=4.65, lng=-74.08, recent_lots=""
+    ))
+    assert result["suggestions"] == []
+    assert result["resolution"] == "outside_bogota"
+    assert result["locality"] == "Soacha"
+
+
 def test_suggestion_database_incident_preserves_existing_search(monkeypatch):
     async def broken_search(*_args, **_kwargs):
         raise RuntimeError("temporary database incident")

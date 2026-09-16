@@ -23,6 +23,12 @@ def test_near_match_never_falls_back_to_the_typed_address():
     assert result["direccion"] != "KR 7 # 32-16"
 
 
+def test_direct_coordinate_lookup_gets_explicit_coordinate_title():
+    result = {"lote": {"lotcodigo": "004514061017"}}
+    api._apply_address_identity(result)
+    assert result["direccion"] == "Consultado por coordenada"
+
+
 def test_risk_endpoint_never_turns_unconfigured_sources_into_no_risk(monkeypatch):
     async def fake_slope(_lat, _lng):
         return 4.2

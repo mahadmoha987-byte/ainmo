@@ -46,16 +46,46 @@ _BOGOTA_LNG = (-74.25, -73.99)
 # cadastral identifier. The current public Predio table stores it in PRECHIP.
 _CHIP_RE = re.compile(r"^[A-Z]{3}\d{4}[A-Z]{4}$", re.I)
 _OUTSIDE_BOGOTA_CITY_RE = re.compile(
-    r"\b(?:MEDELLIN|BELLO|ENVIGADO|ITAGUI|SABANETA|RIONEGRO|CALI|PALMIRA|"
+    r"\b(?P<city>MEDELLIN|BELLO|ENVIGADO|ITAGUI|SABANETA|RIONEGRO|CALI|PALMIRA|"
     r"BARRANQUILLA|SOLEDAD|CARTAGENA|BUCARAMANGA|FLORIDABLANCA|CUCUTA|"
     r"PEREIRA|DOSQUEBRADAS|MANIZALES|ARMENIA|IBAGUE|VILLAVICENCIO|"
-    r"SANTA\s+MARTA|PASTO|MONTERIA|NEIVA|TUNJA)\b(?:\s+COLOMBIA)?$",
+    r"SANTA\s+MARTA|PASTO|MONTERIA|NEIVA|TUNJA|SOACHA|CHIA|CAJICA|COTA|"
+    r"FUNZA|MOSQUERA|MADRID|FACATATIVA|ZIPAQUIRA|LA\s+CALERA|SOPO|"
+    r"TOCANCIPA|GACHANCIPA|TENJO|TABIO|SIBATE|FUSAGASUGA|BOJACA)\b"
+    r"(?:\s+CUNDINAMARCA)?(?:\s+COLOMBIA)?$",
     re.I,
 )
+
+_OUTSIDE_CITY_LABELS = {
+    "MEDELLIN": "Medellín", "ITAGUI": "Itagüí", "CUCUTA": "Cúcuta",
+    "IBAGUE": "Ibagué", "MONTERIA": "Montería", "SOACHA": "Soacha",
+    "CHIA": "Chía", "CAJICA": "Cajicá", "FACATATIVA": "Facatativá",
+    "ZIPAQUIRA": "Zipaquirá", "LA CALERA": "La Calera", "SOPO": "Sopó",
+    "TOCANCIPA": "Tocancipá", "GACHANCIPA": "Gachancipá",
+    "SIBATE": "Sibaté", "FUSAGASUGA": "Fusagasugá", "BOJACA": "Bojacá",
+}
 
 
 def _in_bogota(lat: float, lng: float) -> bool:
     return _BOGOTA_LAT[0] <= lat <= _BOGOTA_LAT[1] and _BOGOTA_LNG[0] <= lng <= _BOGOTA_LNG[1]
+
+
+def _explicit_outside_bogota_city(raw: str) -> str | None:
+    """Return a named non-Bogotá locality explicitly supplied by the user.
+
+    This check must run before Bogotá address normalization and Catastro
+    matching. Otherwise a suffix such as ``, Soacha`` can be discarded and
+    the street plate can be incorrectly searched inside Bogotá.
+    """
+    probe = unicodedata.normalize("NFD", str(raw or "").upper())
+    probe = "".join(c for c in probe if unicodedata.category(c) != "Mn")
+    probe = re.sub(r"[,.]", " ", probe)
+    probe = re.sub(r"\s+", " ", probe).strip()
+    match = _OUTSIDE_BOGOTA_CITY_RE.search(probe)
+    if not match:
+        return None
+    city = re.sub(r"\s+", " ", match.group("city").upper()).strip()
+    return _OUTSIDE_CITY_LABELS.get(city, city.title())
 
 
 def _normalize_chip(raw: str) -> str | None:
@@ -652,55 +682,6 @@ def _nominatim_query(q: str) -> list[dict]:
     return candidates
 
 
-def _nominatim_outside_bogota_query(q: str) -> list[dict]:
-    """Confirm a named Colombian road/address outside Bogotá.
-
-    This is deliberately called only when the user names another Colombian
-    city, so an ordinary Bogotá typo does not trigger an unbounded global
-    lookup or get misclassified as an out-of-city property.
-    """
-    if not _OUTSIDE_BOGOTA_CITY_RE.search(normalize_address(q)):
-        return []
-    params = urllib.parse.urlencode({
-        "q": f"{q}, Colombia",
-        "format": "json",
-        "limit": 3,
-        "countrycodes": "co",
-        "addressdetails": 1,
-    })
-    req = urllib.request.Request(
-        f"{_NOMINATIM}?{params}",
-        headers={"User-Agent": "BogotaBuildabilityTool/1.0 (imabossgaming123@gmail.com)"},
-    )
-    with urllib.request.urlopen(req, context=_SSL_CTX, timeout=10) as response:
-        results = json.load(response)
-    matches = []
-    for result in results:
-        address = result.get("address") or {}
-        category = str(result.get("class") or result.get("category") or "").lower()
-        result_type = str(result.get("type") or "").lower()
-        addresstype = str(result.get("addresstype") or "").lower()
-        is_property_level = bool(address.get("house_number")) or (
-            category == "building" or result_type in {"house", "building"}
-            or addresstype in {"house", "building"}
-        )
-        # For the coverage-boundary message, an explicitly named Colombian
-        # city plus a recognized road is sufficient. We do not return the
-        # road coordinate as a parcel candidate; it only proves this is an
-        # out-of-scope locality instead of a malformed Bogotá search.
-        if not is_property_level and not address.get("road"):
-            continue
-        lat, lng = float(result["lat"]), float(result["lon"])
-        if _in_bogota(lat, lng):
-            continue
-        locality = (
-            address.get("city") or address.get("town") or address.get("municipality")
-            or address.get("county") or "otra ciudad de Colombia"
-        )
-        matches.append({"lat": lat, "lng": lng, "locality": locality})
-    return matches
-
-
 # -----------------------------------------------------------------------
 # Public API
 # -----------------------------------------------------------------------
@@ -734,6 +715,17 @@ def geocode_detailed(address: str) -> dict:
         _cache_set(key, result)
         return result
 
+    # An explicit non-Bogotá city is a coverage answer, not part of the street
+    # plate. Stop before querying Catastro so Ainmo can never strip the city and
+    # offer a similarly numbered Bogotá property.
+    outside_city = _explicit_outside_bogota_city(address)
+    if outside_city:
+        return {
+            "candidates": [],
+            "resolution": "outside_bogota",
+            "locality": outside_city,
+        }
+
     # Intersection queries ("Calle 60 Carrera 7") cannot resolve to a unique lot.
     # Return empty so the frontend asks the user to click on the map instead.
     if _is_intersection_query(address):
@@ -747,22 +739,6 @@ def geocode_detailed(address: str) -> dict:
     if cached is not None:
         return cached
 
-
-    # An explicitly named non-Bogotá city gets a Colombia-wide property-level
-    # probe. We report the coverage boundary without ever surfacing that remote
-    # coordinate as if it were a Bogotá lot.
-    try:
-        outside_matches = _nominatim_outside_bogota_query(address)
-    except Exception:
-        outside_matches = []
-    if outside_matches:
-        result = {
-            "candidates": [],
-            "resolution": "outside_bogota",
-            "locality": outside_matches[0].get("locality"),
-        }
-        _cache_set(key, result)
-        return result
 
     if not _is_complete_street_plate(normalised):
         result = {"candidates": [], "resolution": "incomplete_address"}

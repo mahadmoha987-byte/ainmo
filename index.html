@@ -863,6 +863,11 @@ async function _requestAddressSuggestions(query) {
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const json = await response.json();
     if (requestSeq !== _suggestSeq || query !== document.getElementById('addr-input')?.value.trim()) return;
+    if (json.resolution === 'outside_bogota') {
+      _closeAddressSuggestions(false);
+      showGeoError(null, query, 'outside_bogota');
+      return;
+    }
     if (!json.ok || json.index_ready === false) {
       _closeAddressSuggestions(false);
       return;
@@ -1626,6 +1631,12 @@ async function submitManualCoords() {
   if (isNaN(lat) || isNaN(lng)) { return; }
   const vis = document.getElementById('vis-check').checked;
   _pendingAnu = null; _pendingFrente = null; _confirmedCoords = null; _expectedLotCodigo = null;
+  // Manual coordinates identify the analysed lot. They must never inherit the
+  // address or near-match identity from the previous report.
+  _activeSearchAddress = '';
+  _selectedAddressContext = null;
+  const addressInput = document.getElementById('addr-input');
+  if (addressInput) addressInput.value = '';
   await runLookup(lat, lng, vis, null, null, null);
 }
 
@@ -3954,7 +3965,16 @@ let _autoSearchFired = false;
   const lng = parseFloat(p.get('lng'));
   if (!isNaN(lat) && !isNaN(lng)) {
     const q = p.get('q');
-    if (q) { const inp = document.getElementById('addr-input'); if (inp) inp.value = q; }
+    if (q) {
+      const inp = document.getElementById('addr-input');
+      if (inp) inp.value = q;
+    } else {
+      _activeSearchAddress = '';
+      _selectedAddressContext = null;
+      _expectedLotCodigo = null;
+      const inp = document.getElementById('addr-input');
+      if (inp) inp.value = '';
+    }
     const vis = p.get('vis_en_sitio') === '1';
     if (!_autoSearchFired) {
       _autoSearchFired = true;

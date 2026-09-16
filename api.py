@@ -98,7 +98,10 @@ def _apply_address_identity(
     # If the caller omitted the resolved candidate, use the cadastral lot label
     # instead of silently presenting the unverified input as the analysed place.
     lot_label = f"Predio {(result.get('lote') or {}).get('lotcodigo')}" if (result.get("lote") or {}).get("lotcodigo") else ""
-    actual = str((resolved_address if near_match else (resolved_address or address)) or lot_label).strip()
+    if near_match:
+        actual = str(resolved_address or lot_label or "Predio consultado").strip()
+    else:
+        actual = str(resolved_address or address or "Consultado por coordenada").strip()
     searched = str(searched_address or actual).strip()
     if actual:
         result["direccion"] = actual
@@ -370,6 +373,17 @@ async def address_suggest_endpoint(
 ):
     """Fast, database-only typeahead; never calls Catastro or Nominatim."""
     started = time.perf_counter()
+    outside_city = geocode._explicit_outside_bogota_city(q)
+    if outside_city:
+        return {
+            "ok": True,
+            "suggestions": [],
+            "resolution": "outside_bogota",
+            "locality": outside_city,
+            "normalized_query": geocode.normalize_address_search(q),
+            "index_ready": True,
+            "elapsed_ms": round((time.perf_counter() - started) * 1_000, 1),
+        }
     normalized = geocode.normalize_address_search(q)
     tokens = normalized.split()
     has_numbered_bogota_road = (
@@ -761,7 +775,7 @@ async def report_endpoint(
     anu_m2: float | None = Query(None),
     frente_m: float | None = Query(None),
     ancho_via_m: float | None = Query(None),
-    address: str = Query("Dirección no especificada"),
+    address: str = Query(""),
     searched_address: str = Query(""),
     resolved_address: str = Query(""),
     near_match: bool = Query(False),
@@ -824,7 +838,7 @@ async def report_html_endpoint(
     anu_m2: float | None = Query(None),
     frente_m: float | None = Query(None),
     ancho_via_m: float | None = Query(None),
-    address: str = Query("Dirección no especificada"),
+    address: str = Query(""),
     searched_address: str = Query(""),
     resolved_address: str = Query(""),
     near_match: bool = Query(False),

@@ -72,17 +72,32 @@ def test_chip_is_recognized_before_street_plate_validation(monkeypatch):
     assert geocode._normalize_chip("CALLEBOGOTA") is None
 
 
-def test_real_colombian_address_outside_bogota_gets_coverage_resolution(monkeypatch):
+def test_real_colombian_address_outside_bogota_gets_coverage_resolution():
     geocode._cache.clear()
-    monkeypatch.setattr(geocode, "_nominatim_outside_bogota_query", lambda _q: [{
-        "lat": 6.207,
-        "lng": -75.574,
-        "locality": "Medellín",
-    }])
     result = geocode.geocode_detailed("Carrera 43A # 1-50, Medellín")
     assert result["candidates"] == []
     assert result["resolution"] == "outside_bogota"
     assert result["locality"] == "Medellín"
+
+
+@pytest.mark.parametrize(("raw", "locality"), [
+    ("Cra 7 # 15-20, Soacha", "Soacha"),
+    ("Carrera 9 # 12-30 Chía, Cundinamarca", "Chía"),
+])
+def test_explicit_nearby_city_stops_before_bogota_lookup(monkeypatch, raw, locality):
+    geocode._cache.clear()
+
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("an explicit non-Bogotá city must not query Bogotá Catastro")
+
+    monkeypatch.setattr(geocode, "_catastro_query", unexpected)
+    monkeypatch.setattr(geocode, "_nominatim_query", unexpected)
+    result = geocode.geocode_detailed(raw)
+    assert result == {
+        "candidates": [],
+        "resolution": "outside_bogota",
+        "locality": locality,
+    }
 
 
 @pytest.mark.parametrize("raw", [

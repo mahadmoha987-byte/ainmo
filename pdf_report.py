@@ -1849,6 +1849,7 @@ def _render_html(
         not address_text
         or address_text.lower().startswith("predio ")
         or address_text.lower().startswith("dirección no")
+        or address_text.lower().startswith("consultado por coordenada")
     )
     locality   = lu.get("localidad") or _get(lu, "lote", "localidad")
     if not locality and " · " in address_text:

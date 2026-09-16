@@ -10,6 +10,22 @@ def test_map_click_clears_stale_address_and_lookup_freezes_request_identity():
     assert "const resultAddress = d.direccion || `Predio ${d.lote?.lotcodigo || 'consultado'}`" in HTML
 
 
+def test_manual_and_url_coordinate_lookups_clear_stale_address_identity():
+    start = HTML.index("async function submitManualCoords()")
+    end = HTML.index("async function submitAnchoVia", start)
+    manual = HTML[start:end]
+    assert "_activeSearchAddress = '';" in manual
+    assert "_selectedAddressContext = null;" in manual
+    assert "addressInput.value = '';" in manual
+
+    start = HTML.index("(function _autoLaunchFromUrl()")
+    end = HTML.index("/* ── Helpers", start)
+    launch = HTML[start:end]
+    assert "if (q)" in launch
+    assert "_selectedAddressContext = null;" in launch
+    assert "_expectedLotCodigo = null;" in launch
+
+
 def test_near_match_keeps_searched_and_resolved_addresses_distinct():
     assert "const requestResolvedAddress = requestAddressContext?.resolved || requestAddress" in HTML
     assert "params.set('searched_address', requestSearchedAddress)" in HTML
@@ -185,6 +201,7 @@ def test_api_has_specific_outside_bogota_and_chip_messages():
 
 def test_outside_bogota_message_has_an_explicit_frontend_path():
     assert "json.resolution === 'outside_bogota' ? 'outside_bogota'" in HTML
+    assert "if (json.resolution === 'outside_bogota')" in HTML
     assert "if (kind === 'outside_bogota')" in HTML
     assert "La dirección parece corresponder a otra ciudad de Colombia" in HTML
 
