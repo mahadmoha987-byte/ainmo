@@ -13,7 +13,6 @@
 <meta name="twitter:card" content="summary">
 <!-- og-placeholder -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script type="importmap">
 {
   "imports": {
@@ -93,12 +92,8 @@ main{max-width:var(--col-max);margin:0 auto;padding:var(--sp-5) var(--sp-4) 80px
 .brand-name{font-family:'Syne',system-ui,sans-serif;font-size:20px;font-weight:700;color:#fff;letter-spacing:-.01em;line-height:1}
 .brand-ref{font-family:var(--ff-mono);font-size:var(--ts-xs);color:var(--ink-4)}
 .header-right{display:flex;align-items:center;gap:var(--sp-2)}
-.btn-auth{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:var(--r2);color:var(--ink-6);font-size:var(--ts-sm);font-family:var(--ff-ui);padding:var(--sp-1) var(--sp-3);cursor:pointer}
-.btn-auth:hover{background:rgba(255,255,255,.18)}
-.user-chip{display:inline-flex;align-items:center;gap:var(--sp-2);font-size:var(--ts-sm);color:var(--ink-5)}
-.user-chip .chip-tier{font-size:var(--ts-2xs);font-weight:var(--fw-7);letter-spacing:.5px;text-transform:uppercase;padding:1px 6px;border-radius:var(--r1);background:rgba(255,255,255,.15);color:var(--ink-6)}
-.user-chip .chip-tier.pro{background:var(--c-m-bg);color:var(--c-m-fg)}
-.user-chip .chip-usage{font-family:var(--ff-mono);font-size:var(--ts-2xs);color:var(--ink-4)}
+.beta-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:4px 9px;color:var(--ink-6);font:500 var(--ts-xs)/1 var(--ff-mono);letter-spacing:.25px}
+.beta-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:#65d58b;box-shadow:0 0 0 3px rgba(101,213,139,.14)}
 
 /* ── Card / Panel ─────────────────────────────────────────────────────────── */
 .card,.panel{background:var(--paper);border:var(--rule);margin-bottom:var(--sp-4);padding:var(--sp-4)}
@@ -402,6 +397,14 @@ body{overflow:hidden}
 .address-suggestion-lot{margin-left:auto;white-space:nowrap}
 .sp-go{padding:8px 13px;background:var(--ink-0);color:var(--paper);border:none;cursor:pointer;font-size:var(--ts-md);font-weight:var(--fw-5);flex-shrink:0;line-height:1}
 .sp-go:hover{background:var(--ink-1)}
+.address-help{position:relative;flex:0 0 auto}
+.address-help summary{display:grid;place-items:center;width:34px;height:34px;border:var(--rule);background:var(--paper);color:var(--ink-3);font:600 var(--ts-sm)/1 var(--ff-mono);cursor:pointer;list-style:none}
+.address-help summary::-webkit-details-marker{display:none}
+.address-help summary:hover,.address-help[open] summary{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
+.address-help-card{display:none;position:absolute;z-index:1250;top:calc(100% + 5px);right:0;width:238px;padding:10px 12px;background:var(--paper);border:var(--rule-heavy);box-shadow:0 10px 28px rgba(17,19,24,.2);font-size:var(--ts-xs);line-height:1.65;color:var(--ink-2)}
+.address-help[open] .address-help-card,.address-help:hover .address-help-card{display:block!important}
+.address-help-card strong{display:block;margin-bottom:4px;color:var(--ink-0);font-size:var(--ts-xs)}
+.address-help-card code{font-family:var(--ff-mono);font-size:var(--ts-2xs);color:var(--ink-1);background:var(--paper-2);padding:1px 3px}
 .sp-hint{font-size:var(--ts-xs);color:var(--ink-4);margin-bottom:var(--sp-2);line-height:1.5}
 .sp-chips{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:var(--sp-2)}
 .ejemplo-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border:1px solid var(--accent-dim);background:var(--accent-bg);color:var(--accent);font-size:var(--ts-sm);font-weight:var(--fw-6);cursor:pointer;border-radius:var(--r1);font-family:var(--ff-ui)}
@@ -465,6 +468,7 @@ body{overflow:hidden}
 /* ── History list (landing) ─────────────────────────────────────────────────── */
 .sp-history{margin-top:var(--sp-3);padding-top:var(--sp-3);border-top:var(--rule)}
 .sp-history-title{font-size:var(--ts-2xs);font-weight:var(--fw-6);text-transform:uppercase;letter-spacing:.4px;color:var(--ink-4);margin-bottom:var(--sp-2)}
+.sp-history-list{max-height:min(280px,36vh);overflow-y:auto;overscroll-behavior:contain;padding-right:3px;scrollbar-gutter:stable}
 .hist-item{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);padding:var(--sp-2) var(--sp-1);border-bottom:1px solid var(--ink-7);cursor:pointer}
 .hist-item:hover{background:var(--paper-1);border-radius:var(--r1)}
 .hist-addr{font-size:var(--ts-xs);color:var(--ink-1);font-weight:var(--fw-5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
@@ -562,8 +566,8 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
       <a href="/" class="brand-name" style="text-decoration:none">ainmo</a>
       <span class="brand-ref">Corte normativo 2026</span>
     </div>
-    <div class="header-right" id="auth-area">
-      <button class="btn-auth" id="login-btn" onclick="showAuthModal()">Iniciar sesión</button>
+    <div class="header-right">
+      <span class="beta-badge">Beta abierta</span>
     </div>
   </div>
 </header>
@@ -591,6 +595,15 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
                aria-label="Direcciones sugeridas" hidden></div>
           <span class="sr-only" id="address-suggest-status" aria-live="polite"></span>
         </div>
+        <details class="address-help">
+          <summary aria-label="Ver abreviaturas de direcciones" title="Abreviaturas de direcciones">?</summary>
+          <div class="address-help-card">
+            <strong>Abreviaturas de Bogotá</strong>
+            <code>CL</code> Calle · <code>KR/CRA</code> Carrera<br>
+            <code>DG</code> Diagonal · <code>TV</code> Transversal<br>
+            <code>AC</code> Avenida Calle · <code>AK</code> Avenida Carrera
+          </div>
+        </details>
         <button class="sp-go" id="geo-btn" onclick="submitGeoSearch()" aria-label="Buscar">→</button>
       </div>
       <div class="sp-chips">
@@ -642,60 +655,12 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
 
 </div>
 
-<!-- Auth modal -->
-<div class="modal-overlay hidden" id="auth-modal" style="position:fixed">
-  <div class="modal-box" style="position:relative">
-    <button class="modal-close" onclick="hideAuthModal()" title="Cerrar">×</button>
-    <h2>Acceder</h2>
-    <p class="modal-sub">Crea una cuenta o accede con Google o correo.</p>
-    <button class="btn-google" id="google-btn" onclick="signInWithGoogle()">
-      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
-      Continuar con Google
-    </button>
-    <div class="auth-divider"><span>o con correo</span></div>
-    <div id="auth-form-wrap">
-      <div class="modal-row">
-        <input type="email" id="auth-email" placeholder="tu@email.com" autocomplete="email">
-        <button class="btn btn-primary" id="auth-send-btn" onclick="submitMagicLink()">Enviar enlace</button>
-      </div>
-      <p class="modal-note">Recibirás un enlace de acceso sin contraseña. Expira en 15 min.</p>
-    </div>
-    <div id="auth-sent-wrap" class="hidden">
-      <p style="color:var(--c-ok);font-weight:600;margin-bottom:8px">✓ Enlace enviado</p>
-      <p class="modal-note">Revisa tu correo (y spam). Haz clic en el enlace para acceder.</p>
-    </div>
-  </div>
-</div>
-
-<!-- Upgrade / Pro modal -->
-<div class="modal-overlay hidden" id="upgrade-modal" style="position:fixed">
-  <div class="modal-box" style="position:relative">
-    <button class="modal-close" onclick="hideUpgradeModal()" title="Cerrar">×</button>
-    <h2>Plan Pro — próximamente</h2>
-    <p class="modal-sub">Historial guardado, traza de cálculo completa, consultas ilimitadas e informes con marca blanca.</p>
-    <div id="upgrade-interest-wrap">
-      <p style="font-size:14px;margin-bottom:12px">Deja tu correo y te avisamos cuando esté disponible:</p>
-      <div class="modal-row">
-        <input type="email" id="upgrade-email" placeholder="tu@email.com" autocomplete="email">
-        <button class="btn btn-primary" id="upgrade-send-btn" onclick="submitBillingInterest()">Avisar</button>
-      </div>
-      <p class="modal-note">Mercado Pago (PSE, Nequi, tarjetas) · Sin compromiso.</p>
-    </div>
-    <div id="upgrade-sent-wrap" class="hidden">
-      <p style="color:var(--c-ok);font-weight:600">✓ ¡Anotado! Te avisaremos cuando el Plan Pro esté listo.</p>
-    </div>
-  </div>
-</div>
-
 <!-- Share modal -->
 <div class="modal-overlay hidden" id="share-modal" style="position:fixed" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
   <div class="modal-box" style="position:relative;max-width:420px">
     <button class="modal-close" onclick="hideShareModal()" title="Cerrar" aria-label="Cerrar">×</button>
     <h2 id="share-modal-title">Compartir análisis</h2>
-    <p class="modal-sub">Enlace de solo lectura — no requiere cuenta.</p>
-    <label class="share-toggle">
-      <input type="checkbox" id="share-include-pf"> Incluir panel financiero
-    </label>
+    <p class="modal-sub">Enlace público al predio — no requiere cuenta.</p>
     <div id="share-link-area">
       <span style="font-size:var(--ts-sm);color:var(--ink-4)">Preparando enlace…</span>
     </div>
@@ -748,10 +713,6 @@ let _pendingFrente = null;      // {lng, lat, vis, anu} waiting for frente_m / a
 let _confirmedCoords = null;    // {lat, lng, lotcodigo} confirmed from geocoder
 let _expectedLotCodigo = null;  // lot linked to Catastro's address plate
 let _geoCandidates = [];        // disambiguation list from geocoder
-let _currentUser = null;        // {email, plan, usage_this_month, usage_limit} or null
-let _currentAnalysisId = null;  // analysis_id returned by last successful /api/calc
-let _supabase = null;           // Supabase JS client (initialized in initSupabase)
-let _session = null;            // current Supabase session
 let _lastLookupCoords = null;   // {lat, lng, vis} of most recent successful lookup
 let _lastResolvedAddress = '';  // immutable identity shown for the current report
 let _lastResolvedLotCodigo = null;
@@ -774,9 +735,7 @@ let _suggestActiveIndex = -1;
 let _resultNavObserver = null;  // scroll-spy for result-section navigation
 
 function _authHeaders() {
-  if (_session?.access_token) {
-    return { 'Authorization': `Bearer ${_session.access_token}` };
-  }
+  // Public beta: every active tool endpoint is anonymous.
   return {};
 }
 
@@ -1250,25 +1209,6 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
   // From here the server answered — any exception is a render bug, not a network issue
   try {
     _lastRaw = json;
-    // Update usage state from meta
-    if (json.meta) {
-      _currentAnalysisId = json.meta.analysis_id || null;
-      if (_currentUser && json.meta.usage_this_month != null) {
-        _currentUser.usage_this_month = json.meta.usage_this_month;
-        _currentUser.usage_limit = json.meta.usage_limit;
-        updateUserChip();
-      }
-    }
-    // Handle usage_limit error before generic render
-    if (!json.ok && json.error === 'usage_limit') {
-      set(`<div class="state-card state-error">
-        <div class="state-icon">🔒</div>
-        <h3>Límite mensual alcanzado</h3>
-        <p>${escHtml(json.message)}</p>
-        <button class="btn btn-primary" style="margin-top:16px" onclick="showUpgradeModal()">Ver Plan Pro</button>
-      </div>`);
-      return;
-    }
     if (json.ok) {
       _lastLookupCoords = { lat, lng, vis };
       _lastCalcData = json.data;
@@ -1701,7 +1641,6 @@ async function submitAnchoVia() {
 ══════════════════════════════════════════════════════════════════════════ */
 function showResult(d, lat, lng, vis, anu, requestAddress = '') {
   const parts = [];
-  const isPro = _currentUser && _currentUser.plan === 'pro';
   const _tratUpper = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
   const _isRenov = _tratUpper.includes('RENOVACION');
   const resultAddress = d.direccion || `Predio ${d.lote?.lotcodigo || 'consultado'}`;
@@ -1888,25 +1827,10 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
   let traceBody = '';
   if (d.formula_trace) {
     traceBody = formulaTrace(d.formula_trace);
-  } else if (_currentUser && !isPro) {
-    traceBody = `<div class="card" style="text-align:center;padding:24px">
-      <p style="color:var(--ink-2);font-size:14px"><strong>La trazabilidad completa está disponible en Plan Pro.</strong><br>
-        Su sesión está activa, pero este plan no incluye las fórmulas y pasos detallados del cálculo.</p>
-      <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="showUpgradeModal()">Consultar Plan Pro</button>
-    </div>`;
   } else {
     traceBody = `<div class="card" style="text-align:center;padding:24px">
-      <p style="color:var(--ink-2);font-size:14px"><strong>La trazabilidad completa está disponible en Plan Pro.</strong><br>
-        Inicie sesión para consultar su plan y acceder a las fórmulas y pasos detallados del cálculo.</p>
-      <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="showAuthModal()">Iniciar sesión</button>
-    </div>`;
-  }
-
-  if (isPro && _currentAnalysisId) {
-    traceBody += `<div class="card">
-      <div class="notes-label">Notas personales (guardado automático)</div>
-      <textarea class="notes-area" id="notes-textarea" placeholder="Agrega comentarios, referencias o próximos pasos…"
-        onblur="autoSaveNotes('${_currentAnalysisId}', this.value)"></textarea>
+      <p style="color:var(--ink-2);font-size:14px"><strong>No se recibió la traza para este resultado.</strong><br>
+        Recargue el análisis. Si persiste, el motor debe reportar explícitamente qué paso no pudo documentar.</p>
     </div>`;
   }
 
@@ -3550,15 +3474,30 @@ function formulaTrace(steps) {
     .replace(/huella_x_pisos/gi, 'huella edificable × pisos permitidos')
     .replace(/sin_fuente_configurada/gi, 'sin fuente automatizada')
     .replace(/\b([a-záéíóúñ]+(?:_[a-záéíóúñ0-9]+)+)\b/gi, match => match.replaceAll('_', ' '));
+  const traceValue = value => {
+    if (value === null || value === undefined || value === '') return 'Dato no disponible';
+    if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+    if (Array.isArray(value)) return value.map(traceValue).join(', ');
+    if (typeof value === 'object') {
+      return Object.entries(value).map(([key, nested]) => `${traceLabel(key)}: ${traceValue(nested)}`).join(' · ');
+    }
+    return traceText(value);
+  };
   const traceValues = values => `<dl class="trace-values">${Object.entries(values).map(([key,value]) =>
-    `<div><dt>${escHtml(traceLabel(key))}</dt><dd>${value === null ? 'Dato no disponible' : escHtml(String(value))}</dd></div>`
+    `<div><dt>${escHtml(traceLabel(key))}</dt><dd>${escHtml(traceValue(value))}</dd></div>`
   ).join('')}</dl>`;
   const stepsHtml = steps.map(s => {
     const isErr = !!s.error;
     const valStr = s.valores && Object.keys(s.valores).length
       ? traceValues(s.valores) : '';
-    const resStr = s.resultado !== null && s.resultado !== undefined
-      ? `<div class="ts-res">= ${typeof s.resultado==='number'?fmt(s.resultado):escHtml(traceText(s.resultado))} ${escHtml(s.unidad || '')}</div>` : `<div class="ts-res">${escHtml(traceText(s.motivo || s.error || s.nota || 'Falta una entrada para resolver este paso.'))}</div>`;
+    const hasResult = s.resultado !== null && s.resultado !== undefined;
+    const resultText = s.estado === 'no_aplica' && Number(s.resultado) === 0
+      ? 'No exigido'
+      : hasResult
+        ? `${typeof s.resultado === 'number' ? fmt(s.resultado) : traceValue(s.resultado)}${s.unidad ? ` ${s.unidad}` : ''}`
+        : traceText(s.motivo || s.error || s.nota || 'Falta una entrada para resolver este paso.');
+    const noteText = traceText(s.nota || '');
+    const resStr = `<div class="ts-res">${hasResult && !(s.estado === 'no_aplica' && Number(s.resultado) === 0) ? '= ' : ''}${escHtml(resultText)}</div>`;
     return `<div class="trace-step${isErr ? ' step-error' : ''}" data-estado="${escHtml(s.estado || (isErr?'error':'derivado'))}">
       <div class="ts-n">Paso ${s.paso}</div>
       ${AinmoFigures.badge(s.estado || (isErr?'error':'derivado'))}
@@ -3566,7 +3505,7 @@ function formulaTrace(steps) {
       ${s.expresion ? `<div class="ts-expr">${escHtml(traceText(s.expresion))}</div>` : ''}
       ${valStr ? `<div class="ts-vals">${valStr}</div>` : ''}
       ${resStr}
-      ${s.nota   ? `<div class="ts-note">${escHtml(traceText(s.nota))}</div>` : ''}
+      ${noteText && noteText !== resultText ? `<div class="ts-note">${escHtml(noteText)}</div>` : ''}
       ${s.fuente ? `<div class="ts-src">Fuente: ${escHtml(s.fuente)}</div>` : ''}
       ${isErr    ? `<div class="ts-note" style="color:var(--c-err)">${escHtml(traceText(s.error))}</div>` : ''}
     </div>`;
@@ -3749,7 +3688,6 @@ async function downloadDxf(lat, lng, vis) {
   if (btn) { btn.textContent = 'Generando…'; btn.disabled = true; }
   try {
     const resp = await fetch(`/api/dxf?${params}`, { headers: _authHeaders() });
-    if (resp.status === 401) { showAuthModal(); return; }
     const contentType = resp.headers.get('content-type') || '';
     if (!resp.ok || contentType.includes('application/json')) {
       const err = contentType.includes('json') ? await resp.json() : null;
@@ -3772,244 +3710,6 @@ async function downloadDxf(lat, lng, vis) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   Auth
-══════════════════════════════════════════════════════════════════════════ */
-async function initSupabase() {
-  try {
-    const cfg = await fetch('/api/config').then(r => r.json());
-    if (!cfg.supabase_url || !cfg.supabase_anon_key) {
-      return; // Dev mode — leave existing auth button in place
-    }
-    _supabase = supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
-
-    _supabase.auth.onAuthStateChange(async (event, session) => {
-      _session = session;
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        hideAuthModal();
-        await _refreshUser();
-      } else if (event === 'SIGNED_OUT') {
-        _currentUser = null;
-        _currentAnalysisId = null;
-        updateUserChip();
-      }
-    });
-
-    const { data: { session } } = await _supabase.auth.getSession();
-    _session = session;
-    if (session) await _refreshUser();
-    else updateUserChip();
-  } catch (e) {
-    console.error('Supabase init failed:', e);
-    updateUserChip();
-  }
-}
-
-async function _refreshUser() {
-  try {
-    const res = await fetch('/api/me', { headers: _authHeaders() });
-    const json = await res.json();
-    if (json.ok && json.authenticated) {
-      _currentUser = {
-        email: json.email,
-        plan: json.plan,
-        usage_this_month: json.usage_this_month,
-        usage_limit: json.usage_limit,
-      };
-      updateUserChip();
-      if (json.plan === 'pro') renderAnalysesPanel();
-    }
-  } catch {}
-}
-
-function updateUserChip() {
-  const area = document.getElementById('auth-area');
-  if (!_currentUser) {
-    area.innerHTML = `<button class="btn-auth" id="login-btn" onclick="showAuthModal()">Iniciar sesión</button>`;
-    return;
-  }
-  const u = _currentUser;
-  const planClass = u.plan === 'pro' ? 'pro' : '';
-  const planLabel = u.plan === 'pro' ? 'Pro' : 'Free';
-  const usageStr = u.plan === 'pro'
-    ? '∞'
-    : `${u.usage_this_month}/${u.usage_limit} usos`;
-  area.innerHTML = `
-    <div class="user-chip">
-      <span class="chip-tier ${planClass}">${planLabel}</span>
-      <span>${escHtml(u.email)}</span>
-      <span class="chip-usage">${usageStr}</span>
-    </div>
-    ${u.plan !== 'pro' ? `<button class="btn-auth" onclick="showUpgradeModal()">Actualizar a Pro</button>` : ''}
-    <button class="btn-auth" onclick="signOut()">Salir</button>`;
-}
-
-function showAuthModal() {
-  document.getElementById('auth-modal').classList.remove('hidden');
-  document.getElementById('auth-email').focus();
-}
-function hideAuthModal() {
-  document.getElementById('auth-modal').classList.add('hidden');
-  document.getElementById('auth-form-wrap').classList.remove('hidden');
-  document.getElementById('auth-sent-wrap').classList.add('hidden');
-  document.getElementById('auth-email').value = '';
-}
-
-async function signInWithGoogle() {
-  if (!_supabase) return;
-  await _supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: window.location.origin + '/app' },
-  });
-}
-
-async function submitMagicLink() {
-  if (!_supabase) return;
-  const email = document.getElementById('auth-email').value.trim();
-  if (!email || !email.includes('@')) { showToast('Email inválido', 'err'); return; }
-  const btn = document.getElementById('auth-send-btn');
-  btn.disabled = true; btn.textContent = 'Enviando…';
-  const { error } = await _supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.origin + '/app' },
-  });
-  if (error) {
-    showToast(error.message || 'Error al enviar', 'err');
-    btn.disabled = false; btn.textContent = 'Enviar enlace';
-  } else {
-    document.getElementById('auth-form-wrap').classList.add('hidden');
-    document.getElementById('auth-sent-wrap').classList.remove('hidden');
-  }
-}
-
-async function signOut() {
-  if (_supabase) await _supabase.auth.signOut();
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   Upgrade modal
-══════════════════════════════════════════════════════════════════════════ */
-function showUpgradeModal() {
-  // Pre-fill email if logged in
-  if (_currentUser) document.getElementById('upgrade-email').value = _currentUser.email;
-  document.getElementById('upgrade-modal').classList.remove('hidden');
-}
-function hideUpgradeModal() {
-  document.getElementById('upgrade-modal').classList.add('hidden');
-  document.getElementById('upgrade-interest-wrap').classList.remove('hidden');
-  document.getElementById('upgrade-sent-wrap').classList.add('hidden');
-}
-
-async function submitBillingInterest() {
-  const email = document.getElementById('upgrade-email').value.trim();
-  if (!email || !email.includes('@')) { showToast('Email inválido', 'err'); return; }
-  const btn = document.getElementById('upgrade-send-btn');
-  btn.disabled = true; btn.textContent = 'Guardando…';
-  try {
-    const res = await fetch('/api/billing/interest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
-    const json = await res.json();
-    if (json.ok) {
-      document.getElementById('upgrade-interest-wrap').classList.add('hidden');
-      document.getElementById('upgrade-sent-wrap').classList.remove('hidden');
-    } else {
-      showToast(json.message || 'Error', 'err');
-      btn.disabled = false; btn.textContent = 'Avisar';
-    }
-  } catch {
-    showToast('Error de red', 'err');
-    btn.disabled = false; btn.textContent = 'Avisar';
-  }
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   Saved lookups (Pro)
-══════════════════════════════════════════════════════════════════════════ */
-async function renderAnalysesPanel() {
-  try {
-    const res = await fetch('/api/analyses', { headers: _authHeaders() });
-    if (!res.ok) return;
-    const json = await res.json();
-    if (!json.ok || !json.data.length) return;
-    const rows = json.data.map(r => {
-      const date = new Date(r.created_at).toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' });
-      const addr = r.direccion || r.lote_codigo || `${r.lat.toFixed(4)}, ${r.lng.toFixed(4)}`;
-      return `<div class="lookup-item">
-        <div>
-          <div class="li-addr">${escHtml(addr)}</div>
-          <div class="li-meta">${date}${r.notas ? ' · ' + escHtml(r.notas.slice(0,60)) : ''}</div>
-        </div>
-        <div class="li-actions">
-          <button class="btn btn-ghost btn-sm" onclick="loadAnalysis('${r.id}')">Cargar</button>
-          <button class="btn btn-ghost btn-sm" style="color:var(--c-err)" onclick="deleteAnalysis('${r.id}',this)">✕</button>
-        </div>
-      </div>`;
-    }).join('');
-    document.getElementById('lookups-container').innerHTML = `
-      <details class="lookups-panel">
-        <summary>
-          Análisis guardados
-          <span class="badge badge-alta" style="margin-left:4px">${json.data.length}</span>
-        </summary>
-        <div class="lookups-body">${rows}</div>
-      </details>`;
-  } catch {}
-}
-
-async function loadAnalysis(id) {
-  enterResult();
-  showLoading();
-  try {
-    const res = await fetch(`/api/analyses/${id}`, { headers: _authHeaders() });
-    const json = await res.json();
-    if (!json.ok) { showError('No se pudo cargar el análisis.'); return; }
-    const stored = json.data.result_json || {};
-    const d = stored.calc_result || stored;
-    if (!d?.metrics) {
-      showError('Este análisis guardado es incompleto. Vuelva a consultar el predio.');
-      return;
-    }
-    _lastRaw = { ok: true, data: d };
-    _currentAnalysisId = id;
-    const lat = json.data.lat;
-    const lng = json.data.lng;
-    const vis = stored.vis_en_sitio || false;
-    const resolvedAddress = d.direccion || json.data.direccion;
-    if (resolvedAddress) document.getElementById('addr-input').value = resolvedAddress;
-    updateMap(d, lat, lng);
-    showResult(d, lat, lng, vis, d.input?.anu_m2_supplied ?? null);
-    if (json.data.notas && document.getElementById('notes-textarea')) {
-      document.getElementById('notes-textarea').value = json.data.notas;
-    }
-  } catch (e) {
-    console.error(e);
-    showError('No se pudo cargar el análisis guardado. Intente de nuevo.');
-  }
-}
-
-async function deleteAnalysis(id, btn) {
-  btn.disabled = true;
-  try {
-    await fetch(`/api/analyses/${id}`, { method: 'DELETE', headers: _authHeaders() });
-    btn.closest('.lookup-item').remove();
-  } catch {
-    btn.disabled = false;
-  }
-}
-
-async function autoSaveNotes(analysisId, notes) {
-  try {
-    await fetch(`/api/analyses/${analysisId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ..._authHeaders() },
-      body: JSON.stringify({ notas: notes }),
-    });
-  } catch {}
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
    Toast
 ══════════════════════════════════════════════════════════════════════════ */
 function showToast(msg, type = 'ok') {
@@ -4022,13 +3722,17 @@ function showToast(msg, type = 'ok') {
 
 // Close modals on overlay click
 document.addEventListener('click', (e) => {
-  if (e.target.id === 'auth-modal') hideAuthModal();
-  if (e.target.id === 'upgrade-modal') hideUpgradeModal();
   if (e.target.id === 'share-modal') hideShareModal();
+  if (!e.target.closest('.address-help')) {
+    document.querySelectorAll('.address-help[open]').forEach(el => el.removeAttribute('open'));
+  }
 });
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { hideAuthModal(); hideUpgradeModal(); hideShareModal(); }
+  if (e.key === 'Escape') {
+    hideShareModal();
+    document.querySelectorAll('.address-help[open]').forEach(el => el.removeAttribute('open'));
+  }
   // / → focus search (when not already in an input/textarea)
   if (e.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) {
     e.preventDefault();
@@ -4041,7 +3745,6 @@ document.addEventListener('keydown', (e) => {
    History (localStorage)
 ══════════════════════════════════════════════════════════════════════════ */
 const _HIST_KEY = 'edif_history_v1';
-const _HIST_MAX = 6;
 
 function _isSuccessfulHistoryResult(data) {
   const blocked = new Set([
@@ -4057,12 +3760,23 @@ function saveToHistory(item) {
   let hist = _loadHistory();
   hist = hist.filter(h => !(Math.abs(h.lat - item.lat) < 0.0002 && Math.abs(h.lng - item.lng) < 0.0002));
   hist.unshift(item);
-  if (hist.length > _HIST_MAX) hist = hist.slice(0, _HIST_MAX);
-  try { localStorage.setItem(_HIST_KEY, JSON.stringify(hist)); } catch {}
+  try {
+    // Entries are intentionally not truncated during the public beta. They are
+    // small coordinate records, so localStorage can retain years of searches.
+    localStorage.setItem(_HIST_KEY, JSON.stringify(hist));
+  } catch {
+    showToast('El navegador no pudo guardar este elemento en Recientes.', 'err');
+  }
 }
 
 function _loadHistory() {
-  try { return JSON.parse(localStorage.getItem(_HIST_KEY) || '[]'); } catch { return []; }
+  try {
+    const parsed = JSON.parse(localStorage.getItem(_HIST_KEY) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(h => Number.isFinite(Number(h?.lat)) && Number.isFinite(Number(h?.lng)))
+      .sort((a, b) => Number(b.ts || 0) - Number(a.ts || 0));
+  } catch { return []; }
 }
 
 function _runHistItem(i) {
@@ -4085,7 +3799,7 @@ function renderHistory() {
   const items = hist.map((h, i) => {
     const label = h.address || `${h.lat.toFixed(4)}, ${h.lng.toFixed(4)}`;
     const trat = h.tratamiento ? ` · ${h.tratamiento}` : '';
-    const date = h.ts ? new Date(h.ts).toLocaleDateString('es-CO', { day:'2-digit', month:'short' }) : '';
+    const date = h.ts ? new Date(h.ts).toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' }) : '';
     return `<div class="hist-item" role="button" tabindex="0"
         onclick="_runHistItem(${i})"
         onkeydown="if(event.key==='Enter'||event.key===' ')_runHistItem(${i})"
@@ -4097,19 +3811,14 @@ function renderHistory() {
       <div class="hist-meta" aria-hidden="true">→</div>
     </div>`;
   }).join('');
-  el.innerHTML = `<div class="sp-history-title">Recientes</div>${items}`;
+  el.innerHTML = `<div class="sp-history-title">Recientes · ${hist.length}</div><div class="sp-history-list">${items}</div>`;
   el.style.display = 'block';
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
    Share
 ══════════════════════════════════════════════════════════════════════════ */
-let _shareTokenCache = null;   // token once created for current analysis
-
 function _getShareUrl() {
-  if (_shareTokenCache) {
-    return window.location.origin + '/s/' + _shareTokenCache;
-  }
   // Build URL with exact coordinates so recipient's browser skips geocoding entirely
   const addr = document.getElementById('addr-input')?.value?.trim();
   const coords = _lastLookupCoords;
@@ -4164,46 +3873,17 @@ function _shareVia(dest) {
 }
 
 async function showShareModal() {
-  _shareTokenCache = null;
   const area = document.getElementById('share-link-area');
-  if (area) area.innerHTML = `<span style="font-size:var(--ts-sm);color:var(--ink-4)">Preparando enlace…</span>`;
   document.getElementById('share-modal')?.classList.remove('hidden');
-
-  if (_currentAnalysisId) {
-    await createShareLink();
-  } else {
-    const url = _getShareUrl();
-    if (area) area.innerHTML = `
-      <div class="share-link-box">${escHtml(url)}</div>
-      <p style="font-size:10px;color:var(--ink-4);margin:0">Enlace directo al mismo predio — abre el análisis automáticamente.</p>
-    `;
-  }
+  const url = _getShareUrl();
+  if (area) area.innerHTML = `
+    <div class="share-link-box">${escHtml(url)}</div>
+    <p style="font-size:10px;color:var(--ink-4);margin:0">Enlace público al mismo predio — no requiere cuenta.</p>
+  `;
 }
 
 function hideShareModal() {
   document.getElementById('share-modal')?.classList.add('hidden');
-}
-
-async function createShareLink() {
-  if (!_currentAnalysisId) return;
-  const incPf = document.getElementById('share-include-pf')?.checked || false;
-  try {
-    const resp = await fetch(
-      `/api/analyses/${_currentAnalysisId}/share?include_proforma=${incPf}`,
-      { method: 'POST', headers: _authHeaders() }
-    );
-    const json = await resp.json();
-    if (!json.ok) { showToast(json.message || 'Error al crear enlace', 'err'); return; }
-    _shareTokenCache = json.token;
-    const url = json.url.startsWith('/') ? window.location.origin + json.url : json.url;
-    const area = document.getElementById('share-link-area');
-    if (area) area.innerHTML = `
-      <div class="share-link-box">${escHtml(url)}</div>
-      <p style="font-size:10px;color:var(--ink-4);margin:0">Solo lectura · sin datos de sesión</p>
-    `;
-  } catch {
-    showToast('Error de red al crear enlace', 'err');
-  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -4261,7 +3941,6 @@ async function _initSharePage() {
 }
 
 // Initialize Supabase auth on page load (map init happens after Leaflet loads)
-initSupabase();
 renderHistory();
 _initSharePage();
 

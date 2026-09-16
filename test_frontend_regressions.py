@@ -91,11 +91,15 @@ def test_status_summary_uses_full_payload_breakdown_and_has_reset():
     assert "'derivado'" in status_js
 
 
-def test_trace_gate_explains_plan_for_logged_out_and_free_users():
-    assert HTML.count("La trazabilidad completa está disponible en Plan Pro.") == 2
-    assert "Inicie sesión para consultar su plan" in HTML
-    assert "este plan no incluye las fórmulas" in HTML
-    assert "La traza detallada no está incluida en este resultado." not in HTML
+def test_traceability_is_public_and_has_no_login_or_plan_gate():
+    assert "traceBody = formulaTrace(d.formula_trace)" in HTML
+    assert "La trazabilidad completa está disponible en Plan Pro." not in HTML
+    assert "Inicie sesión para consultar su plan" not in HTML
+    assert "showAuthModal" not in HTML
+    assert "showUpgradeModal" not in HTML
+    assert "typeof value === 'object'" in HTML
+    assert "'No exigido'" in HTML
+    assert "[object Object]" not in HTML
 
 
 def test_manual_sale_price_is_rendered_and_forwarded():
@@ -133,6 +137,42 @@ def test_blocked_reports_are_not_saved_as_successful_recents():
     lookup_end = HTML.index("/* ═", lookup_start)
     lookup = HTML[lookup_start:lookup_end]
     assert "if (_isSuccessfulHistoryResult(d))" in lookup
+
+
+def test_public_beta_history_is_unbounded_scrollable_and_keeps_years_visible():
+    assert "const _HIST_MAX" not in HTML
+    assert "hist = hist.slice" not in HTML
+    assert "sp-history-list" in HTML
+    assert "overflow-y:auto" in HTML
+    assert "year:'numeric'" in HTML
+    assert "Recientes · ${hist.length}" in HTML
+
+
+def test_search_has_compact_address_abbreviation_help():
+    for text in ("CL</code> Calle", "KR/CRA</code> Carrera", "DG</code> Diagonal",
+                 "TV</code> Transversal", "AC</code> Avenida Calle", "AK</code> Avenida Carrera"):
+        assert text in HTML
+    assert '<details class="address-help">' in HTML
+    assert ".address-help[open] .address-help-card" in HTML
+
+
+def test_public_beta_has_no_active_account_or_paywall_surface():
+    api = Path(__file__).with_name("api.py").read_text()
+    assert "@supabase/supabase-js" not in HTML
+    assert 'id="login-btn"' not in HTML
+    assert 'id="auth-modal"' not in HTML
+    assert 'id="upgrade-modal"' not in HTML
+    assert '"beta_access": "public"' in api
+    assert '"authentication_required": False' in api
+    assert 'RedirectResponse(url="/app?history=1", status_code=302)' in api
+    assert '"error": "beta_local_history"' in api
+    dxf_start = api.index('@app.get("/api/dxf")')
+    dxf_end = api.index('# ── VIS/VIP', dxf_start)
+    assert "auth_required" not in api[dxf_start:dxf_end]
+    calc_start = api.index('@app.get("/api/calc")')
+    calc_end = api.index('# ── Units', calc_start)
+    assert "usage_limit" not in api[calc_start:calc_end]
+    assert 'del result["formula_trace"]' not in api[calc_start:calc_end]
 
 
 def test_api_has_specific_outside_bogota_and_chip_messages():

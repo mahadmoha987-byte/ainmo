@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 import asyncio
@@ -181,7 +181,9 @@ async def homepage_news():
 
 @app.get("/dashboard", include_in_schema=False)
 async def dashboard():
-    return FileResponse(os.path.join(os.path.dirname(__file__), "dashboard.html"))
+    # The account-backed portfolio is intentionally out of the public-beta
+    # surface. Keep the old URL useful without presenting an auth/paywall.
+    return RedirectResponse(url="/app?history=1", status_code=302)
 
 
 # ── Normative update pages (public, server-rendered for SEO) ─────────────────
@@ -303,13 +305,13 @@ async def normativa_article(slug: str):
     ), media_type="text/html; charset=utf-8")
 
 
-# ── Config (public — anon key only) ───────────────────────────────────────────
+# ── Public-beta config ─────────────────────────────────────────────────────────
 
 @app.get("/api/config")
 async def config_endpoint():
     return {
-        "supabase_url": auth.SUPABASE_URL,
-        "supabase_anon_key": auth.SUPABASE_ANON_KEY,
+        "beta_access": "public",
+        "authentication_required": False,
     }
 
 
@@ -317,19 +319,11 @@ async def config_endpoint():
 
 @app.get("/api/me")
 async def me(request: Request):
-    user = await get_current_user(request)
-    if not user:
-        return JSONResponse(status_code=401, content={"ok": False, "authenticated": False})
-    used, limit = await db.get_usage(user["id"])
     return {
         "ok": True,
-        "authenticated": True,
-        "email": user["email"],
-        "name": user.get("name"),
-        "avatar_url": user.get("avatar_url"),
-        "plan": user["plan"],
-        "usage_this_month": used,
-        "usage_limit": limit,
+        "authenticated": False,
+        "beta_access": "public",
+        "message": "Ainmo está abierto durante la beta; no se requiere cuenta.",
     }
 
 
@@ -462,19 +456,6 @@ async def calc_endpoint(
     expected_lotcodigo: str | None = Query(None),
     scenario_only: bool = Query(False),
 ):
-    user = await get_current_user(request)
-
-    if user and not scenario_only:
-        allowed = await db.check_usage_allowed(user["id"])
-        if not allowed:
-            used, limit = await db.get_usage(user["id"])
-            return JSONResponse(status_code=200, content={
-                "ok": False,
-                "error": "usage_limit",
-                "message": f"Alcanzaste el límite de {limit} consultas gratuitas este mes. Actualiza a Pro para consultas ilimitadas.",
-                "meta": {"plan": user["plan"], "usage_this_month": used, "usage_limit": limit},
-            })
-
     try:
         lu, result = await _calculate_current_lot(
             lng=lng, lat=lat, vis_en_sitio=vis_en_sitio,
@@ -489,34 +470,6 @@ async def calc_endpoint(
             near_match=near_match,
         )
 
-        analysis_id = None
-        usage_this_month = 0
-        usage_limit = 0
-
-        if user:
-            if scenario_only:
-                usage_this_month, usage_limit = await db.get_usage(user["id"])
-            else:
-                new_count = await db.increment_usage(user["id"])
-                usage_this_month = new_count if new_count >= 0 else 0
-                _, usage_limit = await db.get_usage(user["id"])
-
-            if user["plan"] == "pro":
-                analysis_id = await db.save_analysis(
-                    user_id=user["id"],
-                    direccion=result.get("direccion") or address,
-                    lat=lat,
-                    lng=lng,
-                    lookup_snapshot=lu,
-                    calc_result=result,
-                    vis_en_sitio=vis_en_sitio,
-                    anu_m2=anu_m2,
-                )
-
-        is_pro = user and user["plan"] == "pro"
-        if not is_pro and not auth.dev_mode() and "formula_trace" in result:
-            del result["formula_trace"]
-
         return {
             "ok": True,
             "data": result,
@@ -527,12 +480,10 @@ async def calc_endpoint(
                 "antes de tomar decisiones de transacción, licencia o actuación jurídica."
             ),
             "meta": {
-                "plan": user["plan"] if user else "guest",
-                "usage_this_month": usage_this_month,
-                "usage_limit": usage_limit,
-                "analysis_id": analysis_id,
-                "authenticated": user is not None,
-                "usage_charged": bool(user and not scenario_only),
+                "beta_access": "public",
+                "analysis_id": None,
+                "authenticated": False,
+                "usage_charged": False,
                 "regulatory_context": regulatory_context(),
             },
         }
@@ -923,16 +874,20 @@ async def report_html_endpoint(
 
 # ── Saved analyses ────────────────────────────────────────────────────────────
 
+def _beta_local_history_response() -> JSONResponse:
+    """Retire account-backed storage without exposing one user's rows to another."""
+    return JSONResponse(status_code=410, content={
+        "ok": False,
+        "error": "beta_local_history",
+        "message": (
+            "Durante la beta, el historial se guarda localmente en Recientes y no requiere cuenta. "
+            "Vuelva a consultar el predio para generar PDF, DXF o un enlace público."
+        ),
+    })
+
 @app.get("/api/portfolio/lots")
 async def portfolio_lots_endpoint(request: Request):
-    """Full lot data for the portfolio dashboard (includes result_json)."""
-    user = await get_current_user(request)
-    if not user:
-        return JSONResponse(status_code=401, content={"ok": False, "error": "auth_required"})
-    if not auth.dev_mode() and user["plan"] != "pro":
-        return JSONResponse(status_code=403, content={"ok": False, "error": "pro_required"})
-    rows = await db.get_portfolio_data(user["id"])
-    return {"ok": True, "data": rows}
+    return _beta_local_history_response()
 
 
 @app.get("/api/portfolio/market-defaults")
@@ -962,86 +917,27 @@ async def portfolio_market_defaults():
 
 @app.get("/api/analyses")
 async def list_analyses_endpoint(request: Request):
-    user = await get_current_user(request)
-    if not user or (not auth.dev_mode() and user["plan"] != "pro"):
-        return JSONResponse(status_code=403, content={"ok": False, "error": "pro_required",
-            "message": "El historial de análisis está disponible en el plan Pro."})
-    rows = await db.list_analyses(user["id"])
-    return {"ok": True, "data": rows}
+    return _beta_local_history_response()
 
 
 @app.get("/api/analyses/{analysis_id}")
 async def get_analysis_endpoint(analysis_id: str, request: Request):
-    user = await get_current_user(request)
-    if not user or user["plan"] != "pro":
-        return JSONResponse(status_code=403, content={"ok": False, "error": "pro_required"})
-    row = await db.get_analysis(analysis_id, user["id"])
-    if not row:
-        return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
-    return {"ok": True, "data": row}
+    return _beta_local_history_response()
 
 
 @app.patch("/api/analyses/{analysis_id}")
 async def update_analysis_endpoint(analysis_id: str, request: Request):
-    user = await get_current_user(request)
-    if not user or user["plan"] != "pro":
-        return JSONResponse(status_code=403, content={"ok": False, "error": "pro_required"})
-    try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse(status_code=400, content={"ok": False, "message": "JSON inválido"})
-    if "tags" in body:
-        if not isinstance(body["tags"], list):
-            return JSONResponse(status_code=400, content={"ok": False, "error": "validation_error", "message": "Las etiquetas deben enviarse como una lista."})
-        tags = [str(t).strip()[:60] for t in body["tags"] if str(t).strip()][:20]
-        await db.update_analysis_tags(analysis_id, user["id"], tags)
-    if "notas" in body or "notes" in body:
-        notas = str(body.get("notas", body.get("notes", "")))
-        await db.update_analysis_notas(analysis_id, user["id"], notas)
-    return {"ok": True}
+    return _beta_local_history_response()
 
 
 @app.delete("/api/analyses/{analysis_id}")
 async def delete_analysis_endpoint(analysis_id: str, request: Request):
-    user = await get_current_user(request)
-    if not user or user["plan"] != "pro":
-        return JSONResponse(status_code=403, content={"ok": False, "error": "pro_required"})
-    await db.delete_analysis(analysis_id, user["id"])
-    return {"ok": True}
+    return _beta_local_history_response()
 
 
 @app.get("/api/analyses/{analysis_id}/report")
 async def analysis_report_endpoint(analysis_id: str, request: Request, preview: bool = Query(False)):
-    user = await get_current_user(request)
-    if not user or user["plan"] != "pro":
-        return JSONResponse(status_code=403, content={"ok": False, "error": "pro_required"})
-    row = await db.get_analysis(analysis_id, user["id"])
-    if not row:
-        return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
-    try:
-        stored = row.get("result_json") or {}
-        lu = stored.get("lookup_snapshot") or {}
-        result = stored.get("calc_result") or stored
-        if not isinstance(result, dict) or not result.get("metrics"):
-            return JSONResponse(status_code=422, content={
-                "ok": False,
-                "error": "legacy_analysis_incomplete",
-                "message": "Este análisis guardado no contiene un resultado completo. Vuelva a consultar el predio para generar el informe.",
-            })
-        address = result.get("direccion") or row.get("direccion") or f"Predio {row.get('lote_codigo') or 'consultado'}"
-        loop = asyncio.get_event_loop()
-        pdf_bytes = await loop.run_in_executor(
-            None, lambda: pdf_report.generate_pdf(calc_result=result, lookup_snapshot=lu, address=address)
-        )
-    except Exception:
-        logger.exception("Saved analysis PDF generation failed", extra={"analysis_id": analysis_id})
-        return JSONResponse(status_code=500, content={
-            "ok": False, "error": "internal", "message": "No se pudo generar el informe guardado."
-        })
-    disposition = "inline" if preview else 'attachment; filename="prefactibilidad.pdf"'
-    from fastapi.responses import Response
-    return Response(content=pdf_bytes, media_type="application/pdf",
-                    headers={"Content-Disposition": disposition})
+    return _beta_local_history_response()
 
 
 # ── DXF export ────────────────────────────────────────────────────────────────
@@ -1057,9 +953,6 @@ async def dxf_endpoint(
     ancho_via_m: float | None = Query(None),
     expected_lotcodigo: str | None = Query(None),
 ):
-    user = await get_current_user(request)
-    if not user and not auth.dev_mode():
-        return JSONResponse(status_code=401, content={"ok": False, "error": "auth_required"})
     try:
         lu, result = await _calculate_current_lot(
             lng=lng, lat=lat, vis_en_sitio=vis_en_sitio,
@@ -1317,20 +1210,7 @@ async def create_share_endpoint(
     request: Request,
     include_proforma: bool = Query(False),
 ):
-    user = await get_current_user(request)
-    if not user or (not auth.dev_mode() and user["plan"] != "pro"):
-        return JSONResponse(status_code=403, content={"ok": False, "error": "pro_required"})
-    row = await db.get_analysis(analysis_id, user["id"])
-    if not row:
-        return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
-    try:
-        token = await db.create_share_token(analysis_id, include_proforma)
-        app_url = os.environ.get("APP_URL", "").rstrip("/")
-        url = f"{app_url}/s/{token}" if app_url else f"/s/{token}"
-        return {"ok": True, "token": token, "url": url}
-    except Exception:
-        return JSONResponse(status_code=500, content={"ok": False, "error": "internal",
-                            "message": "No se pudo crear el enlace. Verifique que la tabla share_tokens exista."})
+    return _beta_local_history_response()
 
 
 @app.get("/api/share/{token}")

@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard — Edificabilidad Bogotá</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -1157,26 +1156,12 @@ async function boot() {
     }
   });
 
-  try {
-    const cfg = await fetch('/api/config').then(r => r.json());
-    if (cfg.supabase_url && cfg.supabase_anon_key) {
-      _sb = supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
-      const { data: { session } } = await _sb.auth.getSession();
-      _session = session;
-      if (!_session) { window.location = '/?require_auth=1'; return; }
-      _sb.auth.onAuthStateChange((ev, s) => {
-        _session = s;
-        if (!s && ev !== 'INITIAL_SESSION') window.location = '/';
-      });
-    }
-  } catch (_) {}
-
   loadMarketDefaults();
   await loadPortfolioData();
 }
 
 function authHeaders() {
-  return _session?.access_token ? { Authorization: `Bearer ${_session.access_token}` } : {};
+  return {};
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -1195,18 +1180,10 @@ function saveLotSup() { localStorage.setItem('edif_lot_sup_v1', JSON.stringify(_
    Data loading
 ══════════════════════════════════════════════════════════════════════ */
 async function loadPortfolioData() {
-  try {
-    const resp = await fetch('/api/portfolio/lots', { headers: authHeaders() });
-    const json = await resp.json();
-    if (!json.ok) {
-      if (json.error === 'pro_required') { showProRequired(); return; }
-      const r2 = await fetch('/api/analyses', { headers: authHeaders() });
-      const j2 = await r2.json();
-      _lots = j2.ok ? j2.data : [];
-    } else {
-      _lots = json.data || [];
-    }
-  } catch (_) { _lots = []; }
+  // The public beta keeps search history in the browser. The main /app view
+  // is the canonical history interface; this legacy dashboard is no longer an
+  // account wall and is redirected there by the server.
+  _lots = [];
 
   _computedRows = _lots.map(computeRow);
   buildFilterOptions();
@@ -2772,7 +2749,7 @@ function closeSheet() {
 function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 function showProRequired() {
-  document.getElementById('dt-empty').innerHTML = `<h3>Historial en Plan Pro</h3><p>Actualiza para guardar y gestionar tu portafolio.</p><a href="/app" class="tb-btn primary" style="margin-top:8px">Ir a la herramienta</a>`;
+  document.getElementById('dt-empty').innerHTML = `<h3>Historial público beta</h3><p>Los predios consultados aparecen en «Recientes» dentro de la herramienta.</p><a href="/app?history=1" class="tb-btn primary" style="margin-top:8px">Ver Recientes</a>`;
   document.getElementById('dt-empty').style.display = '';
   document.getElementById('dt-table').style.display = 'none';
 }
@@ -3074,7 +3051,7 @@ async function _batchProcessRow(row) {
       const e=cr.error||'';
       if(/zero_features|layer_error|layer_parse/.test(e)){row.status='sin_dato';row.error=cr.message?.slice(0,90)||'Sin datos GIS';}
       else if(e==='input_required'){row.status='sin_dato';row.error=cr.message||cr.que_se_necesita||'Requiere un dato adicional';}
-      else if(e==='usage_limit'){row.status='error';row.error='Límite de uso alcanzado';_batchCancelled=true;}
+      else if(e==='usage_limit'){row.status='error';row.error='La API respondió con un límite inesperado durante la beta';_batchCancelled=true;}
       else{row.status='error';row.error=cr.message?.slice(0,90)||'Error';}
       return;
     }
