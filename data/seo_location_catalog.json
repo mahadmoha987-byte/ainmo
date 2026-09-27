@@ -1,0 +1,1239 @@
+{
+  "consulted": "2026-09-26",
+  "sources": {
+    "localities": "https://services7.arcgis.com/lsxbLWF2l19Rmhqj/arcgis/rest/services/POT_Bogota_Decreto_555_2021/FeatureServer/31",
+    "treatments": "https://services7.arcgis.com/lsxbLWF2l19Rmhqj/arcgis/rest/services/POT_Bogota_Decreto_555_2021/FeatureServer/15",
+    "activities": "https://services7.arcgis.com/lsxbLWF2l19Rmhqj/arcgis/rest/services/POT_Bogota_Decreto_555_2021/FeatureServer/14",
+    "sectors": "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services/catastro/sectorcatastral/MapServer/0"
+  },
+  "localities": [
+    {
+      "name": "Antonio Nariño",
+      "slug": "antonio-narino",
+      "code": "15",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 71.6
+        },
+        {
+          "name": "Renovacion",
+          "pct": 23.2
+        },
+        {
+          "name": "Conservacion",
+          "pct": 5.0
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 55.0
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 33.1
+        },
+        {
+          "name": "Plan Especial De Manejo Y Protección -Pemp Bic Nacional: Se Rige Por Lo Establecido En La Resolución Que Lo Aprueba O La Norma Que La Modifique O Sustituya",
+          "pct": 10.1
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 1.8
+        }
+      ]
+    },
+    {
+      "name": "Barrios Unidos",
+      "slug": "barrios-unidos",
+      "code": "12",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 53.8
+        },
+        {
+          "name": "Renovacion",
+          "pct": 34.7
+        },
+        {
+          "name": "Conservacion",
+          "pct": 11.1
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 62.2
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 31.9
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 5.8
+        }
+      ]
+    },
+    {
+      "name": "Bosa",
+      "slug": "bosa",
+      "code": "7",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 45.7
+        },
+        {
+          "name": "Mejoramiento Integral",
+          "pct": 28.3
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 18.2
+        },
+        {
+          "name": "Renovacion",
+          "pct": 7.2
+        },
+        {
+          "name": "Conservacion",
+          "pct": 0.6
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap - Receptora De Soportes Urbanos",
+          "pct": 60.1
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Actividades Económicas",
+          "pct": 32.7
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 7.1
+        }
+      ]
+    },
+    {
+      "name": "Candelaria",
+      "slug": "candelaria",
+      "code": "17",
+      "treatments": [
+        {
+          "name": "Conservacion",
+          "pct": 85.9
+        },
+        {
+          "name": "Renovacion",
+          "pct": 11.9
+        },
+        {
+          "name": "Mejoramiento Integral",
+          "pct": 2.3
+        }
+      ],
+      "activities": [
+        {
+          "name": "Plan Especial De Manejo Y Protección -Pemp Bic Nacional: Se Rige Por Lo Establecido En La Resolución Que Lo Aprueba O La Norma Que La Modifique O Sustituya",
+          "pct": 99.9
+        }
+      ]
+    },
+    {
+      "name": "Chapinero",
+      "slug": "chapinero",
+      "code": "2",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 61.6
+        },
+        {
+          "name": "Renovacion",
+          "pct": 29.6
+        },
+        {
+          "name": "Conservacion",
+          "pct": 6.4
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 2.4
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 46.5
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 40.4
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 12.5
+        },
+        {
+          "name": "Plan Especial De Manejo Y Protección -Pemp Bic Nacional: Se Rige Por Lo Establecido En La Resolución Que Lo Aprueba O La Norma Que La Modifique O Sustituya",
+          "pct": 0.6
+        }
+      ]
+    },
+    {
+      "name": "Ciudad Bolivar",
+      "slug": "ciudad-bolivar",
+      "code": "19",
+      "treatments": [
+        {
+          "name": "Mejoramiento Integral",
+          "pct": 42.5
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 30.0
+        },
+        {
+          "name": "Consolidacion",
+          "pct": 17.5
+        },
+        {
+          "name": "Renovacion",
+          "pct": 10.0
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap - Receptora De Soportes Urbanos",
+          "pct": 61.1
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Actividades Económicas",
+          "pct": 33.0
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 5.9
+        }
+      ]
+    },
+    {
+      "name": "Engativa",
+      "slug": "engativa",
+      "code": "10",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 76.1
+        },
+        {
+          "name": "Renovacion",
+          "pct": 18.3
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 5.2
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap - Receptora De Soportes Urbanos",
+          "pct": 28.5
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 25.9
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 25.9
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 14.5
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Actividades Económicas",
+          "pct": 5.2
+        }
+      ]
+    },
+    {
+      "name": "Fontibon",
+      "slug": "fontibon",
+      "code": "9",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 53.1
+        },
+        {
+          "name": "Renovacion",
+          "pct": 30.0
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 16.4
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 50.3
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 14.8
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Actividades Económicas",
+          "pct": 13.1
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap - Receptora De Soportes Urbanos",
+          "pct": 11.1
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 10.6
+        }
+      ]
+    },
+    {
+      "name": "Kennedy",
+      "slug": "kennedy",
+      "code": "8",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 64.1
+        },
+        {
+          "name": "Renovacion",
+          "pct": 23.5
+        },
+        {
+          "name": "Mejoramiento Integral",
+          "pct": 6.4
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 5.8
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap - Receptora De Soportes Urbanos",
+          "pct": 56.2
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Actividades Económicas",
+          "pct": 38.5
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 5.3
+        }
+      ]
+    },
+    {
+      "name": "Los Martires",
+      "slug": "los-martires",
+      "code": "14",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 59.5
+        },
+        {
+          "name": "Renovacion",
+          "pct": 29.9
+        },
+        {
+          "name": "Conservacion",
+          "pct": 10.0
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 0.6
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 59.5
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 23.0
+        },
+        {
+          "name": "Plan Especial De Manejo Y Protección -Pemp Bic Nacional: Se Rige Por Lo Establecido En La Resolución Que Lo Aprueba O La Norma Que La Modifique O Sustituya",
+          "pct": 11.5
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 6.0
+        }
+      ]
+    },
+    {
+      "name": "Puente Aranda",
+      "slug": "puente-aranda",
+      "code": "16",
+      "treatments": [
+        {
+          "name": "Renovacion",
+          "pct": 58.3
+        },
+        {
+          "name": "Consolidacion",
+          "pct": 39.3
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 2.0
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 38.6
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 32.3
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 29.1
+        }
+      ]
+    },
+    {
+      "name": "Rafael Uribe Uribe",
+      "slug": "rafael-uribe-uribe",
+      "code": "18",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 60.3
+        },
+        {
+          "name": "Mejoramiento Integral",
+          "pct": 27.5
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 5.9
+        },
+        {
+          "name": "Renovacion",
+          "pct": 5.1
+        },
+        {
+          "name": "Conservacion",
+          "pct": 1.2
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap - Receptora De Soportes Urbanos",
+          "pct": 41.1
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 31.4
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 10.1
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 9.1
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Actividades Económicas",
+          "pct": 8.4
+        }
+      ]
+    },
+    {
+      "name": "San Cristobal",
+      "slug": "san-cristobal",
+      "code": "4",
+      "treatments": [
+        {
+          "name": "Mejoramiento Integral",
+          "pct": 44.2
+        },
+        {
+          "name": "Consolidacion",
+          "pct": 27.3
+        },
+        {
+          "name": "Renovacion",
+          "pct": 17.3
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 10.2
+        },
+        {
+          "name": "Conservacion",
+          "pct": 1.0
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap - Receptora De Soportes Urbanos",
+          "pct": 69.2
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Actividades Económicas",
+          "pct": 25.5
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 4.4
+        },
+        {
+          "name": "Plan Especial De Manejo Y Protección -Pemp Bic Nacional: Se Rige Por Lo Establecido En La Resolución Que Lo Aprueba O La Norma Que La Modifique O Sustituya",
+          "pct": 0.9
+        }
+      ]
+    },
+    {
+      "name": "Santa Fe",
+      "slug": "santa-fe",
+      "code": "3",
+      "treatments": [
+        {
+          "name": "Renovacion",
+          "pct": 33.1
+        },
+        {
+          "name": "Conservacion",
+          "pct": 26.1
+        },
+        {
+          "name": "Consolidacion",
+          "pct": 20.9
+        },
+        {
+          "name": "Mejoramiento Integral",
+          "pct": 13.9
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 6.1
+        }
+      ],
+      "activities": [
+        {
+          "name": "Plan Especial De Manejo Y Protección -Pemp Bic Nacional: Se Rige Por Lo Establecido En La Resolución Que Lo Aprueba O La Norma Que La Modifique O Sustituya",
+          "pct": 51.8
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 30.5
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 15.3
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 2.3
+        }
+      ]
+    },
+    {
+      "name": "Suba",
+      "slug": "suba",
+      "code": "11",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 69.1
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 13.4
+        },
+        {
+          "name": "Renovacion",
+          "pct": 12.6
+        },
+        {
+          "name": "Mejoramiento Integral",
+          "pct": 3.0
+        },
+        {
+          "name": "Conservacion",
+          "pct": 1.8
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 35.9
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 30.4
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap - Receptora De Soportes Urbanos",
+          "pct": 24.6
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Actividades Económicas",
+          "pct": 6.4
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 2.7
+        }
+      ]
+    },
+    {
+      "name": "Sumapaz",
+      "slug": "sumapaz",
+      "code": "20",
+      "treatments": [],
+      "activities": []
+    },
+    {
+      "name": "Teusaquillo",
+      "slug": "teusaquillo",
+      "code": "13",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 45.7
+        },
+        {
+          "name": "Renovacion",
+          "pct": 26.8
+        },
+        {
+          "name": "Conservacion",
+          "pct": 25.2
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 2.2
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 35.9
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 35.4
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 28.7
+        }
+      ]
+    },
+    {
+      "name": "Tunjuelito",
+      "slug": "tunjuelito",
+      "code": "6",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 50.0
+        },
+        {
+          "name": "Renovacion",
+          "pct": 39.9
+        },
+        {
+          "name": "Mejoramiento Integral",
+          "pct": 9.2
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 0.9
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Actividades Económicas",
+          "pct": 48.0
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap - Receptora De Soportes Urbanos",
+          "pct": 32.8
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 19.2
+        }
+      ]
+    },
+    {
+      "name": "Usaquen",
+      "slug": "usaquen",
+      "code": "1",
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 63.6
+        },
+        {
+          "name": "Renovacion",
+          "pct": 18.7
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 12.9
+        },
+        {
+          "name": "Mejoramiento Integral",
+          "pct": 4.2
+        },
+        {
+          "name": "Conservacion",
+          "pct": 0.6
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 31.1
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 30.3
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Actividades Económicas",
+          "pct": 16.0
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap - Receptora De Soportes Urbanos",
+          "pct": 14.7
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 7.9
+        }
+      ]
+    },
+    {
+      "name": "Usme",
+      "slug": "usme",
+      "code": "5",
+      "treatments": [
+        {
+          "name": "Mejoramiento Integral",
+          "pct": 40.4
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 36.3
+        },
+        {
+          "name": "Consolidacion",
+          "pct": 18.7
+        },
+        {
+          "name": "Renovacion",
+          "pct": 4.4
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap - Receptora De Soportes Urbanos",
+          "pct": 51.2
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Actividades Económicas",
+          "pct": 45.7
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 3.1
+        }
+      ]
+    }
+  ],
+  "sectors": [
+    {
+      "name": "Cedritos",
+      "slug": "cedritos",
+      "code": "008512",
+      "locality": {
+        "name": "Usaquen",
+        "slug": "usaquen"
+      },
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 100.0
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 98.1
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 1.9
+        }
+      ]
+    },
+    {
+      "name": "Chico Norte",
+      "slug": "chico-norte",
+      "code": "008307",
+      "locality": {
+        "name": "Chapinero",
+        "slug": "chapinero"
+      },
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 94.2
+        },
+        {
+          "name": "Renovacion",
+          "pct": 5.7
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 63.0
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 33.5
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 3.5
+        }
+      ]
+    },
+    {
+      "name": "Ciudad Salitre Nor-Oriental",
+      "slug": "ciudad-salitre-nororiental",
+      "code": "006216",
+      "locality": {
+        "name": "Teusaquillo",
+        "slug": "teusaquillo"
+      },
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 74.0
+        },
+        {
+          "name": "Renovacion",
+          "pct": 18.1
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 7.9
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 37.8
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 36.3
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 25.9
+        }
+      ]
+    },
+    {
+      "name": "El Chico",
+      "slug": "el-chico",
+      "code": "008308",
+      "locality": {
+        "name": "Chapinero",
+        "slug": "chapinero"
+      },
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 89.2
+        },
+        {
+          "name": "Renovacion",
+          "pct": 10.8
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 65.1
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 34.9
+        }
+      ]
+    },
+    {
+      "name": "Galerias",
+      "slug": "galerias",
+      "code": "007207",
+      "locality": {
+        "name": "Teusaquillo",
+        "slug": "teusaquillo"
+      },
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 99.9
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 99.9
+        }
+      ]
+    },
+    {
+      "name": "La Candelaria",
+      "slug": "la-candelaria",
+      "code": "009141",
+      "locality": {
+        "name": "Suba",
+        "slug": "suba"
+      },
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 100.0
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 100.0
+        }
+      ]
+    },
+    {
+      "name": "La Castellana",
+      "slug": "la-castellana",
+      "code": "005304",
+      "locality": {
+        "name": "Barrios Unidos",
+        "slug": "barrios-unidos"
+      },
+      "treatments": [
+        {
+          "name": "Renovacion",
+          "pct": 66.6
+        },
+        {
+          "name": "Consolidacion",
+          "pct": 27.9
+        },
+        {
+          "name": "Desarrollo",
+          "pct": 5.6
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 80.9
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 15.9
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 3.2
+        }
+      ]
+    },
+    {
+      "name": "Lago Gaitan",
+      "slug": "lago-gaitan",
+      "code": "008313",
+      "locality": {
+        "name": "Chapinero",
+        "slug": "chapinero"
+      },
+      "treatments": [
+        {
+          "name": "Renovacion",
+          "pct": 100.0
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 100.0
+        }
+      ]
+    },
+    {
+      "name": "Modelia",
+      "slug": "modelia",
+      "code": "006311",
+      "locality": {
+        "name": "Fontibon",
+        "slug": "fontibon"
+      },
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 81.9
+        },
+        {
+          "name": "Renovacion",
+          "pct": 18.1
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 81.9
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 17.9
+        }
+      ]
+    },
+    {
+      "name": "Normandia",
+      "slug": "normandia",
+      "code": "005507",
+      "locality": {
+        "name": "Engativa",
+        "slug": "engativa"
+      },
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 81.1
+        },
+        {
+          "name": "Renovacion",
+          "pct": 18.9
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 73.9
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 26.1
+        }
+      ]
+    },
+    {
+      "name": "Pasadena",
+      "slug": "pasadena",
+      "code": "009125",
+      "locality": {
+        "name": "Suba",
+        "slug": "suba"
+      },
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 85.5
+        },
+        {
+          "name": "Renovacion",
+          "pct": 14.5
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 68.0
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 32.0
+        }
+      ]
+    },
+    {
+      "name": "Polo Club",
+      "slug": "polo-club",
+      "code": "007401",
+      "locality": {
+        "name": "Barrios Unidos",
+        "slug": "barrios-unidos"
+      },
+      "treatments": [
+        {
+          "name": "Conservacion",
+          "pct": 49.9
+        },
+        {
+          "name": "Renovacion",
+          "pct": 26.1
+        },
+        {
+          "name": "Consolidacion",
+          "pct": 24.0
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 79.7
+        },
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 20.3
+        }
+      ]
+    },
+    {
+      "name": "Quinta Camacho",
+      "slug": "quinta-camacho",
+      "code": "008201",
+      "locality": {
+        "name": "Chapinero",
+        "slug": "chapinero"
+      },
+      "treatments": [
+        {
+          "name": "Conservacion",
+          "pct": 79.2
+        },
+        {
+          "name": "Renovacion",
+          "pct": 20.7
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 77.4
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 14.0
+        },
+        {
+          "name": "Plan Especial De Manejo Y Protección -Pemp Bic Nacional: Se Rige Por Lo Establecido En La Resolución Que Lo Aprueba O La Norma Que La Modifique O Sustituya",
+          "pct": 8.1
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 0.6
+        }
+      ]
+    },
+    {
+      "name": "Restrepo",
+      "slug": "restrepo",
+      "code": "002103",
+      "locality": {
+        "name": "Antonio Nariño",
+        "slug": "antonio-narino"
+      },
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 100.0
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 93.2
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 6.8
+        }
+      ]
+    },
+    {
+      "name": "Santa Barbara Central",
+      "slug": "santa-barbara-central",
+      "code": "008415",
+      "locality": {
+        "name": "Usaquen",
+        "slug": "usaquen"
+      },
+      "treatments": [
+        {
+          "name": "Consolidacion",
+          "pct": 90.6
+        },
+        {
+          "name": "Renovacion",
+          "pct": 9.1
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 64.7
+        },
+        {
+          "name": "Área De Actividad Estructurante - Aae - Receptora De Vivienda De Interés Social",
+          "pct": 22.4
+        },
+        {
+          "name": "Área De Actividad Grandes Servicios Metropolitanos - Aagsm",
+          "pct": 13.0
+        }
+      ]
+    },
+    {
+      "name": "Teusaquillo",
+      "slug": "teusaquillo",
+      "code": "007104",
+      "locality": {
+        "name": "Teusaquillo",
+        "slug": "teusaquillo"
+      },
+      "treatments": [
+        {
+          "name": "Conservacion",
+          "pct": 79.3
+        },
+        {
+          "name": "Consolidacion",
+          "pct": 20.7
+        }
+      ],
+      "activities": [
+        {
+          "name": "Área De Actividad De Proximidad - Aap- Generadora De Soportes Urbanos",
+          "pct": 99.9
+        }
+      ]
+    }
+  ]
+}

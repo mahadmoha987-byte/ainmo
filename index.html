@@ -2,6 +2,14 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-0D7DLCB9DL"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-0D7DLCB9DL');
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ainmo — Prefactibilidad urbana en Bogotá</title>
 <meta name="description" content="Ainmo — prefactibilidad, edificabilidad, riesgos y valor residual para lotes en Bogotá con fuentes normativas y GIS trazables.">
@@ -730,6 +738,7 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
    State
 ══════════════════════════════════════════════════════════════════════════ */
 let _lastRaw = null;            // raw API response (for JSON export)
+let _pdfCheckoutConfigPromise = null;
 let _pendingAnu = null;         // {lng, lat, vis} waiting for user ANU input
 let _pendingFrente = null;      // {lng, lat, vis, anu} waiting for frente_m / ancho_via_m
 let _confirmedCoords = null;    // {lat, lng, lotcodigo} confirmed from geocoder
@@ -1879,8 +1888,8 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
     </div>`);
   }
 
-  // Export buttons — PDF is available to all users
-  const pdfBtn = `<button class="btn btn-primary btn-sm" onclick="downloadPdf(${lat},${lng},${vis})">⬇ Descargar PDF</button>`;
+  // Export buttons — the live report is free; production can sell the cited PDF.
+  const pdfBtn = `<button class="btn btn-primary btn-sm" data-pdf-export onclick="downloadPdf(${lat},${lng},${vis})">⬇ Preparar PDF</button>`;
   const shareBtn = `<button class="share-btn" onclick="showShareModal()" aria-label="Compartir análisis">⬗ Compartir</button>`;
   const dxfBtn = `<button class="share-btn" onclick="downloadDxf(${lat},${lng},${vis})" aria-label="Exportar DXF">⬇ DXF</button>`;
   parts.push(`<div class="export-row" style="flex-wrap:wrap;gap:var(--sp-2)">
@@ -1890,6 +1899,7 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
     ${dxfBtn}
     <button class="share-btn" onclick="window.print()" aria-label="Imprimir">⎙ Imprimir</button>
   </div>`);
+  window.setTimeout(hydratePdfButtons, 0);
 
   // Normative detail — collapsible, collapsed by default
   const normParts = [];
@@ -3665,6 +3675,25 @@ function exportPropertyUnitsCsv() {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function loadPdfCheckoutConfig() {
+  if (!_pdfCheckoutConfigPromise) {
+    _pdfCheckoutConfigPromise = fetch('/api/config', { cache: 'no-store' })
+      .then(response => response.ok ? response.json() : {})
+      .catch(() => ({}));
+  }
+  return _pdfCheckoutConfigPromise;
+}
+
+async function hydratePdfButtons() {
+  const config = await loadPdfCheckoutConfig();
+  const label = config.pdf_checkout_enabled
+    ? `Comprar PDF · $${Number(config.pdf_report_price_cop || 99000).toLocaleString('es-CO')} COP`
+    : '⬇ Descargar PDF';
+  document.querySelectorAll('[data-pdf-export]').forEach(button => {
+    if (!button.disabled) button.textContent = label;
+  });
+}
+
 async function downloadPdf(lat, lng, vis) {
   if (!_lastRaw) return;
   const d = (_lastRaw.data || _lastRaw);
@@ -3684,6 +3713,10 @@ async function downloadPdf(lat, lng, vis) {
     params.set('searched_address', addressResolution.searched_address);
     params.set('resolved_address', addressResolution.resolved_address);
     params.set('near_match', 'true');
+  } else if (addressResolution?.approximate_identification && addressResolution?.method === 'intersection') {
+    params.set('searched_address', addressResolution.searched_address);
+    params.set('resolved_address', addressResolution.resolved_address);
+    params.set('search_mode', 'intersection');
   }
 
   const btn = document.activeElement;
@@ -3692,6 +3725,21 @@ async function downloadPdf(lat, lng, vis) {
   btn.disabled = true;
 
   try {
+    const config = await loadPdfCheckoutConfig();
+    if (config.pdf_checkout_enabled) {
+      const checkoutResp = await fetch('/api/checkout/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.fromEntries(params.entries())),
+      });
+      const checkout = await checkoutResp.json().catch(() => ({}));
+      if (!checkoutResp.ok || !checkout.url) {
+        alert(checkout.message || 'No fue posible iniciar el pago del informe.');
+        return;
+      }
+      window.location.assign(checkout.url);
+      return;
+    }
     const resp = await fetch(`/api/report?${params}`);
     const contentType = resp.headers.get('content-type') || '';
     if (!resp.ok || !contentType.includes('application/pdf')) {

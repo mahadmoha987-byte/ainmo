@@ -7,7 +7,11 @@ import api
 
 def test_current_analysis_pdf_is_public(monkeypatch):
     monkeypatch.setattr(api, "_gis_lookup_cached", lambda *_args: {"lote": {}})
-    monkeypatch.setattr(api.calc, "calculate", lambda *_args, **_kwargs: {"ok": True})
+    monkeypatch.setattr(
+        api.calc,
+        "calculate",
+        lambda *_args, **_kwargs: {"ok": True, "lote": {"lotcodigo": "001"}},
+    )
     monkeypatch.setattr(api.pdf_report, "generate_pdf", lambda **_kwargs: b"%PDF-public")
 
     request = Request({"type": "http", "method": "GET", "path": "/api/report", "headers": []})
@@ -29,4 +33,6 @@ def test_current_analysis_pdf_is_public(monkeypatch):
     assert response.status_code == 200
     assert response.media_type == "application/pdf"
     assert response.body == b"%PDF-public"
-    assert response.headers["content-disposition"] == 'attachment; filename="prefactibilidad.pdf"'
+    assert response.headers["content-disposition"] == 'attachment; filename="ainmo_001.pdf"'
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-ainmo-lotcodigo"] == "001"

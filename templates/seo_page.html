@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ page.title }} | Ainmo</title>
+  <meta name="description" content="{{ page.meta_description }}">
+  <link rel="canonical" href="{{ page.canonical }}">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <meta property="og:locale" content="es_CO">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Ainmo">
+  <meta property="og:title" content="{{ page.title }}">
+  <meta property="og:description" content="{{ page.meta_description }}">
+  <meta property="og:url" content="{{ page.canonical }}">
+  <meta property="og:image" content="https://ainmo.uk/static/bogota-skyline.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Dosis:wght@400;500;600&family=Overpass:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/seo.css?v=20260925a">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-0D7DLCB9DL"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-0D7DLCB9DL');
+  </script>
+  <script type="application/ld+json">{{ structured_data | tojson }}</script>
+</head>
+<body data-page-kind="{{ page.kind }}" data-page-slug="{{ slug }}">
+  <a class="skip" href="#contenido">Saltar al contenido</a>
+  <nav class="site-nav" aria-label="Navegación principal">
+    <div class="wide nav-inner">
+      <a class="logo" href="/" aria-label="Ainmo, inicio">ainmo</a>
+      <div class="nav-links">
+        <a href="/bogota">Bogotá</a>
+        <a href="/guias">Guías</a>
+        <a class="nav-cta" href="/app" data-track="open_tool_nav">Analizar un predio ↗</a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="contenido">
+    <header class="hero">
+      <div class="wide crumbs" aria-label="Migas de pan">
+        <a href="/">Inicio</a><span>/</span>
+        <a href="/{{ 'bogota' if page.kind in ['localidad', 'sector'] else 'guias' }}">{{ 'Bogotá' if page.kind in ['localidad', 'sector'] else 'Guías' }}</a><span>/</span>
+        {% if page.kind == 'sector' %}<a href="/bogota/{{ page.parent.slug }}">{{ page.parent.name }}</a><span>/</span>{% endif %}
+        <span aria-current="page">{{ page.breadcrumb }}</span>
+      </div>
+      <div class="content hero-grid">
+        <div>
+          <p class="eyebrow">{{ page.eyebrow }}</p>
+          <h1>{{ page.h1 }}</h1>
+          <p class="lede">{{ page.lede }}</p>
+          <p class="scope">Prefactibilidad urbanística; no sustituye un concepto oficial ni una licencia.</p>
+        </div>
+        <form class="search-card" action="/app" method="get" data-seo-search>
+          <label for="seo-search">Consulte un predio</label>
+          <div class="search-row">
+            <input id="seo-search" name="q" type="search" required autocomplete="street-address" placeholder="{{ page.search_placeholder }}">
+            <button type="submit">Analizar gratis <span aria-hidden="true">↗</span></button>
+          </div>
+          <p>Dirección, CHIP o intersección en Bogotá. Confirme siempre el polígono seleccionado.</p>
+        </form>
+      </div>
+    </header>
+
+    <section class="section content intro-grid" aria-labelledby="intro-title">
+      <div>
+        <p class="eyebrow">ANTES DE LEER UNA CIFRA</p>
+        <h2 id="intro-title">{{ page.intro_title }}</h2>
+      </div>
+      <div class="prose">
+        {% for paragraph in page.intro %}<p>{{ paragraph }}</p>{% endfor %}
+      </div>
+    </section>
+
+    <section class="section section-tint" aria-labelledby="facts-title">
+      <div class="content">
+        <div class="section-heading">
+          <p class="eyebrow">LO QUE CAMBIA LA RESPUESTA</p>
+          <h2 id="facts-title">Tres claves para leer el resultado</h2>
+        </div>
+        <div class="fact-grid">
+          {% for fact in page.facts %}
+          <article class="fact-card">
+            <span class="fact-number">0{{ loop.index }}</span>
+            <h3>{{ fact.title }}</h3>
+            <p>{{ fact.body }}</p>
+            <small>{{ fact.citation }}</small>
+          </article>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="section content" aria-labelledby="example-title">
+      <div class="example-card">
+        <div class="example-copy">
+          <p class="eyebrow">{{ page.example.label }}</p>
+          <h2 id="example-title">{{ page.example.title }}</h2>
+          <p class="mono">{{ page.example.meta }}</p>
+          <strong>{{ page.example.result }}</strong>
+          <span class="status">{{ page.example.status }}</span>
+          <p>{{ page.example.note }}</p>
+        </div>
+        <div class="example-action">
+          <a class="button" href="{{ page.example.url }}" data-track="open_example">Abrir el análisis <span aria-hidden="true">↗</span></a>
+          <small>La consulta vuelve a leer las fuentes vigentes al abrirse.</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="section sources" aria-labelledby="sources-title">
+      <div class="content source-grid">
+        <div>
+          <p class="eyebrow">FUENTES PRIMARIAS</p>
+          <h2 id="sources-title">La página orienta. El predio decide.</h2>
+          <p>Estas páginas explican el método y conducen a la consulta. Los valores del informe se obtienen para el polígono seleccionado y conservan su fuente y fecha.</p>
+        </div>
+        <ol>
+          {% for source in sources %}
+          <li>
+            <a href="{{ source.url }}" target="_blank" rel="noopener">{{ source.name }} ↗</a>
+            <span>{{ source.detail }}</span>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </section>
+
+    <section class="section content faq" aria-labelledby="faq-title">
+      <div class="section-heading left">
+        <p class="eyebrow">PREGUNTAS FRECUENTES</p>
+        <h2 id="faq-title">Lo que conviene confirmar</h2>
+      </div>
+      {% for item in page.faqs %}
+      <details>
+        <summary>{{ item.question }}</summary>
+        <p>{{ item.answer }}</p>
+      </details>
+      {% endfor %}
+    </section>
+
+    <section class="related" aria-labelledby="related-title">
+      <div class="content">
+        <p class="eyebrow">SIGA EXPLORANDO</p>
+        <h2 id="related-title">Consultas relacionadas</h2>
+        <div class="related-links">
+          {% for label, url in page.related %}<a href="{{ url }}">{{ label }} <span aria-hidden="true">→</span></a>{% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="closing">
+      <div class="content">
+        <p class="eyebrow">BOGOTÁ, LOTE A LOTE</p>
+        <h2>No adivinamos.<br>Consultamos y citamos.</h2>
+        <p>Empiece con una dirección, un CHIP, una intersección o un punto en el mapa.</p>
+        <a class="button dark" href="/app" data-track="open_tool_bottom">Analizar mi primer predio ↗</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wide footer-inner">
+      <div><a class="logo" href="/">ainmo</a><p>Prefactibilidad urbanística con fuentes visibles.</p></div>
+      <div><a href="/bogota">Bogotá</a><a href="/guias">Guías</a><a href="/normativa">Actualidad normativa</a></div>
+      <div><span>Actualizado: {{ page.updated }}</span><span>El acto oficial prevalece siempre.</span></div>
+    </div>
+  </footer>
+
+  <script>
+    document.querySelector('[data-seo-search]')?.addEventListener('submit', function () {
+      if (typeof gtag === 'function') gtag('event', 'seo_search_started', {
+        page_kind: document.body.dataset.pageKind,
+        page_slug: document.body.dataset.pageSlug
+      });
+    });
+    document.querySelectorAll('[data-track]').forEach(function (link) {
+      link.addEventListener('click', function () {
+        if (typeof gtag === 'function') gtag('event', link.dataset.track, {
+          page_kind: document.body.dataset.pageKind,
+          page_slug: document.body.dataset.pageSlug
+        });
+      });
+    });
+  </script>
+</body>
+</html>

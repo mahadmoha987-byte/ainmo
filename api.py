@@ -11,14 +11,16 @@ from fastapi import FastAPI, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 import asyncio
 import time
 import html as _html
 import httpx
-import p2_lookup, calc, geocode, pdf_report, dxf_export
+import p2_lookup, calc, geocode, pdf_report, dxf_export, payments
 import db, auth
 import home_news
+import seo_pages
 from cabida import proforma as proforma_mod
 from cabida.market_defaults import MARKET_DEFAULTS, get_sale_price_default
 from regulatory import context as regulatory_context
@@ -94,6 +96,7 @@ def _apply_address_identity(
     searched_address: str = "",
     resolved_address: str = "",
     near_match: bool = False,
+    search_mode: str = "",
 ) -> dict:
     """Attach the address that actually owns the analysed lot.
 
@@ -105,14 +108,28 @@ def _apply_address_identity(
     # If the caller omitted the resolved candidate, use the cadastral lot label
     # instead of silently presenting the unverified input as the analysed place.
     lot_label = f"Predio {(result.get('lote') or {}).get('lotcodigo')}" if (result.get("lote") or {}).get("lotcodigo") else ""
-    if near_match:
+    intersection_selected = str(search_mode or "").strip().lower() == "intersection"
+    if near_match or intersection_selected:
         actual = str(resolved_address or lot_label or "Predio consultado").strip()
     else:
         actual = str(resolved_address or address or "Consultado por coordenada").strip()
     searched = str(searched_address or actual).strip()
     if actual:
         result["direccion"] = actual
-    if near_match and searched and actual and searched.casefold() != actual.casefold():
+    if intersection_selected:
+        result["address_resolution"] = {
+            "near_match": False,
+            "approximate_identification": True,
+            "method": "intersection",
+            "searched_address": searched,
+            "resolved_address": actual,
+            "relation": "lote seleccionado entre candidatos cercanos a la intersección",
+            "motivo": (
+                "Identificación aproximada desde una intersección. Confirme el predio "
+                "con la dirección exacta o el CHIP antes de tomar una decisión."
+            ),
+        }
+    elif near_match and searched and actual and searched.casefold() != actual.casefold():
         result["address_resolution"] = {
             "near_match": True,
             "searched_address": searched,
@@ -221,6 +238,7 @@ app.add_middleware(
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(_static_dir):
     app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+_templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -251,6 +269,130 @@ async def get_current_user(request: Request) -> dict | None:
 @app.get("/", include_in_schema=False)
 async def landing():
     return FileResponse(os.path.join(os.path.dirname(__file__), "landing.html"))
+
+
+def _seo_structured_data(page: dict) -> dict:
+    """Structured data mirrors visible page content; no hidden claims."""
+    parent_path = "/bogota" if page["kind"] in {"localidad", "sector"} else "/guias"
+    parent_name = "Bogotá" if page["kind"] in {"localidad", "sector"} else "Guías"
+    breadcrumbs = [
+        {"@type": "ListItem", "position": 1, "name": "Inicio", "item": f"{seo_pages.SITE_URL}/"},
+        {"@type": "ListItem", "position": 2, "name": parent_name, "item": f"{seo_pages.SITE_URL}{parent_path}"},
+    ]
+    if page["kind"] == "sector":
+        parent = page["parent"]
+        breadcrumbs.append({
+            "@type": "ListItem",
+            "position": 3,
+            "name": parent["name"],
+            "item": f"{seo_pages.SITE_URL}/bogota/{parent['slug']}",
+        })
+    breadcrumbs.append({
+        "@type": "ListItem",
+        "position": len(breadcrumbs) + 1,
+        "name": page["breadcrumb"],
+        "item": page["canonical"],
+    })
+    return {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "WebPage",
+                "@id": page["canonical"],
+                "url": page["canonical"],
+                "name": page["title"],
+                "description": page["meta_description"],
+                "inLanguage": "es-CO",
+                "dateModified": page["updated"],
+                "isPartOf": {"@type": "WebSite", "name": "Ainmo", "url": seo_pages.SITE_URL},
+            },
+            {
+                "@type": "BreadcrumbList",
+                "itemListElement": breadcrumbs,
+            },
+            {
+                "@type": "FAQPage",
+                "mainEntity": [
+                    {
+                        "@type": "Question",
+                        "name": item["question"],
+                        "acceptedAnswer": {"@type": "Answer", "text": item["answer"]},
+                    }
+                    for item in page["faqs"]
+                ],
+            },
+        ],
+    }
+
+
+def _render_seo_page(request: Request, kind: str, slug: str):
+    page = seo_pages.get_page(kind, slug)
+    if page is None:
+        return Response(
+            content="Página no encontrada",
+            status_code=404,
+            headers={"X-Robots-Tag": "noindex"},
+            media_type="text/plain; charset=utf-8",
+        )
+    return _templates.TemplateResponse(
+        request=request,
+        name="seo_page.html",
+        context={
+            "page": page,
+            "slug": slug,
+            "sources": seo_pages.OFFICIAL_SOURCES,
+            "structured_data": _seo_structured_data(page),
+        },
+        headers={"Cache-Control": "public, max-age=900"},
+    )
+
+
+@app.get("/bogota", include_in_schema=False)
+async def seo_bogota_index(request: Request):
+    return _templates.TemplateResponse(
+        request=request,
+        name="seo_index.html",
+        context={
+            "title": "Norma urbanística por localidad en Bogotá",
+            "heading": "Bogotá, localidad por localidad",
+            "description": "Guías para entender el contexto y consultar la norma aplicable al lote exacto.",
+            "canonical": f"{seo_pages.SITE_URL}/bogota",
+            "pages": seo_pages.pages_for_kind("localidad"),
+            "sector_pages": seo_pages.pages_for_kind("sector"),
+        },
+        headers={"Cache-Control": "public, max-age=900"},
+    )
+
+
+@app.get("/bogota/{locality_slug}/{sector_slug}", include_in_schema=False)
+async def seo_sector(request: Request, locality_slug: str, sector_slug: str):
+    return _render_seo_page(request, "sector", f"{locality_slug}/{sector_slug}")
+
+
+@app.get("/bogota/{slug}", include_in_schema=False)
+async def seo_locality(request: Request, slug: str):
+    return _render_seo_page(request, "localidad", slug)
+
+
+@app.get("/guias", include_in_schema=False)
+async def seo_guides_index(request: Request):
+    return _templates.TemplateResponse(
+        request=request,
+        name="seo_index.html",
+        context={
+            "title": "Guías de norma urbanística de Bogotá",
+            "heading": "La norma, explicada para empezar",
+            "description": "Lecturas prácticas del Decreto 555 conectadas con la consulta de cada predio.",
+            "canonical": f"{seo_pages.SITE_URL}/guias",
+            "pages": seo_pages.pages_for_kind("guia"),
+        },
+        headers={"Cache-Control": "public, max-age=900"},
+    )
+
+
+@app.get("/guias/{slug}", include_in_schema=False)
+async def seo_guide(request: Request, slug: str):
+    return _render_seo_page(request, "guia", slug)
 
 
 @app.get("/app", include_in_schema=False)
@@ -334,6 +476,14 @@ def _normative_shell(title: str, description: str, body: str, canonical: str) ->
         "inLanguage": "es-CO",
     }, ensure_ascii=False).replace("</", "<\\/")
     return f"""<!doctype html><html lang='es-CO'><head><meta charset='utf-8'>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-0D7DLCB9DL"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){{dataLayer.push(arguments);}}
+  gtag('js', new Date());
+  gtag('config', 'G-0D7DLCB9DL');
+</script>
 <meta name='viewport' content='width=device-width,initial-scale=1'><title>{title_esc} · Ainmo</title><link rel='icon' href='/static/favicon.svg' type='image/svg+xml'>
 <meta name='description' content='{desc_esc}'><link rel='canonical' href='{canonical_esc}'>
 <meta property='og:title' content='{title_esc} · Ainmo'><meta property='og:description' content='{desc_esc}'>
@@ -389,13 +539,57 @@ async def normativa_article(slug: str):
     ), media_type="text/html; charset=utf-8")
 
 
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    body = "\n".join([
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /api/",
+        "Disallow: /dashboard",
+        f"Sitemap: {seo_pages.SITE_URL}/sitemap.xml",
+        "",
+    ])
+    return Response(content=body, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap_xml():
+    entries = [
+        {"loc": f"{seo_pages.SITE_URL}/", "lastmod": seo_pages.CONTENT_UPDATED},
+        {"loc": f"{seo_pages.SITE_URL}/bogota", "lastmod": seo_pages.CONTENT_UPDATED},
+        {"loc": f"{seo_pages.SITE_URL}/guias", "lastmod": seo_pages.CONTENT_UPDATED},
+        {"loc": f"{seo_pages.SITE_URL}/normativa", "lastmod": seo_pages.CONTENT_UPDATED},
+        *seo_pages.sitemap_entries(),
+        *[
+            {"loc": f"{seo_pages.SITE_URL}/normativa/{slug}", "lastmod": seo_pages.CONTENT_UPDATED}
+            for slug in _NORMATIVE_ARTICLES
+        ],
+    ]
+    urls = "".join(
+        "<url><loc>{}</loc><lastmod>{}</lastmod></url>".format(
+            _html.escape(item["loc"]), _html.escape(item["lastmod"])
+        )
+        for item in entries
+    )
+    xml = (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+        "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">"
+        f"{urls}</urlset>"
+    )
+    return Response(content=xml, media_type="application/xml; charset=utf-8")
+
+
 # ── Public-beta config ─────────────────────────────────────────────────────────
 
 @app.get("/api/config")
 async def config_endpoint():
+    checkout = payments.public_config()
     return {
         "beta_access": "public",
         "authentication_required": False,
+        "pdf_checkout_enabled": checkout["enabled"],
+        "pdf_report_price_cop": checkout["price_cop"],
+        "pdf_report_currency": checkout["currency"],
     }
 
 
@@ -862,11 +1056,101 @@ async def proforma_endpoint(
 
 # ── PDF report ────────────────────────────────────────────────────────────────
 
+@app.post("/api/checkout/pdf")
+async def create_pdf_checkout_endpoint(request: Request):
+    if not payments.enabled():
+        return JSONResponse(status_code=503, content={
+            "ok": False,
+            "error": "checkout_not_configured",
+            "message": "El cobro de informes todavía no está habilitado.",
+        })
+    try:
+        body = await request.json()
+        lat = float(body["lat"])
+        lng = float(body["lng"])
+        expected_lotcodigo = str(body.get("expected_lotcodigo") or "").strip()
+        if not expected_lotcodigo:
+            raise ValueError("Falta el código de lote resuelto.")
+        context = {
+            "lat": lat,
+            "lng": lng,
+            "vis_en_sitio": str(body.get("vis_en_sitio", "false")).lower() in {"1", "true", "yes"},
+            "anu_m2": float(body["anu_m2"]) if body.get("anu_m2") not in (None, "") else None,
+            "frente_m": float(body["frente_m"]) if body.get("frente_m") not in (None, "") else None,
+            "ancho_via_m": float(body["ancho_via_m"]) if body.get("ancho_via_m") not in (None, "") else None,
+            "address": str(body.get("address") or "")[:500],
+            "searched_address": str(body.get("searched_address") or "")[:500],
+            "resolved_address": str(body.get("resolved_address") or "")[:500],
+            "searched_chip": str(body.get("searched_chip") or "")[:100],
+            "near_match": str(body.get("near_match", "false")).lower() in {"1", "true", "yes"},
+            "search_mode": str(body.get("search_mode") or "")[:50],
+            "expected_lotcodigo": expected_lotcodigo,
+        }
+        _, result = await _calculate_current_lot(
+            lng=lng,
+            lat=lat,
+            vis_en_sitio=context["vis_en_sitio"],
+            anu_m2=context["anu_m2"],
+            frente_m=context["frente_m"],
+            ancho_via_m=context["ancho_via_m"],
+            expected_lotcodigo=expected_lotcodigo,
+        )
+        resolved_lotcodigo = str((result.get("lote") or {}).get("lotcodigo") or "").strip()
+        if resolved_lotcodigo != expected_lotcodigo:
+            raise CadastralMismatchError(expected_lotcodigo, resolved_lotcodigo)
+        checkout = await payments.create_pdf_checkout(context)
+        return {"ok": True, **checkout, **payments.public_config()}
+    except (KeyError, TypeError, ValueError) as exc:
+        return JSONResponse(status_code=400, content={
+            "ok": False,
+            "error": "invalid_checkout",
+            "message": str(exc) or "Datos de pago inválidos.",
+        })
+    except CadastralMismatchError as exc:
+        return JSONResponse(status_code=409, content={
+            "ok": False,
+            "error": "cadastral_mismatch",
+            "message": "El punto ya no corresponde al lote mostrado. Vuelva a consultar antes de pagar.",
+            "expected_lotcodigo": exc.expected,
+            "resolved_lotcodigo": exc.resolved,
+        })
+    except payments.PaymentError as exc:
+        logger.warning("Stripe checkout failed: %s", exc)
+        return JSONResponse(status_code=502, content={
+            "ok": False, "error": "payment_provider", "message": str(exc),
+        })
+    except Exception:
+        logger.exception("PDF checkout creation failed")
+        return JSONResponse(status_code=500, content={
+            "ok": False, "error": "internal", "message": "No se pudo iniciar el pago del informe.",
+        })
+
+
+@app.get("/checkout/success", include_in_schema=False)
+async def checkout_success_page(request: Request, session_id: str = Query("")):
+    return _templates.TemplateResponse(
+        request=request,
+        name="checkout_success.html",
+        context={"session_id": session_id},
+        headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
+    )
+
+
+@app.get("/api/checkout/status")
+async def checkout_status_endpoint(session_id: str = Query(...)):
+    try:
+        return {"ok": True, **(await payments.checkout_status(session_id))}
+    except payments.PaymentError as exc:
+        return JSONResponse(status_code=402, content={
+            "ok": False, "error": "payment_not_confirmed", "message": str(exc),
+        })
+
+
 @app.get("/api/report")
 async def report_endpoint(
     request: Request,
-    lng: float = Query(...),
-    lat: float = Query(...),
+    lng: float | None = Query(None),
+    lat: float | None = Query(None),
     vis_en_sitio: bool = Query(False),
     anu_m2: float | None = Query(None),
     frente_m: float | None = Query(None),
@@ -876,12 +1160,35 @@ async def report_endpoint(
     resolved_address: str = Query(""),
     searched_chip: str = Query(""),
     near_match: bool = Query(False),
+    search_mode: str = Query(""),
     expected_lotcodigo: str | None = Query(None),
     preview: bool = Query(False),
+    checkout_session_id: str = Query(""),
 ):
-    # The current-analysis PDF is a public product export. Saved-history PDFs
-    # remain protected by ownership checks on /api/analyses/{id}/report.
     try:
+        if payments.enabled():
+            if not checkout_session_id:
+                return JSONResponse(status_code=402, content={
+                    "ok": False,
+                    "error": "payment_required",
+                    "message": "Complete el pago para descargar este informe PDF.",
+                    **payments.public_config(),
+                })
+            paid = await payments.paid_pdf_context(checkout_session_id)
+            lng, lat = paid["lng"], paid["lat"]
+            vis_en_sitio = paid["vis_en_sitio"]
+            anu_m2, frente_m, ancho_via_m = paid["anu_m2"], paid["frente_m"], paid["ancho_via_m"]
+            address = paid["address"]
+            searched_address, resolved_address = paid["searched_address"], paid["resolved_address"]
+            searched_chip = paid["searched_chip"]
+            near_match, search_mode = paid["near_match"], paid["search_mode"]
+            expected_lotcodigo = paid["expected_lotcodigo"]
+        if lat is None or lng is None:
+            return JSONResponse(status_code=400, content={
+                "ok": False,
+                "error": "coordinates_required",
+                "message": "Faltan las coordenadas del predio.",
+            })
         lu, result = await _calculate_current_lot(
             lng=lng, lat=lat, vis_en_sitio=vis_en_sitio,
             anu_m2=anu_m2, frente_m=frente_m, ancho_via_m=ancho_via_m,
@@ -893,6 +1200,7 @@ async def report_endpoint(
             searched_address=searched_address,
             resolved_address=resolved_address,
             near_match=near_match,
+            search_mode=search_mode,
         )
         await _attach_property_identity(
             result, lu, searched_chip=searched_chip,
@@ -905,10 +1213,23 @@ async def report_endpoint(
                 address=result.get("direccion") or address,
             )
         )
-        disposition = "inline" if preview else 'attachment; filename="prefactibilidad.pdf"'
+        resolved_lotcodigo = str((result.get("lote") or {}).get("lotcodigo") or "predio")
+        disposition = (
+            "inline"
+            if preview
+            else f'attachment; filename="ainmo_{resolved_lotcodigo}.pdf"'
+        )
         from fastapi.responses import Response
         return Response(content=pdf_bytes, media_type="application/pdf",
-                        headers={"Content-Disposition": disposition})
+                        headers={
+                            "Content-Disposition": disposition,
+                            "Cache-Control": "no-store",
+                            "X-Ainmo-Lotcodigo": resolved_lotcodigo,
+                        })
+    except payments.PaymentError as exc:
+        return JSONResponse(status_code=402, content={
+            "ok": False, "error": "payment_not_confirmed", "message": str(exc),
+        })
     except ChipLotMismatchError as exc:
         return JSONResponse(status_code=200, content={
             "ok": False, "error": "chip_lot_mismatch",

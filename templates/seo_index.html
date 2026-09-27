@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ title }} | Ainmo</title>
+  <meta name="description" content="{{ description }}">
+  <link rel="canonical" href="{{ canonical }}"><meta name="robots" content="index,follow">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Dosis:wght@400;500;600&family=Overpass:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/seo.css?v=20260925a">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-0D7DLCB9DL"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-0D7DLCB9DL');</script>
+</head>
+<body>
+  <nav class="site-nav"><div class="wide nav-inner"><a class="logo" href="/">ainmo</a><div class="nav-links"><a href="/bogota">Bogotá</a><a href="/guias">Guías</a><a class="nav-cta" href="/app">Analizar un predio ↗</a></div></div></nav>
+  <main>
+    <header class="hero index-hero"><div class="content"><p class="eyebrow">BIBLIOTECA AINMO</p><h1>{{ heading }}</h1><p class="lede">{{ description }}</p></div></header>
+    <section class="section content"><div class="index-grid">
+      {% for page in pages %}<a class="index-card" href="{{ page.path }}"><span>{{ 'LOCALIDAD' if page.kind == 'localidad' else 'GUÍA' }}</span><h2>{{ page.breadcrumb }}</h2><p>{{ page.meta_description }}</p><b>Leer y consultar un predio →</b></a>{% endfor %}
+    </div></section>
+    {% if sector_pages %}<section class="section section-tint"><div class="content"><div class="section-heading"><p class="eyebrow">SECTORES DE ALTO INTERÉS</p><h2>Guías catastrales revisadas</h2><p>Una selección acotada de sectores con contexto cartográfico oficial y acceso directo a la consulta predial.</p></div><div class="index-grid">
+      {% for page in sector_pages %}<a class="index-card" href="{{ page.path }}"><span>SECTOR CATASTRAL · {{ page.parent.name|upper }}</span><h2>{{ page.breadcrumb }}</h2><p>{{ page.meta_description }}</p><b>Leer y consultar un predio →</b></a>{% endfor %}
+    </div></div></section>{% endif %}
+  </main>
+  <footer><div class="wide footer-inner"><div><a class="logo" href="/">ainmo</a><p>Prefactibilidad urbanística con fuentes visibles.</p></div><div><a href="/app">Herramienta</a><a href="/normativa">Actualidad normativa</a></div><div><span>El acto oficial prevalece siempre.</span></div></div></footer>
+</body></html>
