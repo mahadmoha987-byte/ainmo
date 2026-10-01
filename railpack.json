@@ -1,6 +1,7 @@
 {
   "$schema": "https://schema.railpack.com",
   "deploy": {
+    "startCommand": "uvicorn api:app --host 0.0.0.0 --port $PORT",
     "aptPackages": [
       "...",
       "libpango-1.0-0",
