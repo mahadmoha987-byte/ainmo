@@ -185,7 +185,11 @@ async def get_profile(user_id: str) -> dict | None:
         return None
     async with httpx.AsyncClient() as c:
         r = await c.get(
-            _url("profiles", f"id=eq.{user_id}&select=id,email,name,avatar_url,plan"),
+            _url(
+                "profiles",
+                f"id=eq.{user_id}&select=id,email,name,avatar_url,plan,"
+                "stripe_customer_id,stripe_subscription_id,subscription_status,current_period_end",
+            ),
             headers=_h(),
         )
     rows = r.json()
@@ -218,12 +222,76 @@ async def set_plan(user_id: str, plan: str) -> None:
         )
 
 
+async def update_profile(user_id: str, *, name: str | None = None) -> dict | None:
+    payload: dict[str, Any] = {}
+    if name is not None:
+        payload["name"] = name.strip()[:120] or None
+    if payload and _ok():
+        async with httpx.AsyncClient() as c:
+            response = await c.patch(
+                _url("profiles", f"id=eq.{user_id}"),
+                headers=_h(),
+                json=payload,
+            )
+            response.raise_for_status()
+    return await get_profile(user_id)
+
+
+async def update_subscription(
+    user_id: str,
+    *,
+    plan: str,
+    customer_id: str | None,
+    subscription_id: str | None,
+    status: str | None,
+    current_period_end: str | None = None,
+) -> None:
+    if not _ok():
+        return
+    payload = {
+        "plan": plan,
+        "stripe_customer_id": customer_id or None,
+        "stripe_subscription_id": subscription_id or None,
+        "subscription_status": status or None,
+        "current_period_end": current_period_end or None,
+    }
+    async with httpx.AsyncClient() as c:
+        response = await c.patch(
+            _url("profiles", f"id=eq.{user_id}"),
+            headers=_h(),
+            json=payload,
+        )
+        response.raise_for_status()
+
+
+async def get_profile_by_subscription(
+    *, customer_id: str | None = None, subscription_id: str | None = None
+) -> dict | None:
+    if not _ok():
+        return None
+    filters = []
+    if subscription_id:
+        filters.append(f"stripe_subscription_id=eq.{subscription_id}")
+    elif customer_id:
+        filters.append(f"stripe_customer_id=eq.{customer_id}")
+    else:
+        return None
+    async with httpx.AsyncClient() as c:
+        r = await c.get(
+            _url("profiles", f"{'&'.join(filters)}&select=*"),
+            headers=_h(),
+        )
+    r.raise_for_status()
+    rows = r.json()
+    return rows[0] if isinstance(rows, list) and rows else None
+
+
 # ── Usage ─────────────────────────────────────────────────────────────────────
 
 async def get_usage(user_id: str) -> tuple[int, int]:
     """Return (used_this_month, monthly_limit). limit=0 means unlimited (pro)."""
     profile = await get_profile(user_id)
-    if not profile or profile.get("plan") == "pro":
+    if profile and profile.get("plan") in {"pro", "team"}:
         return (0, 0)
     async with httpx.AsyncClient() as c:
         r = await c.get(
@@ -243,7 +311,7 @@ async def check_usage_allowed(user_id: str) -> bool:
 async def increment_usage(user_id: str) -> int:
     """Atomically increment counter via RPC. Returns new count, -1 for pro."""
     profile = await get_profile(user_id)
-    if not profile or profile.get("plan") == "pro":
+    if profile and profile.get("plan") in {"pro", "team"}:
         return -1
     async with httpx.AsyncClient() as c:
         r = await c.post(

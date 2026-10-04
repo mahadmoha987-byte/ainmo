@@ -2,10 +2,20 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-0D7DLCB9DL"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-0D7DLCB9DL');
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
 <title>Dashboard — Edificabilidad Bogotá</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
@@ -567,8 +577,9 @@ kbd{font-family:var(--ff-mono);font-size:var(--ts-xs);background:var(--ink-7);bo
   </div>
   <div class="db-user-area">
     <a href="/app" class="db-btn-tool">+ Análisis</a>
-    <button class="db-user-chip" id="user-chip">
+    <button class="db-user-chip" id="user-chip" onclick="location.href='/settings'" title="Cuenta y facturación">
       <div class="db-user-avatar" id="user-avatar">?</div>
+      <span id="user-name">Cuenta</span>
     </button>
   </div>
 </header>
@@ -1101,7 +1112,7 @@ const NAMED_SCENARIOS = {
   agresivo:    { precio_venta: 9_500_000, costo_constr: 2_500_000, indirectos_pct: 15, utilidad_pct: 12, unidad_m2: 80 },
 };
 
-let _sb = null, _session = null;
+let _sb = null, _session = null, _profile = null;
 let _lots = [];            // raw from API
 let _computedRows = [];    // computed row objects
 let _displayRows = [];     // after filter
@@ -1129,6 +1140,30 @@ let _filtersOpen = false;
    Boot
 ══════════════════════════════════════════════════════════════════════ */
 async function boot() {
+  try {
+    const cfg = await fetch('/api/config').then(r => r.json());
+    if (!cfg.supabase_url || !cfg.supabase_anon_key || !window.supabase) {
+      location.replace('/app?login=1&next=/dashboard');
+      return;
+    }
+    _sb = window.supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
+    _session = (await _sb.auth.getSession()).data.session;
+    if (!_session) {
+      location.replace('/app?login=1&next=/dashboard');
+      return;
+    }
+    const meResponse = await fetch('/api/me', { headers: authHeaders() });
+    if (!meResponse.ok) throw new Error('No se pudo validar la sesión.');
+    _profile = await meResponse.json();
+    BATCH_MAX_ROWS = Number(_profile.entitlements?.batch_limit || 5);
+    const displayName = _profile.name || _profile.email || 'Cuenta';
+    setText('user-name', displayName.split(/\s+/)[0]);
+    setText('user-avatar', displayName.trim().slice(0,1).toUpperCase() || '?');
+  } catch (error) {
+    console.error('[ainmo dashboard] auth failed', error);
+    location.replace('/app?login=1&next=/dashboard');
+    return;
+  }
   loadLocalStorage();
   renderSupuestosForm();
   renderSupUI();
@@ -1161,7 +1196,7 @@ async function boot() {
 }
 
 function authHeaders() {
-  return {};
+  return _session?.access_token ? { Authorization: `Bearer ${_session.access_token}` } : {};
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -1180,10 +1215,17 @@ function saveLotSup() { localStorage.setItem('edif_lot_sup_v1', JSON.stringify(_
    Data loading
 ══════════════════════════════════════════════════════════════════════ */
 async function loadPortfolioData() {
-  // The public beta keeps search history in the browser. The main /app view
-  // is the canonical history interface; this legacy dashboard is no longer an
-  // account wall and is redirected there by the server.
-  _lots = [];
+  try {
+    const response = await fetch('/api/portfolio/lots', { headers: authHeaders() });
+    const json = await response.json();
+    if (!response.ok || !json.ok) throw new Error(json.message || 'No se pudo cargar el portafolio.');
+    _lots = Array.isArray(json.data) ? json.data : [];
+  } catch (error) {
+    console.error('[ainmo dashboard] portfolio failed', error);
+    _lots = [];
+    const empty = document.getElementById('dt-empty');
+    if (empty) empty.innerHTML = `<h3>No se pudo cargar el portafolio</h3><p>${esc(error.message)}</p>`;
+  }
 
   _computedRows = _lots.map(computeRow);
   buildFilterOptions();
@@ -2782,7 +2824,7 @@ function setText(id, t) { const el = document.getElementById(id); if (el) el.tex
    Batch analysis engine
 ══════════════════════════════════════════════════════════════════════ */
 const BATCH_MAX_CONCURRENT = 3;
-const BATCH_MAX_ROWS = 100;
+let BATCH_MAX_ROWS = 5;
 
 let _batchRows        = [];
 let _batchRunning     = 0;

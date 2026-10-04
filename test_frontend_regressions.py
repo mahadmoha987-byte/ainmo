@@ -211,22 +211,23 @@ def test_search_has_compact_address_abbreviation_help():
     assert ".address-help[open] .address-help-card" in HTML
 
 
-def test_public_beta_has_no_active_account_or_paywall_surface():
+def test_public_beta_keeps_core_lookup_open_and_adds_optional_accounts():
     api = Path(__file__).with_name("api.py").read_text()
-    assert "@supabase/supabase-js" not in HTML
-    assert 'id="login-btn"' not in HTML
-    assert 'id="auth-modal"' not in HTML
+    assert "@supabase/supabase-js" in HTML
+    assert 'id="account-btn"' in HTML
+    assert 'id="auth-modal"' in HTML
     assert 'id="upgrade-modal"' not in HTML
     assert '"beta_access": "public"' in api
     assert '"authentication_required": False' in api
-    assert 'RedirectResponse(url="/app?history=1", status_code=302)' in api
-    assert '"error": "beta_local_history"' in api
+    assert 'return FileResponse(os.path.join(os.path.dirname(__file__), "dashboard.html"))' in api
+    assert '"error": "beta_local_history"' not in api
     dxf_start = api.index('@app.get("/api/dxf")')
     dxf_end = api.index('# ── VIS/VIP', dxf_start)
     assert "auth_required" not in api[dxf_start:dxf_end]
     calc_start = api.index('@app.get("/api/calc")')
     calc_end = api.index('# ── Units', calc_start)
-    assert "usage_limit" not in api[calc_start:calc_end]
+    assert '"ok": True' in api[calc_start:calc_end]
+    assert 'usage_limit_reached' in api[calc_start:calc_end]
     assert 'del result["formula_trace"]' not in api[calc_start:calc_end]
 
 

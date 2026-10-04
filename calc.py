@@ -24,6 +24,7 @@ from typing import Any
 import p2_lookup
 from shapely.geometry import Polygon
 from figure_status import annotate_result
+from normas_comunes import get_normas_comunes
 from p2_lookup import BuildabilityLookupError, ZeroFeaturesError
 
 
@@ -723,7 +724,9 @@ def _retroceso_fachada(
     Compute A = factor × D (altura máxima de fachada) and store result in metrics.
 
     D is resolved via _resolve_D() (user input > Layer 38 GIS > None).
-    Writes metrics["retroceso_fachada_A_m"] in-place; adds a trace step.
+    Writes the canonical ``altura_limite_fachada_A_m`` metric.  The legacy
+    ``retroceso_fachada_A_m`` alias remains in the API for compatibility but is
+    explicitly marked deprecated and is not rendered as a second figure.
     """
     D_m, fuente_D, confianza_D = _resolve_D(lookup, ancho_via_m)
 
@@ -742,7 +745,7 @@ def _retroceso_fachada(
                         "Verificar con el perfil vial oficial antes de usar en licencia.")
             ),
         ))
-        metrics["retroceso_fachada_A_m"] = {
+        metric = {
             "valor": A_m,
             "D_m": D_m,
             "factor": factor,
@@ -750,6 +753,8 @@ def _retroceso_fachada(
             "fuente_D": fuente_D,
             "nota": "A es una altura máxima de fachada; no se descuenta de la huella edificable.",
         }
+        metrics["altura_limite_fachada_A_m"] = metric
+        metrics["retroceso_fachada_A_m"] = {**metric, "alias_de": "altura_limite_fachada_A_m", "deprecated_alias": True}
     else:
         trace.append({
             "paso": N(),
@@ -764,13 +769,15 @@ def _retroceso_fachada(
                 "para obtener el valor numérico de la altura máxima de fachada."
             ),
         })
-        metrics["retroceso_fachada_A_m"] = {
+        metric = {
             "valor": None,
             "factor": factor,
             "confianza": "requiere_input",
             "fuente_D": "sin_dato",
             "nota": f"A = {factor} × D — proporcione ancho_via_m para calcular la altura máxima de fachada.",
         }
+        metrics["altura_limite_fachada_A_m"] = metric
+        metrics["retroceso_fachada_A_m"] = {**metric, "alias_de": "altura_limite_fachada_A_m", "deprecated_alias": True}
 
 
 # ── Art. 310 Num. 2 bonus frontage gate ──────────────────────────────────────
@@ -853,11 +860,11 @@ _PARKING_ART389: dict[str, tuple[float, float, float, float]] = {
 }
 
 _PARKING_AREA_ACTIVIDAD_LABELS: dict[str, str] = {
-    "AAERVIS": "Áreas de Actividad Estratégica para Renovación con VIS/VIP",
-    "AAERAE":  "Áreas de Actividad Estratégica para Renovación con Actividades Económicas",
-    "AAPGSU":  "Áreas de Actividad de Proximidad con Gestión del Suelo Urbano",
-    "AAPRSU":  "Áreas de Actividad con Predominancia Residencial del Suelo Urbano",
-    "AAGSM":   "Áreas de Actividad de Gestión del Suelo de Mejoramiento",
+    "AAERVIS": "Estructurante receptora de vivienda de interés social",
+    "AAERAE":  "Estructurante receptora de actividades económicas",
+    "AAPGSU":  "Proximidad generadora de soportes urbanos",
+    "AAPRSU":  "Proximidad receptora de soportes urbanos",
+    "AAGSM":   "Grandes Servicios Metropolitanos",
 }
 
 
@@ -1020,6 +1027,151 @@ def _calc_parking(
         })
 
     return parking
+
+
+# ── Art. 243 land uses for Grandes Servicios Metropolitanos ────────────────
+
+_USOS_POR_AREA_ACTIVIDAD: dict[str, dict] = {
+    "AAGSM": {
+        "residencial": {
+            "unifamiliar_bifamiliar": {"status": "P", "condiciones": [18, 23, 25]},
+            "multifamiliar_colectiva": {
+                "status": "P", "condiciones": [1, 2, 19, 23, 25],
+                "alerta": (
+                    "Requiere adquirir certificados de derechos de construcción y desarrollo "
+                    "para los metros cuadrados residenciales, conforme al Decreto 626 de 2023 "
+                    "y al artículo 327 del Decreto 555 de 2021; verificar además la obligación VIS/VIP."
+                ),
+            },
+            "habitacional_con_servicios": {"status": "P", "condiciones": [1, 2, 19, 23, 25]},
+        },
+        "comercio_servicios": {
+            "comercios_basicos_tipo_1_menor_500m2": {"status": "P"},
+            "comercios_basicos_tipo_2_500_4000m2": {"status": "P"},
+            "comercios_basicos_tipo_3_mayor_4000m2": {"status": "NP"},
+            "hospedaje": {"status": "P"},
+            "servicios_al_automovil": {"status": "P"},
+            "servicios_especiales": {"status": "P"},
+            "servicios_logisticos": {"status": "P"},
+            "oficinas_servicios_empresariales": {"status": "P"},
+        },
+        "industrial": {
+            "produccion_artesanal": {"status": "P"},
+            "industria_liviana": {"status": "P"},
+            "industria_mediana": {"status": "P"},
+            "industria_pesada": {"status": "NP"},
+        },
+        "dotacional": {
+            "cuidado_servicios_sociales": {"status": "P", "condiciones": [1, 2]},
+            "bienestar_social": {"status": "P"},
+        },
+    },
+}
+
+_CONDICIONES_USO: dict[int, str] = {
+    1: "Localizar los usos diferentes al residencial en el piso de acceso frente a la calle, cuando corresponda.",
+    2: "Verificar la proporción exigida del uso dotacional o industrial dentro del área construida.",
+    18: "La vivienda unifamiliar o bifamiliar debe cumplir las normas de construcción y habitabilidad aplicables.",
+    19: (
+        "La vivienda multifamiliar está sujeta a la compra de certificados de derechos de "
+        "construcción y desarrollo (D.626/2023 y Art. 327 D.555/2021) y a la verificación "
+        "de su obligación VIS/VIP."
+    ),
+    23: "Verificar las condiciones de acceso peatonal y conexión con el transporte público exigidas por la nota de la tabla.",
+    25: "En el área de influencia del Aeropuerto El Dorado deben aplicarse las medidas de mitigación de Aerocivil.",
+}
+
+
+def get_usos_suelo(area_actividad_codigo: str | None) -> dict:
+    """Return only the Art. 243 use table that has been verified and coded."""
+    codigo = str(area_actividad_codigo or "").upper()
+    tabla = _USOS_POR_AREA_ACTIVIDAD.get(codigo)
+    if not tabla:
+        return {
+            "estado": "insuficiente",
+            "area_actividad_codigo": codigo or None,
+            "motivo": "La tabla de usos de esta área de actividad aún no está codificada y verificada en Ainmo.",
+            "que_se_necesita": "Consultar la fila aplicable del artículo 243 y sus notas.",
+            "quien_lo_resuelve": "SDP",
+            "fuente": "Art. 243 Decreto 555/2021",
+        }
+    condition_ids = {
+        condition
+        for category in tabla.values()
+        for use in category.values()
+        for condition in use.get("condiciones", [])
+    }
+    return {
+        "estado": "resuelto",
+        "area_actividad_codigo": codigo,
+        "fuente": "Art. 243 Decreto 555/2021 · tabla de usos por área de actividad",
+        "leyenda": {"P": "Permitido", "NP": "No permitido", "CR": "Condicionado; requiere verificación"},
+        "condiciones": {item: _CONDICIONES_USO[item] for item in sorted(condition_ids)},
+        "tabla": tabla,
+    }
+
+
+def _calc_cargas_ru(area_m2: float, ice: float, fecha_consulta: str) -> dict:
+    """Screening formulas for Renovación Urbana without a plan parcial."""
+    from datetime import date as _date
+    try:
+        current = _date.fromisoformat(fecha_consulta)
+    except (TypeError, ValueError):
+        current = _date.today()
+    if current <= _date(2024, 12, 31):
+        k, d = 0.30, 0.25
+    elif current <= _date(2027, 12, 31):
+        k, d = 0.50, 0.45
+    else:
+        k, d = 0.80, 0.75
+
+    fs = None if ice <= 1.3 else 0.20 if ice <= 2.0 else 0.27 if ice <= 3.0 else 0.35 if ice <= 4.0 else 0.45
+    fd = None if ice <= 2.0 else 0.07 if ice <= 3.0 else 0.15 if ice <= 4.0 else 0.25
+    result_c: dict = {
+        "estado": "derivado",
+        "ice": ice,
+        "area_terreno_m2": area_m2,
+        "fuente": "Arts. 303–307 Decreto 555/2021 · concepto CU3-24-2182",
+        "motivo": "Escenario calculado con las fórmulas de cargas; el valor monetario depende del Vref oficial.",
+        "que_se_necesita": "Obtener el Vref vigente para liquidar valores en pesos.",
+        "quien_lo_resuelve": "SDP",
+    }
+    if fs is not None:
+        cs = area_m2 * fs
+        css = area_m2 * 0.20
+        result_c.update({
+            "factor_cesion_suelo": fs,
+            "cesion_suelo_m2": round(cs, 1),
+            "cesion_en_sitio_m2": round(css, 1),
+            "cesion_en_sitio_pago_dinero": css < 400,
+            "vcomp_formula": f"CSs × Vref × {k}" if css < 400 else None,
+            "vcomp_k": k,
+            "osp_formula": "CS × Vref × 0,064",
+        })
+    else:
+        result_c.update(cesion_suelo_m2=None, nota_cesion="No aplica para ICe ≤ 1,3.")
+    if fd is not None:
+        result_c.update(
+            pago_compensatorio_formula=f"(AT × {fd}) × Vref × {d}",
+            pago_compensatorio_fd=fd,
+            pago_compensatorio_d=d,
+        )
+    else:
+        result_c["pago_compensatorio_formula"] = None
+    vis_table = {
+        (1.3, 2.0): {"vip_base": None, "vis_base": None},
+        (2.0, 3.0): {"vip_base": "5%", "vis_base": "10%", "vip_prog": "4%", "vis_prog": "8%"},
+        (3.0, 4.0): {"vip_base": "7,5%", "vis_base": "15%", "vip_prog": "6%", "vis_prog": "12%"},
+        (4.0, 5.0): {"vip_base": "5%", "vis_base": "10%", "vip_prog": "3%", "vis_prog": "6%"},
+        (5.0, 7.0): {"vip_base": "10%", "vis_base": "10%"},
+    }
+    for (low, high), values in vis_table.items():
+        if low < ice <= high:
+            result_c["vis_vip_obligacion"] = values
+            break
+    result_c["equipamiento_publico"] = "no_aplica" if area_m2 < 20_000 else "requiere_calculo"
+    result_c["nota_vref"] = "El Vref debe obtenerse de la UAECD (Catastro Distrital) para liquidar valores en COP."
+    return result_c
 
 
 # ── Unit count estimator (estimate only — not a decree value) ────────────────
@@ -1262,6 +1414,7 @@ def calculate(
         "consulta": lookup.get("consulta"),
         "contexto_regulatorio": lookup.get("contexto_regulatorio"),
         "cobertura_restricciones": lookup.get("cobertura_restricciones", {}),
+        "hallazgos_cartograficos": lookup.get("hallazgos_cartograficos", {}),
         "equipamiento_decreto_253": lookup.get("equipamiento_decreto_253"),
         "incentivo_sostenibilidad_d676": lookup.get("incentivo_sostenibilidad_d676"),
         "referencia_obligaciones_urbanisticas_2026": lookup.get("referencia_obligaciones_urbanisticas_2026"),
@@ -1385,6 +1538,20 @@ def calculate(
         N=N,
         footprint_m2=footprint_val,
     )
+
+    # The official-concept benchmark uses these two independent regulatory
+    # outputs.  They are additive and never alter the buildability metrics.
+    area_activity_code = (lookup.get("area_actividad") or {}).get("codigo")
+    result["usos_suelo"] = get_usos_suelo(area_activity_code)
+    result["normas_comunes"] = get_normas_comunes(lookup.get("tratamiento") or "")
+    if "RENOVACION" in trat:
+        consultation_date = (lookup.get("consulta") or {}).get("fecha") or ""
+        result["cargas"] = {
+            "escenario_ice_5_0": _calc_cargas_ru(lot_area, 5.0, consultation_date),
+            "escenario_ice_6_0": _calc_cargas_ru(lot_area, 6.0, consultation_date),
+            "escenario_ice_7_0": _calc_cargas_ru(lot_area, 7.0, consultation_date),
+            "fuente": "Arts. 303–307 Decreto 555/2021",
+        }
 
     return annotate_result(result, lookup)
 

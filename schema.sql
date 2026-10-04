@@ -10,9 +10,26 @@ CREATE TABLE public.profiles (
   name       text,
   avatar_url text,
   created_at timestamptz NOT NULL DEFAULT now(),
-  plan       text NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'pro'))
+  plan       text NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'pro', 'team')),
+  stripe_customer_id     text UNIQUE,
+  stripe_subscription_id text UNIQUE,
+  subscription_status    text,
+  current_period_end     timestamptz
 );
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Safe upgrade path for databases created with the original free/pro schema.
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS stripe_customer_id text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS stripe_subscription_id text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS subscription_status text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS current_period_end timestamptz;
+ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_plan_check;
+ALTER TABLE public.profiles
+  ADD CONSTRAINT profiles_plan_check CHECK (plan IN ('free', 'pro', 'team'));
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_stripe_customer_id_idx
+  ON public.profiles (stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_stripe_subscription_id_idx
+  ON public.profiles (stripe_subscription_id) WHERE stripe_subscription_id IS NOT NULL;
 
 -- Auto-create profile on first sign-up (Google OAuth or magic link).
 CREATE OR REPLACE FUNCTION public.handle_new_user()

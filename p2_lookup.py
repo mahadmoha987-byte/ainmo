@@ -27,6 +27,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
+from shapely.geometry import Polygon
+from shapely.ops import unary_union
+
 # Colombian government TLS certificates are often self-signed or use a local CA
 # not present in the macOS/Linux trust store.  We disable verification only for
 # known gov.co hosts; the data is public read-only, so confidentiality is not at risk.
@@ -71,6 +74,21 @@ L_SIC             = 0    # Sector de Interés Cultural (polygon) — NOMBRE
 L_PEMP            = 1    # Plan Especial de Manejo y Protección (individual BIC PEMPs)
 L_PEMP_CH         = 3    # PEMP Centro Histórico (Decreto 678/1994) — separate layer
 L_BIC             = 12   # Bien de Interés Cultural (polygon) — CATEGORIA, NUMERO_FICHA
+L_ZONA_INFLUENCIA_BIC = 6   # Zona de influencia BIC/SIC/PEMP (100 m)
+L_SECTORES_CONSOLIDADOS = 42
+L_ADN = 121
+
+# Additional official services used by the concept-comparison findings.  The
+# SDP MapServer is queried first as requested by the open-data catalogue.  Its
+# public POT FeatureServer equivalent is used when that host is unavailable.
+SECTORES_CONSOLIDADOS_MS = (
+    "https://serviciosg.sdp.gov.co/server/rest/services/"
+    "POT555/NORMA_URBANSTICA_Y_OT/MapServer/11"
+)
+RESERVA_VIAL_MS = (
+    "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services/"
+    "ordenamientoterritorial/reservavial/MapServer/2"
+)
 
 # Search radius when looking for calzada polygons adjacent to a lot centroid.
 # 25 m covers typical lot setbacks and still avoids picking up roads two blocks away.
@@ -379,6 +397,325 @@ def query_fs(layer_id: int, lng: float, lat: float,
         raise ZeroFeaturesError(f"Layer {layer_id}: {exc}") from exc
     except BuildabilityLookupError as exc:
         raise BuildabilityLookupError(f"Layer {layer_id}: {exc}") from exc
+
+
+def _public_query_url(base: str, params: dict) -> str:
+    """Return the exact, reproducible public query URL used for a finding."""
+    return f"{base}/query?{urlencode({**params, 'f': 'json'})}"
+
+
+def _optional_arcgis_query(base: str, params: dict, *, timeout_s: int = TIMEOUT_S) -> list[dict]:
+    """Like ``_arcgis_query`` but an empty intersection is a valid finding."""
+    try:
+        return _arcgis_query(base, params, timeout_s=timeout_s)
+    except ZeroFeaturesError:
+        return []
+
+
+def _point_params(lng: float, lat: float, *, out_fields: str = "*",
+                  return_geometry: bool = False, distance_m: float | None = None) -> dict:
+    params: dict = {
+        "geometry": f"{lng},{lat}",
+        "geometryType": "esriGeometryPoint",
+        "inSR": 4326,
+        "spatialRel": "esriSpatialRelIntersects",
+        "outFields": out_fields,
+        "returnGeometry": str(return_geometry).lower(),
+    }
+    if distance_m is not None:
+        params["distance"] = distance_m
+        params["units"] = "esriSRUnit_Meter"
+    return params
+
+
+def _base_finding(*, key: str, label: str, applies: bool | None, state: str,
+                  finding: str, source: str, layer: str, query_url: str,
+                  raw: list[dict] | None = None, source_date: str | None = None,
+                  article: str | None = None) -> dict:
+    item = {
+        "clave": key,
+        "etiqueta": label,
+        "aplica": applies,
+        "estado": state,
+        "hallazgo": finding,
+        "fuente": source,
+        "capa": layer,
+        "consulta_url": query_url,
+        "respuesta_cruda": raw or [],
+        "fecha_consulta": date.today().isoformat(),
+    }
+    if source_date:
+        item["fecha_copia"] = source_date
+    if article:
+        item["articulo"] = article
+    return item
+
+
+def _query_adn_finding(lng: float, lat: float) -> dict:
+    base = f"{ARCGIS_FS}/{L_ADN}"
+    params = _point_params(lng, lat)
+    url = _public_query_url(base, params)
+    try:
+        features = _optional_arcgis_query(base, params)
+    except BuildabilityLookupError as exc:
+        item = _base_finding(
+            key="area_desarrollo_naranja", label="Área de Desarrollo Naranja",
+            applies=None, state="insuficiente",
+            finding="No fue posible comprobar la pertenencia a un Área de Desarrollo Naranja.",
+            source="SDP · POT FeatureServer", layer="121", query_url=url,
+        )
+        item.update(motivo=str(exc), que_se_necesita="Reintentar la consulta de la capa 121.", quien_lo_resuelve="SDP")
+        return item
+    raw = [feature.get("attributes") or {} for feature in features]
+    if raw:
+        names = sorted({str(a.get("NOMBRE") or "Área sin nombre").strip() for a in raw})
+        return _base_finding(
+            key="area_desarrollo_naranja", label="Área de Desarrollo Naranja",
+            applies=True, state="resuelto",
+            finding=f"El predio está dentro de {', '.join(names)}.",
+            source="SDP · POT Bogotá Decreto 555/2021 FeatureServer",
+            layer="121", query_url=url, raw=raw,
+        )
+    return _base_finding(
+        key="area_desarrollo_naranja", label="Área de Desarrollo Naranja",
+        applies=False, state="no_aplica",
+        finding="El predio no intersecta un Área de Desarrollo Naranja en la capa consultada.",
+        source="SDP · POT Bogotá Decreto 555/2021 FeatureServer",
+        layer="121", query_url=url,
+    )
+
+
+def _query_sector_consolidado_finding(lng: float, lat: float) -> dict:
+    params = _point_params(lng, lat)
+    primary_url = _public_query_url(SECTORES_CONSOLIDADOS_MS, params)
+    source = "SDP · NORMA_URBANSTICA_Y_OT MapServer"
+    layer = "11"
+    query_url = primary_url
+    fallback_note = None
+    try:
+        features = _optional_arcgis_query(SECTORES_CONSOLIDADOS_MS, params, timeout_s=6)
+    except BuildabilityLookupError as primary_exc:
+        # Live equivalent in the POT FeatureServer.  It is preferable to a
+        # downloaded snapshot because it remains queryable and current.
+        mirror = f"{ARCGIS_FS}/{L_SECTORES_CONSOLIDADOS}"
+        query_url = _public_query_url(mirror, params)
+        source = "SDP · POT Bogotá Decreto 555/2021 FeatureServer (equivalente en línea)"
+        layer = str(L_SECTORES_CONSOLIDADOS)
+        fallback_note = f"El MapServer del catálogo no respondió; se usó su capa equivalente en línea. Error original: {primary_exc}"
+        try:
+            features = _optional_arcgis_query(mirror, params)
+        except BuildabilityLookupError as mirror_exc:
+            item = _base_finding(
+                key="sector_consolidado", label="Sector consolidado (CU-5.3)",
+                applies=None, state="insuficiente",
+                finding="No fue posible verificar el mapa CU-5.3 en sus servicios públicos.",
+                source=source, layer=layer, query_url=query_url,
+            )
+            item.update(
+                motivo=f"Fallaron el servicio principal y su equivalente: {mirror_exc}",
+                que_se_necesita="Consultar el mapa CU-5.3 o la descarga oficial vigente.",
+                quien_lo_resuelve="SDP",
+                consulta_primaria_url=primary_url,
+            )
+            return item
+    raw = [feature.get("attributes") or {} for feature in features]
+    item = _base_finding(
+        key="sector_consolidado", label="Sector consolidado (CU-5.3)",
+        applies=bool(raw), state="resuelto" if raw else "no_aplica",
+        finding=("El predio está dentro de Sectores Consolidados del mapa CU-5.3."
+                 if raw else "El predio no intersecta Sectores Consolidados del mapa CU-5.3."),
+        source=source, layer=layer, query_url=query_url, raw=raw,
+    )
+    item["consulta_primaria_url"] = primary_url
+    if fallback_note:
+        item["nota_fuente"] = fallback_note
+    return item
+
+
+def _rings_union(rings: list) -> object:
+    polygons = []
+    for ring in rings or []:
+        if len(ring) < 4:
+            continue
+        polygon = Polygon(ring)
+        if not polygon.is_valid:
+            polygon = polygon.buffer(0)
+        if not polygon.is_empty:
+            polygons.append(polygon)
+    return unary_union(polygons) if polygons else Polygon()
+
+
+def _query_reserva_vial_finding(lote_feat: dict, lot_area_m2: float) -> dict:
+    geometry = lote_feat.get("geometry") or {}
+    lot_shape = _rings_union(geometry.get("rings") or [])
+    if lot_shape.is_empty:
+        request_geometry = {"xmin": 0, "ymin": 0, "xmax": 0, "ymax": 0, "spatialReference": {"wkid": 9377}}
+    else:
+        xmin, ymin, xmax, ymax = lot_shape.bounds
+        request_geometry = {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax, "spatialReference": {"wkid": 9377}}
+    params = {
+        "geometry": json.dumps(request_geometry, separators=(",", ":")),
+        "geometryType": "esriGeometryEnvelope",
+        "inSR": 9377,
+        "spatialRel": "esriSpatialRelIntersects",
+        "outFields": "*",
+        "returnGeometry": "true",
+        "outSR": 9377,
+    }
+    url = _public_query_url(RESERVA_VIAL_MS, params)
+    try:
+        features = _optional_arcgis_query(RESERVA_VIAL_MS, params)
+    except BuildabilityLookupError as exc:
+        item = _base_finding(
+            key="reserva_vial", label="Reserva vial",
+            applies=None, state="insuficiente",
+            finding="No fue posible verificar si una reserva vial afecta el polígono del lote.",
+            source="IDECA / Catastro Bogotá · Reserva vial", layer="2", query_url=url,
+            article="Art. 379 Decreto 555/2021",
+        )
+        item["fecha_fuente"] = "2019-08-15"
+        item.update(motivo=str(exc), que_se_necesita="Consultar la reserva vial oficial y medir su intersección con el lote.", quien_lo_resuelve="SDP")
+        return item
+    raw = [feature.get("attributes") or {} for feature in features]
+    reserve_shapes = [_rings_union((feature.get("geometry") or {}).get("rings") or []) for feature in features]
+    reserve_shape = unary_union([shape for shape in reserve_shapes if not shape.is_empty]) if reserve_shapes else Polygon()
+    intersection_area = max(0.0, float(lot_shape.intersection(reserve_shape).area)) if not lot_shape.is_empty else 0.0
+    # Prefer the geometry-derived projected area for the denominator when it is
+    # available; it is in the same CRS as the reserve intersection.
+    denominator = float(lot_shape.area) if not lot_shape.is_empty and lot_shape.area > 0 else float(lot_area_m2 or 0)
+    outside_area = max(0.0, denominator - intersection_area)
+    pct = (intersection_area / denominator * 100.0) if denominator else 0.0
+    applies = intersection_area > 0.01
+    names = sorted({str(a.get("NOMBRE") or "Reserva vial sin nombre").strip() for a in raw})
+    item = _base_finding(
+        key="reserva_vial", label="Reserva vial",
+        applies=applies, state="resuelto" if applies else "no_aplica",
+        finding=(
+            f"La reserva vial {', '.join(names)} afecta {intersection_area:.1f} m² "
+            f"({pct:.1f}% del lote); quedan {outside_area:.1f} m² fuera de la franja."
+            if applies else "El polígono del lote no intersecta una reserva vial en la capa consultada."
+        ),
+        source="IDECA / Catastro Bogotá · Reserva vial",
+        layer="MapServer/2", query_url=url, raw=raw,
+        article="Art. 379 Decreto 555/2021",
+    )
+    item.update({
+        "fecha_fuente": "2019-08-15",
+        "area_reserva_m2": round(intersection_area, 1),
+        "porcentaje_lote": round(pct, 1),
+        "area_lote_sin_descontar_reserva_m2": round(denominator, 1),
+        "area_fuera_reserva_m2": round(outside_area, 1),
+        "regla_en_reserva": (
+            "Máximo 1 piso; no se permiten sótanos, semisótanos ni uso residencial."
+            if applies else None
+        ),
+    })
+    return item
+
+
+def _query_bic_100m_finding(lng: float, lat: float) -> dict:
+    # Layer 6 is the official influence-area polygon.  Layer 12 is additionally
+    # queried within 100 m to name the nearby assets that support the finding.
+    zone_base = f"{ARCGIS_FS}/{L_ZONA_INFLUENCIA_BIC}"
+    zone_params = _point_params(lng, lat)
+    zone_url = _public_query_url(zone_base, zone_params)
+    bic_base = f"{ARCGIS_FS}/{L_BIC}"
+    bic_params = _point_params(lng, lat, distance_m=100)
+    bic_url = _public_query_url(bic_base, bic_params)
+    try:
+        zones = _optional_arcgis_query(zone_base, zone_params)
+        nearby = _optional_arcgis_query(bic_base, bic_params)
+    except BuildabilityLookupError as exc:
+        item = _base_finding(
+            key="proteccion_bic_100m", label="Protección patrimonial BIC (100 m)",
+            applies=None, state="insuficiente",
+            finding="No fue posible verificar el área de protección patrimonial.",
+            source="SDP · POT FeatureServer", layer="6 y 12", query_url=zone_url,
+        )
+        item.update(motivo=str(exc), que_se_necesita="Verificar la zona de influencia y los BIC cercanos con IDPC.", quien_lo_resuelve="IDPC")
+        return item
+    zone_raw = [f.get("attributes") or {} for f in zones]
+    bic_raw = [f.get("attributes") or {} for f in nearby]
+    applies = bool(zones or nearby)
+    addresses = [str(a.get("DIRECCION") or a.get("NOMBRE") or "BIC sin dirección").strip() for a in bic_raw]
+    finding = (
+        f"El predio está dentro del área de influencia patrimonial; se identificaron "
+        f"{len(bic_raw)} BIC dentro de 100 m" + (f" ({', '.join(addresses[:3])})." if addresses else ".")
+        if applies else "El predio no intersecta el área de influencia BIC/SIC/PEMP ni registra BIC dentro de 100 m."
+    )
+    item = _base_finding(
+        key="proteccion_bic_100m", label="Protección patrimonial BIC (100 m)",
+        applies=applies, state="requiere_concepto" if applies else "no_aplica",
+        finding=finding, source="SDP · POT Bogotá Decreto 555/2021 FeatureServer",
+        layer="6 (zona de influencia) y 12 (BIC)", query_url=zone_url,
+        raw=zone_raw,
+    )
+    item["consulta_bic_url"] = bic_url
+    item["bic_cercanos"] = bic_raw
+    if applies:
+        item.update(que_se_necesita="Aprobación previa de la intervención cuando corresponda.", quien_lo_resuelve="IDPC")
+    return item
+
+
+def _query_aeronautical_height_finding(lng: float, lat: float) -> dict:
+    base = f"{ARCGIS_FS}/{L_AEROCIVIL}"
+    params = _point_params(lng, lat)
+    url = _public_query_url(base, params)
+    try:
+        features = _optional_arcgis_query(base, params)
+    except BuildabilityLookupError as exc:
+        item = _base_finding(
+            key="altura_aeronautica", label="Altura aeronáutica",
+            applies=None, state="requiere_concepto",
+            finding="No fue posible consultar un límite numérico público; requiere verificación con Aerocivil.",
+            source="SDP · POT FeatureServer", layer="25", query_url=url,
+        )
+        item.update(motivo=str(exc), que_se_necesita="Concepto o verificación de altura aeronáutica.", quien_lo_resuelve="Aerocivil")
+        return item
+    raw = [feature.get("attributes") or {} for feature in features]
+    if not raw:
+        return _base_finding(
+            key="altura_aeronautica", label="Altura aeronáutica",
+            applies=False, state="no_aplica",
+            finding="La coordenada no intersecta un polígono de elevación máxima en la capa 25.",
+            source="SDP · POT FeatureServer", layer="25", query_url=url,
+        )
+    heights = [a.get("ALTURA") for a in raw if isinstance(a.get("ALTURA"), (int, float))]
+    if heights:
+        value = min(float(v) for v in heights)
+        item = _base_finding(
+            key="altura_aeronautica", label="Altura aeronáutica",
+            applies=True, state="resuelto",
+            finding=f"La capa pública fija una altura aeronáutica máxima de {value:g} m.",
+            source="SDP · POT FeatureServer · responsable Aerocivil",
+            layer="25 · campo ALTURA", query_url=url, raw=raw,
+        )
+        item["altura_maxima_m"] = value
+        item["elevacion_maxima_msnm"] = min(
+            (float(a["ELEVACIÓN_MAXIMA"]) for a in raw if isinstance(a.get("ELEVACIÓN_MAXIMA"), (int, float))),
+            default=None,
+        )
+        return item
+    item = _base_finding(
+        key="altura_aeronautica", label="Altura aeronáutica",
+        applies=True, state="requiere_concepto",
+        finding="La capa aeronáutica intersecta el predio, pero no contiene un límite numérico utilizable.",
+        source="SDP · POT FeatureServer", layer="25", query_url=url, raw=raw,
+    )
+    item.update(que_se_necesita="Concepto de altura aeronáutica.", quien_lo_resuelve="Aerocivil")
+    return item
+
+
+def query_concept_findings(lng: float, lat: float, lote_feat: dict, lot_area_m2: float) -> dict:
+    """Return actual lot findings used by the web report and PDF cover."""
+    ordered = [
+        _query_sector_consolidado_finding(lng, lat),
+        _query_adn_finding(lng, lat),
+        _query_reserva_vial_finding(lote_feat, lot_area_m2),
+        _query_bic_100m_finding(lng, lat),
+        _query_aeronautical_height_finding(lng, lat),
+    ]
+    return {item["clave"]: item for item in ordered}
 
 
 def _select_edificabilidad_feature(features: list[dict]) -> dict:
@@ -1280,6 +1617,40 @@ def lookup(
     # Coverage metadata is not a property finding. Until a source is wired,
     # keep it in `cobertura_restricciones` for transparency but do not promote
     # it to a lot-specific warning: doing so made every verdict conditional.
+
+    # Findings used to reconcile Ainmo with official planning concepts.  These
+    # are independent of the treatment calculation and therefore never replace
+    # the engine's rules; they disclose whether each overlay applies to this
+    # specific polygon.  Each helper degrades explicitly on source failure.
+    try:
+        result["hallazgos_cartograficos"] = query_concept_findings(
+            lng, lat, lote_feat, area_m2,
+        )
+        # Aerocivil is now queried by the complementary overlay pass.  Keep
+        # the older capability map in sync so the UI does not simultaneously
+        # show a resolved height and the stale "source not configured" notice.
+        aeronautical = result["hallazgos_cartograficos"].get("altura_aeronautica") or {}
+        if aeronautical.get("estado") in {"resuelto", "no_aplica", "requiere_concepto"}:
+            result["cobertura_restricciones"]["aerocivil"] = "consultado"
+        elif aeronautical:
+            result["cobertura_restricciones"]["aerocivil"] = "consulta_fallida"
+    except Exception as exc:
+        # A supplementary overlay must not erase the core lot calculation.
+        # Keep the failure visible and actionable instead of returning a false
+        # negative or silently calling it "consulted".
+        result["hallazgos_cartograficos"] = {
+            "consulta_conjunta": {
+                "clave": "consulta_conjunta",
+                "etiqueta": "Cruces cartográficos complementarios",
+                "aplica": None,
+                "estado": "insuficiente",
+                "hallazgo": "No fue posible completar los cruces cartográficos complementarios.",
+                "motivo": str(exc),
+                "que_se_necesita": "Reintentar las consultas oficiales de ADN, CU-5.3, reserva vial, patrimonio y altura aeronáutica.",
+                "quien_lo_resuelve": "SDP",
+                "fecha_consulta": date.today().isoformat(),
+            }
+        }
 
     # ── Step 1c: Calzada width (Layer 38) — used for retroceso de fachada ──────
     result["ancho_via_gis"] = _query_ancho_via_gis(lng, lat, rings_wgs84)

@@ -32,6 +32,7 @@ LABELS = {
     "aislamiento_posterior_m": "Aislamiento posterior",
     "aislamiento_lateral_m": "Aislamiento lateral",
     "retroceso_fachada_A_m": "Altura máxima de fachada (A = factor × D)",
+    "altura_limite_fachada_A_m": "Altura límite de fachada (A = factor × D)",
     "area_construible_max_sin_manzana_completa_m2": "Área ICe 5,0 (sin manzana completa)",
     "area_construible_max_esquina_manzana_m2": "Área ICe 6,0 (esquina condicionada)",
     "area_construible_max_manzana_completa_m2": "Área ICe 7,0 (manzana completa)",
@@ -100,7 +101,7 @@ def _classify(key, obj, trat):
     if value is None and ("resultante" in lower or "no fijado" in lower or "requiere modelado" in lower):
         return _status("no_aplica", note or "La norma no fija un número: es resultante del proyecto.")
     if _finite(value):
-        if key == "retroceso_fachada_A_m":
+        if key in {"retroceso_fachada_A_m", "altura_limite_fachada_A_m"}:
             if obj.get("confianza") == "alta":
                 return _status("resuelto", note or "La relación de fachada fue resuelta con una fuente de alta confianza.")
             return _status("insuficiente", "Falta el perfil vial completo; la fuente disponible puede incluir únicamente la calzada.", "Confirmar calzada, andenes y separador del perfil vial frente al predio.", "topógrafo")
@@ -115,6 +116,7 @@ def _classify(key, obj, trat):
     return _status("insuficiente", note or "No hay datos suficientes para resolver esta variable.", {
         "antejardin": "Consultar dimensión en mapa CU-5.5, Capa 22, campo DIMENSION, con SDP.",
         "retroceso_fachada_A_m": "Aportar perfil vial completo: calzada, andenes y separador; Capa 38 solo aporta calzada.",
+        "altura_limite_fachada_A_m": "Aportar perfil vial completo: calzada, andenes y separador; Capa 38 solo aporta calzada.",
         "altura_base_pisos": "Confirmar ALTURA_MAXIMA en Capa 15 y ficha normativa con SDP.",
         "altura_con_bonus_pisos": "Aportar frente, perfil vial y condiciones del proyecto para evaluar la altura adicional.",
         "aislamiento_posterior_tabla": "Definir altura real en metros para consultar la tabla del Anexo 5.",
@@ -188,6 +190,8 @@ def annotate_result(result, lookup=None):
     for key, obj in (d.get("metrics") or {}).items():
         if not isinstance(obj, dict):
             continue
+        if obj.get("deprecated_alias"):
+            continue
         unit = "m²" if key.endswith("m2") or key == "area_construible_estimada" else "pisos" if key.endswith("pisos") else "m" if key.endswith("_m") else ""
         ref = f"555:{article}" if article else None
         source = "SDP · Capa 15 · TRATAMIENTO y ALTURA_MAXIMA"
@@ -206,7 +210,7 @@ def annotate_result(result, lookup=None):
             ref = "466:3.1.b"
         if key == "aislamiento_lateral_umbral_m" and "RENOVACION" in trat:
             ref = "466:3.2.a"
-        if key == "retroceso_fachada_A_m":
+        if key in {"retroceso_fachada_A_m", "altura_limite_fachada_A_m"}:
             ref = "466:1.11.a"
             road_source = obj.get("fuente_D") or "SDP · Capa 38 · ANCHO (calzada, no perfil completo)"
             source = f"Anexo 5 D.466/2024 · Sección 1.11.a; {road_source}"

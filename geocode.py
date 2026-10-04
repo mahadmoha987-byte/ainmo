@@ -6,7 +6,10 @@ Priority:
 2. Nominatim / OpenStreetMap (street-level fallback)
 """
 
-import re, ssl, json, time, unicodedata, urllib.request, urllib.parse, difflib
+import re, ssl, json, time, math, unicodedata, urllib.request, urllib.parse, difflib
+
+from shapely.geometry import LineString, Point, Polygon
+from shapely.ops import nearest_points, unary_union
 
 _SSL_CTX = ssl.create_default_context()
 _SSL_CTX.check_hostname = False
@@ -23,6 +26,10 @@ _CATASTRO_LOTE = (
 _CATASTRO_PREDIO = (
     "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services"
     "/catastro/lote/MapServer/3"
+)
+_MAPA_REFERENCIA_VIAS = (
+    "https://serviciosgis.catastrobogota.gov.co/arcgis/rest/services"
+    "/Mapa_Referencia/Mapa_Referencia/MapServer/11"
 )
 _NOMINATIM = "https://nominatim.openstreetmap.org/search"
 _BOGOTA_VIEWBOX = "-74.25,4.45,-73.99,4.83"
@@ -98,14 +105,16 @@ def _normalize_chip(raw: str) -> str | None:
 
 
 def _is_intersection_query(raw: str) -> bool:
-    """Return True when input looks like 'Calle 60 Carrera 7' (intersection, no door number).
-
-    Intersection queries cannot resolve to a unique lot — they produce mismatched
-    coordinates.  Callers should return no results and ask the user to click the map.
-    Exception: if a '#' is already present the address has a door number and is valid.
-    """
-    if "#" in raw:
-        return False
+    """Return True when input describes crossing roads rather than a door plate."""
+    text = str(raw or "")
+    if re.search(r"\bENTRE\b", text, re.I):
+        return True
+    if re.search(r"\b(?:CON|Y)\b", text, re.I) and len(_VIA_WORDS_RE.findall(text)) >= 2:
+        return True
+    # ``CL 82 # 15`` is common listing shorthand for CL 82 con KR 15.  A
+    # hyphenated second number remains an ordinary property address.
+    if "#" in text:
+        return not bool(re.search(r"#\s*\d+[A-Z]*(?:\s+BIS[A-Z]*)?\s*[-–—]\s*\d+", text, re.I))
     # "Avenida Carrera" and "Avenida Calle" are single compound Bogotá via
     # types (AK/AC), not intersections. Collapse them before counting roads.
     probe = re.sub(r"[.,]", " ", raw.upper())
@@ -115,6 +124,135 @@ def _is_intersection_query(raw: str) -> bool:
         probe,
     )
     return len(_VIA_WORDS_RE.findall(probe)) >= 2
+
+
+def _plain_text(value: str) -> str:
+    text = unicodedata.normalize("NFD", str(value or "").upper())
+    text = "".join(char for char in text if unicodedata.category(char) != "Mn")
+    text = re.sub(r"[.,;:]", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+_INTERSECTION_ROAD_RE = re.compile(
+    r"^(?P<type>AVENIDA\s+CARRERA|AVENIDA\s+CALLE|AVENIDA|AVDA|AV|"
+    r"CALLE|CLLE|CLL|CL|CARRERA|CARR|CRA|KRA|KRR|KR|CR|"
+    r"DIAGONAL|DIAG|DG|TRANSVERSAL|TRANSV|TRV|TV|AK|AC)\s*(?P<body>.+)$",
+    re.I,
+)
+
+_NAMED_ROAD_QUERIES = {
+    "LA ESPERANZA": "AVENIDA DE LA ESPERANZA",
+    "DE LA ESPERANZA": "AVENIDA DE LA ESPERANZA",
+    "PRIMERO DE MAYO": "AVENIDA PRIMERO DE MAYO",
+    "BOYACA": "AVENIDA BOYACA",
+    "CARACAS": "AVENIDA CARACAS",
+    "EL DORADO": "AVENIDA EL DORADO",
+    "CIUDAD DE QUITO": "AVENIDA CIUDAD DE QUITO",
+    "NQS": "AVENIDA CIUDAD DE QUITO",
+}
+_NAMED_ROAD_LABELS = {
+    "AVENIDA DE LA ESPERANZA": ["AC 24"],
+    "AVENIDA PRIMERO DE MAYO": ["AC 26 S"],
+    "AVENIDA BOYACA": ["AK 72"],
+    "AVENIDA CARACAS": ["AK 14"],
+    "AVENIDA EL DORADO": ["AC 26"],
+    "AVENIDA CIUDAD DE QUITO": ["AK 30"],
+}
+
+
+def _parse_intersection_road(raw: str) -> dict | None:
+    """Parse one road reference into official Mapa de Referencia query terms."""
+    text = _plain_text(raw)
+    text = re.sub(r"^(?:ESQUINA|EN LA ESQUINA DE|CRUCE DE)\s+", "", text)
+    match = _INTERSECTION_ROAD_RE.match(text)
+    if not match:
+        return None
+    road_type = re.sub(r"\s+", " ", match.group("type").upper()).strip()
+    body = match.group("body").strip()
+    aliases = {
+        "CALLE": "CL", "CLLE": "CL", "CLL": "CL", "CL": "CL",
+        "CARRERA": "KR", "CARR": "KR", "CRA": "KR", "KRA": "KR",
+        "KRR": "KR", "KR": "KR", "CR": "KR",
+        "DIAGONAL": "DG", "DIAG": "DG", "DG": "DG",
+        "TRANSVERSAL": "TV", "TRANSV": "TV", "TRV": "TV", "TV": "TV",
+        "AVENIDA CARRERA": "AK", "AK": "AK",
+        "AVENIDA CALLE": "AC", "AC": "AC",
+    }
+    canonical_type = aliases.get(road_type)
+    numbered = re.fullmatch(r"(\d+[A-Z]*(?:\s+BIS[A-Z]*)?(?:\s+[SE])?)", body)
+    if numbered:
+        number = re.sub(r"\s+BIS\s*", "BIS", numbered.group(1))
+        number = re.sub(r"\s+", " ", number).strip()
+        if canonical_type in {"CL", "AC"}:
+            labels = [f"{canonical_type} {number}"]
+            labels.append(f"{'AC' if canonical_type == 'CL' else 'CL'} {number}")
+        elif canonical_type in {"KR", "AK"}:
+            labels = [f"{canonical_type} {number}"]
+            labels.append(f"{'AK' if canonical_type == 'KR' else 'KR'} {number}")
+        elif canonical_type:
+            labels = [f"{canonical_type} {number}"]
+        else:  # Plain ``Av. 68``: Bogotá may encode it as AK or AC.
+            labels = [f"AK {number}", f"AC {number}"]
+        return {"display": f"{road_type.title()} {body.title()}", "labels": labels, "name": None}
+
+    # A plain avenida followed by words is a named road, not a malformed number.
+    if road_type not in {"AVENIDA", "AVDA", "AV"}:
+        return None
+    normalized_name = re.sub(r"^(?:DE\s+)?LA\s+", "LA ", body)
+    official_name = _NAMED_ROAD_QUERIES.get(normalized_name) or _NAMED_ROAD_QUERIES.get(body)
+    if not official_name:
+        official_name = f"AVENIDA {body}"
+    return {
+        "display": f"Avenida {body.title()}",
+        "labels": list(_NAMED_ROAD_LABELS.get(official_name, [])),
+        "name": official_name,
+    }
+
+
+def parse_intersection_query(raw: str) -> dict | None:
+    """Parse Bogotá corner and between-streets listing shorthand.
+
+    This parser deliberately runs before ordinary address normalization so a
+    listing such as ``CL 82 # 15`` is not mistaken for a partial door plate.
+    """
+    text = _plain_text(raw)
+    text = re.sub(r"^(?:ESQUINA|EN LA ESQUINA DE|CRUCE DE)\s+", "", text)
+    between = re.match(r"^(.+?)\s+ENTRE\s+(.+?)\s+Y\s+(.+)$", text)
+    if between:
+        primary = _parse_intersection_road(between.group(1))
+        first = _parse_intersection_road(between.group(2))
+        second = _parse_intersection_road(between.group(3))
+        if primary and first and second:
+            return {"kind": "between", "roads": [primary, first, second], "raw": str(raw).strip()}
+        return None
+
+    # Listing shorthand: ``CL 82 # 15`` means Calle 82 at Carrera 15 only
+    # when no door-number suffix is present.
+    shorthand = re.match(r"^(.+?)\s*#\s*(\d+[A-Z]*(?:\s+BIS[A-Z]*)?(?:\s+[SE])?)$", text)
+    if shorthand:
+        first = _parse_intersection_road(shorthand.group(1))
+        if first:
+            first_code = (first.get("labels") or [""])[0].split(" ", 1)[0]
+            cross_type = "KR" if first_code in {"CL", "AC", "DG"} else "CL"
+            second = _parse_intersection_road(f"{cross_type} {shorthand.group(2)}")
+            if second:
+                return {"kind": "corner", "roads": [first, second], "raw": str(raw).strip()}
+
+    parts = re.split(r"\s+(?:CON|Y)\s+", text, maxsplit=1)
+    if len(parts) == 2:
+        first, second = (_parse_intersection_road(part) for part in parts)
+        if first and second:
+            return {"kind": "corner", "roads": [first, second], "raw": str(raw).strip()}
+    # Also accept terse brokerage shorthand without a connector, e.g.
+    # ``Calle 60 Carrera 7``. Try every later road token so compound
+    # ``Avenida Carrera`` remains a single reference.
+    road_tokens = list(_VIA_WORDS_RE.finditer(text))
+    for token in road_tokens[1:]:
+        first = _parse_intersection_road(text[:token.start()].strip())
+        second = _parse_intersection_road(text[token.start():].strip())
+        if first and second:
+            return {"kind": "corner", "roads": [first, second], "raw": str(raw).strip()}
+    return None
 
 # -----------------------------------------------------------------------
 # Simple LRU-style cache (avoids repeated network hits)
@@ -702,6 +840,461 @@ def catastro_properties_for_lot(lotcodigo: str) -> list[dict]:
 
 
 # -----------------------------------------------------------------------
+# Official road-axis intersection resolver
+# -----------------------------------------------------------------------
+
+def _arcgis_query(layer_url: str, params: dict) -> dict:
+    query = urllib.parse.urlencode({**params, "f": "json"})
+    with urllib.request.urlopen(
+        f"{layer_url}/query?{query}", context=_SSL_CTX, timeout=25
+    ) as response:
+        payload = json.load(response)
+    if payload.get("error"):
+        raise RuntimeError(f"ArcGIS query failed: {payload['error']}")
+    return payload
+
+
+def _road_axis_geometry(road: dict):
+    clauses = []
+    for label in road.get("labels") or []:
+        safe = label.replace("'", "''")
+        clauses.append(f"MVIETIQUET='{safe}'")
+    if road.get("name"):
+        safe = str(road["name"]).replace("'", "''")
+        clauses.extend([f"MVINOMBRE='{safe}'", f"MVINALTERN='{safe}'"])
+    if not clauses:
+        return None
+    payload = _arcgis_query(_MAPA_REFERENCIA_VIAS, {
+        "where": " OR ".join(f"({clause})" for clause in clauses),
+        "outFields": "OBJECTID,MVIETIQUET,MVINOMBRE,MVINALTERN",
+        "returnGeometry": "true",
+        "outSR": "4326",
+        "resultRecordCount": 5000,
+    })
+    lines = []
+    for feature in payload.get("features", []):
+        for path in (feature.get("geometry") or {}).get("paths") or []:
+            if len(path) >= 2:
+                lines.append(LineString(path))
+    return unary_union(lines) if lines else None
+
+
+def _extract_points(geometry) -> list[tuple[float, float]]:
+    if geometry is None or geometry.is_empty:
+        return []
+    if geometry.geom_type == "Point":
+        return [(geometry.x, geometry.y)]
+    if geometry.geom_type == "MultiPoint":
+        return [(point.x, point.y) for point in geometry.geoms]
+    if geometry.geom_type in {"LineString", "LinearRing"}:
+        point = geometry.interpolate(0.5, normalized=True)
+        return [(point.x, point.y)]
+    points: list[tuple[float, float]] = []
+    for child in getattr(geometry, "geoms", []):
+        points.extend(_extract_points(child))
+    return points
+
+
+def _meters_between(first: tuple[float, float], second: tuple[float, float]) -> float:
+    lng1, lat1 = first
+    lng2, lat2 = second
+    latitude = math.radians((lat1 + lat2) / 2)
+    dx = (lng1 - lng2) * 111_320 * math.cos(latitude)
+    dy = (lat1 - lat2) * 110_540
+    return math.hypot(dx, dy)
+
+
+def _cluster_intersections(points: list[tuple[float, float]], radius_m: float = 70) -> list[tuple[float, float]]:
+    """Collapse divided carriageways into one logical road intersection."""
+    clusters: list[list[tuple[float, float]]] = []
+    for point in points:
+        for cluster in clusters:
+            centre = (
+                sum(item[0] for item in cluster) / len(cluster),
+                sum(item[1] for item in cluster) / len(cluster),
+            )
+            if _meters_between(point, centre) <= radius_m:
+                cluster.append(point)
+                break
+        else:
+            clusters.append([point])
+    return [
+        (sum(point[0] for point in cluster) / len(cluster),
+         sum(point[1] for point in cluster) / len(cluster))
+        for cluster in clusters
+    ]
+
+
+def _road_intersection_points(first, second) -> list[tuple[float, float]]:
+    if first is None or second is None:
+        return []
+    points = _extract_points(first.intersection(second))
+    if not points:
+        # Centre lines for divided roads can stop a few metres short of each
+        # other. Accept only a genuinely local gap; never snap across blocks.
+        point_a, point_b = nearest_points(first, second)
+        pair = ((point_a.x, point_a.y), (point_b.x, point_b.y))
+        if _meters_between(*pair) <= 45:
+            points = [((pair[0][0] + pair[1][0]) / 2, (pair[0][1] + pair[1][1]) / 2)]
+    return _cluster_intersections(points)
+
+
+def _signed_ring_area(ring: list[list[float]]) -> float:
+    if len(ring) < 3:
+        return 0.0
+    area = 0.0
+    for index, first in enumerate(ring):
+        second = ring[(index + 1) % len(ring)]
+        area += first[0] * second[1] - second[0] * first[1]
+    return area / 2
+
+
+def _polygon_measurements(rings: list[list[list[float]]]) -> tuple[float | None, float | None, float | None]:
+    """Return area and oriented-envelope dimensions for EPSG:9377 rings."""
+    if not rings:
+        return None, None, None
+    area = abs(sum(_signed_ring_area(ring) for ring in rings))
+    try:
+        polygon = Polygon(rings[0], holes=rings[1:] or None)
+        rectangle = polygon.minimum_rotated_rectangle
+        coordinates = list(rectangle.exterior.coords)
+        sides = sorted({
+            round(math.dist(coordinates[index], coordinates[index + 1]), 3)
+            for index in range(len(coordinates) - 1)
+            if math.dist(coordinates[index], coordinates[index + 1]) > 0.5
+        })
+        frontage = sides[0] if sides else None
+        depth = sides[-1] if sides else None
+    except Exception:
+        frontage = depth = None
+    return round(area, 1), round(frontage, 1) if frontage else None, round(depth, 1) if depth else None
+
+
+def _local_polygon(rings: list[list[list[float]]], origin: tuple[float, float]):
+    origin_lng, origin_lat = origin
+    cosine = math.cos(math.radians(origin_lat))
+    converted = []
+    for ring in rings:
+        converted.append([
+            ((lng - origin_lng) * 111_320 * cosine, (lat - origin_lat) * 110_540)
+            for lng, lat in ring
+        ])
+    if not converted:
+        return None
+    try:
+        return Polygon(converted[0], holes=converted[1:] or None)
+    except Exception:
+        return None
+
+
+def _properties_for_lots(lotcodes: list[str]) -> dict[str, dict]:
+    if not lotcodes:
+        return {}
+    properties: dict[str, dict] = {}
+    # Corridor searches can touch hundreds of lots. Keep ArcGIS URLs below
+    # proxy/request-line limits instead of silently dropping the latter codes.
+    for offset in range(0, len(lotcodes), 100):
+        batch = lotcodes[offset:offset + 100]
+        quoted = ",".join(f"'{code}'" for code in batch)
+        payload = _arcgis_query(_CATASTRO_PREDIO, {
+            "where": f"BARMANPRE IN ({quoted})",
+            "outFields": "PRECHIP,PREDIRECC,BARMANPRE",
+            "returnGeometry": "false",
+            "resultRecordCount": 4000,
+        })
+        for feature in payload.get("features", []):
+            attributes = feature.get("attributes") or {}
+            code = str(attributes.get("BARMANPRE") or "").strip()
+            if code not in batch:
+                continue
+            entry = properties.setdefault(code, {"addresses": [], "chips": []})
+            address = str(attributes.get("PREDIRECC") or "").strip()
+            chip = str(attributes.get("PRECHIP") or "").strip().upper()
+            if address and address not in entry["addresses"]:
+                entry["addresses"].append(address)
+            if _CHIP_RE.fullmatch(chip) and chip not in entry["chips"]:
+                entry["chips"].append(chip)
+    return properties
+
+
+def _sample_segment(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    *,
+    spacing_m: float = 180,
+    max_points: int = 24,
+) -> list[tuple[float, float]]:
+    """Return evenly spaced points covering a complete between-streets span."""
+    distance = _meters_between(start, end)
+    intervals = max(1, min(max_points - 1, math.ceil(distance / spacing_m)))
+    return [
+        (
+            start[0] + (end[0] - start[0]) * index / intervals,
+            start[1] + (end[1] - start[1]) * index / intervals,
+        )
+        for index in range(intervals + 1)
+    ]
+
+
+def _rank_intersection_candidates(
+    candidates: list[dict],
+    *,
+    listing_area_m2: float | None = None,
+    frontage_m: float | None = None,
+    limit: int = 8,
+) -> list[dict]:
+    """Rank transparently and annotate the score shown in the interface."""
+    if listing_area_m2:
+        candidates.sort(key=lambda candidate: (
+            candidate.get("area_difference_m2")
+            if candidate.get("area_difference_m2") is not None else 1e9,
+            candidate.get("distance_m", 1e9),
+            candidate.get("frontage_difference_pct")
+            if frontage_m and candidate.get("frontage_difference_pct") is not None else 0,
+        ))
+    else:
+        candidates.sort(key=lambda candidate: (
+            candidate.get("distance_m", 1e9),
+            candidate.get("area_m2") or 1e9,
+        ))
+
+    for index, candidate in enumerate(candidates):
+        candidate["ranking_score"] = {
+            "rank": index + 1,
+            "strategy": "area_then_distance" if listing_area_m2 else "distance",
+            "area_difference_m2": candidate.get("area_difference_m2"),
+            "area_difference_pct": candidate.get("area_difference_pct"),
+            "distance_m": candidate.get("distance_m"),
+        }
+        # A tolerance is supporting evidence, not eight identical winners.
+        candidate["likely_match"] = bool(index < 3 and candidate.get("area_within_10pct"))
+    return candidates[:limit]
+
+
+def _intersection_lot_candidates(
+    points: list[tuple[float, float]],
+    *,
+    listing_area_m2: float | None = None,
+    frontage_m: float | None = None,
+    depth_m: float | None = None,
+) -> list[dict]:
+    if not points:
+        return []
+    wgs_lots = {}
+    # Ask ArcGIS for every object ID in a 130 m corridor first. ID-only
+    # queries are not truncated by the feature transfer limit; geometry is
+    # then fetched in bounded batches. This covers the entire segment without
+    # the endpoint bias of one large envelope or dozens of serial point calls.
+    corridor = {
+        "paths": [[[lng, lat] for lng, lat in points]],
+        "spatialReference": {"wkid": 4326},
+    }
+    id_payload = _arcgis_query(_CATASTRO_LOTE, {
+        "where": "1=1",
+        "geometry": json.dumps(corridor, separators=(",", ":")),
+        "geometryType": "esriGeometryPolyline",
+        "inSR": "4326",
+        "spatialRel": "esriSpatialRelIntersects",
+        "distance": 130,
+        "units": "esriSRUnit_Meter",
+        "returnIdsOnly": "true",
+        "returnGeometry": "false",
+    })
+    object_ids = id_payload.get("objectIds") or []
+    for offset in range(0, len(object_ids), 100):
+        batch = object_ids[offset:offset + 100]
+        wgs_payload = _arcgis_query(_CATASTRO_LOTE, {
+            "objectIds": ",".join(str(value) for value in batch),
+            "outFields": "LOTCODIGO,LOTUPREDIA",
+            "returnGeometry": "true",
+            "outSR": "4326",
+            "resultRecordCount": len(batch),
+        })
+        for feature in wgs_payload.get("features", []):
+            attributes = feature.get("attributes") or {}
+            code = str(attributes.get("LOTCODIGO") or "").strip()
+            rings = (feature.get("geometry") or {}).get("rings") or []
+            if re.fullmatch(r"\d{12}", code) and rings:
+                wgs_lots[code] = {"rings": rings, "attributes": attributes}
+    if not wgs_lots:
+        return []
+
+    reference = (
+        sum(point[0] for point in points) / len(points),
+        sum(point[1] for point in points) / len(points),
+    )
+    local_targets = [
+        Point((point[0] - reference[0]) * 111_320 * math.cos(math.radians(reference[1])),
+              (point[1] - reference[1]) * 110_540)
+        for point in points
+    ]
+    target_geometry = LineString([point.coords[0] for point in local_targets]) if len(local_targets) > 1 else local_targets[0]
+
+    # Keep only lots genuinely beside the sampled road corridor before the
+    # heavier projected-geometry and property-unit lookups.
+    corridor_distances = {}
+    for code, lot in wgs_lots.items():
+        local_polygon = _local_polygon(lot["rings"], reference)
+        if local_polygon is not None:
+            corridor_distances[code] = max(0.0, float(local_polygon.distance(target_geometry)))
+    selected_codes = [
+        code for code, _distance in sorted(corridor_distances.items(), key=lambda item: item[1])
+        if _distance <= 130
+    ][:500]
+    wgs_lots = {code: wgs_lots[code] for code in selected_codes}
+    if not wgs_lots:
+        return []
+
+    projected = {}
+    codes = sorted(wgs_lots)
+    for offset in range(0, len(codes), 100):
+        batch = codes[offset:offset + 100]
+        quoted = ",".join(f"'{code}'" for code in batch)
+        projected_payload = _arcgis_query(_CATASTRO_LOTE, {
+            "where": f"LOTCODIGO IN ({quoted})",
+            "outFields": "LOTCODIGO",
+            "returnGeometry": "true",
+            "outSR": "9377",
+            "resultRecordCount": max(1000, len(batch)),
+        })
+        for feature in projected_payload.get("features", []):
+            code = str((feature.get("attributes") or {}).get("LOTCODIGO") or "").strip()
+            projected[code] = (feature.get("geometry") or {}).get("rings") or []
+    candidates = []
+    for code, lot in wgs_lots.items():
+        rings = lot["rings"]
+        interior = _polygon_interior_point(rings)
+        if interior is None:
+            continue
+        local_polygon = _local_polygon(rings, reference)
+        if local_polygon is None:
+            continue
+        distance_m = corridor_distances.get(code, max(0.0, float(local_polygon.distance(target_geometry))))
+        area_m2, estimated_frontage, estimated_depth = _polygon_measurements(projected.get(code) or [])
+        area_difference = (
+            abs(area_m2 - listing_area_m2) / listing_area_m2 * 100
+            if area_m2 is not None and listing_area_m2 and listing_area_m2 > 0 else None
+        )
+        area_difference_m2 = (
+            abs(area_m2 - listing_area_m2)
+            if area_m2 is not None and listing_area_m2 and listing_area_m2 > 0 else None
+        )
+        frontage_difference = (
+            abs(estimated_frontage - frontage_m) / frontage_m * 100
+            if estimated_frontage is not None and frontage_m and frontage_m > 0 else None
+        )
+        candidate = {
+            "lat": interior[1], "lng": interior[0],
+            "label": f"Predio {code}",
+            "official_address": None,
+            "source": "catastro",
+            "lotcodigo": code,
+            "chip": None,
+            "chip_count": 0,
+            "area_m2": area_m2,
+            "distance_m": round(distance_m, 1),
+            "frontage_estimate_m": estimated_frontage,
+            "depth_estimate_m": estimated_depth,
+            "area_difference_pct": round(area_difference, 1) if area_difference is not None else None,
+            "area_difference_m2": round(area_difference_m2, 1) if area_difference_m2 is not None else None,
+            "area_within_10pct": area_difference is not None and area_difference <= 10,
+            "frontage_difference_pct": round(frontage_difference, 1) if frontage_difference is not None else None,
+            "polygon": rings,
+            "near_match": True,
+            "approximate_identification": True,
+            "match_type": "intersection_candidate",
+            "match_confidence": "baja",
+        }
+        candidates.append(candidate)
+
+    ranked = _rank_intersection_candidates(
+        candidates,
+        listing_area_m2=listing_area_m2,
+        frontage_m=frontage_m,
+    )
+    # Address/CHIP enrichment is only needed for the eight results users can
+    # actually select. Querying every corridor lot made long segments slow.
+    properties = _properties_for_lots([candidate["lotcodigo"] for candidate in ranked])
+    for candidate in ranked:
+        property_data = properties.get(candidate["lotcodigo"]) or {"addresses": [], "chips": []}
+        address = property_data["addresses"][0] if property_data["addresses"] else None
+        chips = property_data["chips"]
+        candidate["label"] = address or f"Predio {candidate['lotcodigo']}"
+        candidate["official_address"] = address
+        candidate["chip"] = chips[0] if len(chips) == 1 else None
+        candidate["chip_count"] = len(chips)
+    return ranked
+
+
+def resolve_intersection(
+    raw: str,
+    *,
+    listing_area_m2: float | None = None,
+    frontage_m: float | None = None,
+    depth_m: float | None = None,
+) -> dict:
+    parsed = parse_intersection_query(raw)
+    if not parsed:
+        return {"candidates": [], "resolution": "intersection_unrecognized"}
+    axes = [_road_axis_geometry(road) for road in parsed["roads"]]
+    unresolved = []
+    points: list[tuple[float, float]] = []
+    if parsed["kind"] == "corner":
+        points = _road_intersection_points(axes[0], axes[1])
+        if not points:
+            unresolved = [road["display"] for road, axis in zip(parsed["roads"], axes) if axis is None]
+    else:
+        endpoint_points: list[tuple[float, float]] = []
+        for index in (1, 2):
+            endpoint = _road_intersection_points(axes[0], axes[index])
+            if endpoint:
+                endpoint_points.append(endpoint[0])
+            else:
+                unresolved.append(parsed["roads"][index]["display"])
+                # Preserve the full requested span using the closest point on
+                # the primary official axis. The unresolved reference remains
+                # explicitly disclosed to the user.
+                if axes[0] is not None and axes[index] is not None:
+                    primary_point, _cross_point = nearest_points(axes[0], axes[index])
+                    endpoint_points.append((primary_point.x, primary_point.y))
+        if len(endpoint_points) == 2:
+            points = _sample_segment(endpoint_points[0], endpoint_points[1])
+        else:
+            points = endpoint_points
+    points = points if parsed["kind"] == "between" else _cluster_intersections(points)
+    candidates = _intersection_lot_candidates(
+        points,
+        listing_area_m2=listing_area_m2,
+        frontage_m=frontage_m,
+        depth_m=depth_m,
+    )
+    for candidate in candidates:
+        candidate["intersection_query"] = parsed["raw"]
+    return {
+        "candidates": candidates,
+        "resolution": "intersection_candidates" if candidates else "intersection_not_found",
+        "intersection": {
+            "kind": parsed["kind"],
+            "query": parsed["raw"],
+            "points": [
+                {"lng": lng, "lat": lat}
+                for lng, lat in (
+                    [points[0], points[-1]]
+                    if parsed["kind"] == "between" and len(points) > 1 else points
+                )
+            ],
+            "sampled_point_count": len(points),
+            "unresolved_references": unresolved,
+            "source": "Mapa de Referencia de Bogotá · Nomenclatura vial · capa 11",
+            "service_url": _MAPA_REFERENCIA_VIAS,
+            "listing_area_m2": listing_area_m2,
+            "frontage_m": frontage_m,
+            "depth_m": depth_m,
+        },
+    }
+
+
+# -----------------------------------------------------------------------
 # Nominatim fallback
 # -----------------------------------------------------------------------
 
@@ -756,7 +1349,13 @@ def _nominatim_query(q: str) -> list[dict]:
 # Public API
 # -----------------------------------------------------------------------
 
-def geocode_detailed(address: str) -> dict:
+def geocode_detailed(
+    address: str,
+    *,
+    listing_area_m2: float | None = None,
+    frontage_m: float | None = None,
+    depth_m: float | None = None,
+) -> dict:
     """
     Geocode a Bogotá address.
 
@@ -796,10 +1395,24 @@ def geocode_detailed(address: str) -> dict:
             "locality": outside_city,
         }
 
-    # Intersection queries ("Calle 60 Carrera 7") cannot resolve to a unique lot.
-    # Return empty so the frontend asks the user to click on the map instead.
+    # Intersections deliberately return multiple cadastral lots. They never
+    # fall through to address matching, which could silently select one corner.
     if _is_intersection_query(address):
-        return {"candidates": [], "resolution": "intersection"}
+        cache_key = (
+            f"intersection:{_plain_text(address)}:{listing_area_m2 or ''}:"
+            f"{frontage_m or ''}:{depth_m or ''}"
+        )
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+        result = resolve_intersection(
+            address,
+            listing_area_m2=listing_area_m2,
+            frontage_m=frontage_m,
+            depth_m=depth_m,
+        )
+        _cache_set(cache_key, result)
+        return result
 
     # Normalise for structured queries; keep original for Nominatim (OSM
     # handles "Calle 90" better than the abbreviated form "CL 90").

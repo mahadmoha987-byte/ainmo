@@ -6,6 +6,11 @@ import api
 
 
 def test_current_analysis_pdf_is_public(monkeypatch):
+    # Stripe credentials may already be present while Ainmo is still in open
+    # beta. That setup state must never turn the report into a paid route.
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_configured")
+    monkeypatch.setenv("AINMO_BILLING_ENABLED", "true")
+    monkeypatch.setenv("AINMO_OPEN_BETA", "true")
     monkeypatch.setattr(api, "_gis_lookup_cached", lambda *_args: {"lote": {}})
     monkeypatch.setattr(
         api.calc,

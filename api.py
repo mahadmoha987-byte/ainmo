@@ -4,12 +4,13 @@ api.py — FastAPI backend for the Bogotá buildability tool
 Run: uvicorn api:app --reload --port 8765
 """
 import os, sys, json, logging
+from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(__file__))
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -20,6 +21,7 @@ import httpx
 import p2_lookup, calc, geocode, pdf_report, dxf_export, payments
 import db, auth
 import home_news
+import normas_comunes as normas_comunes_mod
 import seo_pages
 from cabida import proforma as proforma_mod
 from cabida.market_defaults import MARKET_DEFAULTS, get_sale_price_default
@@ -251,7 +253,9 @@ async def get_current_user(request: Request) -> dict | None:
     if not authorization.startswith("Bearer "):
         return None
     token = authorization[7:]
-    payload = auth.verify_access_token(token)
+    # JWKS discovery may perform one network request after a signing-key
+    # rotation. Keep that work off FastAPI's event loop.
+    payload = await asyncio.to_thread(auth.verify_access_token, token)
     if not payload:
         return None
     user_id = payload.get("sub")
@@ -262,6 +266,47 @@ async def get_current_user(request: Request) -> dict | None:
     if not profile:
         profile = await db.ensure_profile(user_id, email)
     return profile
+
+
+def _open_beta_access() -> bool:
+    """Keep every product capability open until billing is deliberately launched."""
+    return os.getenv("AINMO_OPEN_BETA", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _billing_live() -> bool:
+    """Open-beta access always wins over a configured Stripe account."""
+    return payments.enabled() and not _open_beta_access()
+
+
+def _account_entitlements(plan: str) -> dict:
+    """Product limits exposed consistently to the app and dashboard."""
+    plan = plan if plan in {"free", "pro", "team"} else "free"
+    if _open_beta_access():
+        return {
+            "plan": "beta",
+            "monthly_saved_analyses": 0,
+            "batch_limit": 100,
+            "portfolio": True,
+            "pdf_history_export": True,
+            "sharing": True,
+            "api_access": True,
+        }
+    return {
+        "plan": plan,
+        "monthly_saved_analyses": 0 if plan in {"pro", "team"} else 5,
+        "batch_limit": {"free": 5, "pro": 100, "team": 100}[plan],
+        "portfolio": True,
+        "pdf_history_export": True,
+        "sharing": True,
+        "api_access": plan == "team",
+    }
+
+
+def _unix_iso(value) -> str | None:
+    try:
+        return datetime.fromtimestamp(int(value), tz=timezone.utc).isoformat()
+    except (TypeError, ValueError, OSError):
+        return None
 
 
 # ── Static ─────────────────────────────────────────────────────────────────────
@@ -407,9 +452,12 @@ async def homepage_news():
 
 @app.get("/dashboard", include_in_schema=False)
 async def dashboard():
-    # The account-backed portfolio is intentionally out of the public-beta
-    # surface. Keep the old URL useful without presenting an auth/paywall.
-    return RedirectResponse(url="/app?history=1", status_code=302)
+    return FileResponse(os.path.join(os.path.dirname(__file__), "dashboard.html"))
+
+
+@app.get("/settings", include_in_schema=False)
+async def settings_page():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "settings.html"))
 
 
 # ── Normative update pages (public, server-rendered for SEO) ─────────────────
@@ -546,6 +594,7 @@ async def robots_txt():
         "Allow: /",
         "Disallow: /api/",
         "Disallow: /dashboard",
+        "Disallow: /settings",
         f"Sitemap: {seo_pages.SITE_URL}/sitemap.xml",
         "",
     ])
@@ -584,12 +633,24 @@ async def sitemap_xml():
 @app.get("/api/config")
 async def config_endpoint():
     checkout = payments.public_config()
+    billing_live = _billing_live()
+    subscription_plans = {
+        key: {**value, "available": billing_live and value.get("available", False)}
+        for key, value in checkout["subscription_plans"].items()
+    }
     return {
         "beta_access": "public",
+        "open_beta": _open_beta_access(),
+        "billing_enabled": billing_live,
+        "stripe_configured": checkout["configured"],
         "authentication_required": False,
-        "pdf_checkout_enabled": checkout["enabled"],
+        "supabase_url": auth.SUPABASE_URL,
+        "supabase_anon_key": auth.SUPABASE_ANON_KEY,
+        "pdf_checkout_enabled": billing_live,
         "pdf_report_price_cop": checkout["price_cop"],
         "pdf_report_currency": checkout["currency"],
+        "subscriptions_enabled": billing_live and checkout["subscriptions_enabled"],
+        "subscription_plans": subscription_plans,
     }
 
 
@@ -597,29 +658,71 @@ async def config_endpoint():
 
 @app.get("/api/me")
 async def me(request: Request):
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={
+            "ok": False,
+            "authenticated": False,
+            "beta_access": "public",
+        })
+    used, limit = (0, 0) if _open_beta_access() else await db.get_usage(user["id"])
     return {
         "ok": True,
-        "authenticated": False,
-        "beta_access": "public",
-        "message": "Ainmo está abierto durante la beta; no se requiere cuenta.",
+        "authenticated": True,
+        "email": user.get("email"),
+        "name": user.get("name"),
+        "avatar_url": user.get("avatar_url"),
+        "plan": user.get("plan") or "free",
+        "usage_this_month": used,
+        "usage_limit": limit,
+        "subscription_status": user.get("subscription_status"),
+        "current_period_end": user.get("current_period_end"),
+        "has_billing_account": bool(user.get("stripe_customer_id")),
+        "entitlements": _account_entitlements(user.get("plan") or "free"),
     }
+
+
+@app.patch("/api/me")
+async def update_me(request: Request):
+    user = await get_current_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"ok": False, "error": "auth_required"})
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"ok": False, "message": "JSON inválido"})
+    if "name" not in body:
+        return JSONResponse(status_code=400, content={"ok": False, "message": "Falta el nombre."})
+    profile = await db.update_profile(user["id"], name=str(body.get("name") or ""))
+    return {"ok": True, "data": profile or {}}
 
 
 # ── Geocode ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/geocode")
-async def geocode_endpoint(q: str = Query(..., description="Dirección en Bogotá")):
+async def geocode_endpoint(
+    q: str = Query(..., description="Dirección, CHIP o intersección en Bogotá"),
+    area_m2: float | None = Query(None, gt=0),
+    frente_m: float | None = Query(None, gt=0),
+    fondo_m: float | None = Query(None, gt=0),
+):
     try:
         # The full resolver performs blocking government-GIS requests. Keep it
         # off the event loop so autocomplete and other users stay responsive.
-        result = await asyncio.to_thread(geocode.geocode_detailed, q)
+        result = await asyncio.to_thread(
+            geocode.geocode_detailed,
+            q,
+            listing_area_m2=area_m2,
+            frontage_m=frente_m,
+            depth_m=fondo_m,
+        )
         candidates = result["candidates"]
         if not candidates:
             resolution = result.get("resolution")
             if resolution == "street_recognized":
                 message = "Catastro reconoce la vía, pero no encontró ese número de puerta. Verifique la dirección o seleccione el predio en el mapa."
-            elif resolution == "intersection":
-                message = "Una intersección no identifica un predio único. Ingrese una dirección predial completa o seleccione el predio en el mapa."
+            elif resolution in {"intersection_not_found", "intersection_unrecognized"}:
+                message = "No pudimos ubicar ese cruce en la nomenclatura vial oficial. Revise los nombres de las vías o seleccione el predio en el mapa."
             elif resolution == "incomplete_address":
                 message = "Ingrese una dirección completa con vía, cruce y número de puerta (por ejemplo: Calle 85 # 11-53), o seleccione el predio en el mapa."
             elif resolution == "outside_bogota":
@@ -633,7 +736,12 @@ async def geocode_endpoint(q: str = Query(..., description="Dirección en Bogot�
                 "resolution": resolution,
                 "message": message,
             })
-        return {"ok": True, "candidates": candidates, "resolution": result.get("resolution")}
+        return {
+            "ok": True,
+            "candidates": candidates,
+            "resolution": result.get("resolution"),
+            "intersection": result.get("intersection"),
+        }
     except Exception:
         logger.exception("Geocoding failed")
         return JSONResponse(status_code=500, content={"ok": False, "error": "internal", "message": "No se pudo consultar el servicio de direcciones. Intente de nuevo."})
@@ -743,9 +851,11 @@ async def calc_endpoint(
     resolved_address: str = Query(""),
     searched_chip: str = Query(""),
     near_match: bool = Query(False),
+    search_mode: str = Query(""),
     expected_lotcodigo: str | None = Query(None),
     scenario_only: bool = Query(False),
 ):
+    user = await get_current_user(request)
     try:
         lu, result = await _calculate_current_lot(
             lng=lng, lat=lat, vis_en_sitio=vis_en_sitio,
@@ -758,10 +868,56 @@ async def calc_endpoint(
             searched_address=searched_address,
             resolved_address=resolved_address,
             near_match=near_match,
+            search_mode=search_mode,
         )
         await _attach_property_identity(
             result, lu, searched_chip=searched_chip,
         )
+
+        analysis_id = None
+        cloud_saved = False
+        usage_limit_reached = False
+        usage_this_month = 0
+        usage_limit = 0
+        if user:
+            try:
+                if not scenario_only:
+                    if _open_beta_access():
+                        analysis_id = await db.save_analysis(
+                            user_id=user["id"],
+                            direccion=result.get("direccion") or address or "Consultado por coordenada",
+                            lat=lat,
+                            lng=lng,
+                            lookup_snapshot=lu,
+                            calc_result=result,
+                            vis_en_sitio=vis_en_sitio,
+                            anu_m2=anu_m2,
+                        )
+                        cloud_saved = bool(analysis_id)
+                    else:
+                        usage_this_month, usage_limit = await db.get_usage(user["id"])
+                        allowed = await db.check_usage_allowed(user["id"])
+                        if allowed:
+                            new_count = await db.increment_usage(user["id"])
+                            if new_count >= 0:
+                                usage_this_month = new_count
+                            analysis_id = await db.save_analysis(
+                                user_id=user["id"],
+                                direccion=result.get("direccion") or address or "Consultado por coordenada",
+                                lat=lat,
+                                lng=lng,
+                                lookup_snapshot=lu,
+                                calc_result=result,
+                                vis_en_sitio=vis_en_sitio,
+                                anu_m2=anu_m2,
+                            )
+                            cloud_saved = bool(analysis_id)
+                        else:
+                            usage_limit_reached = True
+            except Exception:
+                # Account storage is additive. A Supabase incident must never
+                # suppress a valid regulatory result that was already computed.
+                logger.exception("Account persistence failed after calculation")
 
         return {
             "ok": True,
@@ -774,9 +930,16 @@ async def calc_endpoint(
             ),
             "meta": {
                 "beta_access": "public",
-                "analysis_id": None,
-                "authenticated": False,
-                "usage_charged": False,
+                "plan": user.get("plan", "free") if user else "guest",
+                "analysis_id": analysis_id,
+                "authenticated": user is not None,
+                "cloud_saved": cloud_saved,
+                "usage_this_month": usage_this_month,
+                "usage_limit": usage_limit,
+                "usage_limit_reached": usage_limit_reached,
+                "usage_charged": bool(
+                    user and not scenario_only and not usage_limit_reached and not _open_beta_access()
+                ),
                 "regulatory_context": regulatory_context(),
             },
         }
@@ -879,6 +1042,13 @@ async def calc_endpoint(
 
 
 # ── Units estimator ────────────────────────────────────────────────────────────
+
+@app.get("/api/normas-comunes")
+async def normas_comunes_endpoint(
+    tratamiento: str = Query(..., description="Tratamiento urbanístico"),
+):
+    return {"ok": True, "data": normas_comunes_mod.get_normas_comunes(tratamiento)}
+
 
 @app.get("/api/units")
 async def units_endpoint(
@@ -1058,7 +1228,7 @@ async def proforma_endpoint(
 
 @app.post("/api/checkout/pdf")
 async def create_pdf_checkout_endpoint(request: Request):
-    if not payments.enabled():
+    if not _billing_live():
         return JSONResponse(status_code=503, content={
             "ok": False,
             "error": "checkout_not_configured",
@@ -1166,7 +1336,7 @@ async def report_endpoint(
     checkout_session_id: str = Query(""),
 ):
     try:
-        if payments.enabled():
+        if _billing_live():
             if not checkout_session_id:
                 return JSONResponse(status_code=402, content={
                     "ok": False,
@@ -1270,6 +1440,7 @@ async def report_html_endpoint(
     resolved_address: str = Query(""),
     searched_chip: str = Query(""),
     near_match: bool = Query(False),
+    search_mode: str = Query(""),
     expected_lotcodigo: str | None = Query(None),
 ):
     try:
@@ -1284,6 +1455,7 @@ async def report_html_endpoint(
             searched_address=searched_address,
             resolved_address=resolved_address,
             near_match=near_match,
+            search_mode=search_mode,
         )
         await _attach_property_identity(
             result, lu, searched_chip=searched_chip,
@@ -1325,20 +1497,25 @@ async def report_html_endpoint(
 
 # ── Saved analyses ────────────────────────────────────────────────────────────
 
-def _beta_local_history_response() -> JSONResponse:
-    """Retire account-backed storage without exposing one user's rows to another."""
-    return JSONResponse(status_code=410, content={
+def _auth_required() -> JSONResponse:
+    return JSONResponse(status_code=401, content={
         "ok": False,
-        "error": "beta_local_history",
-        "message": (
-            "Durante la beta, el historial se guarda localmente en Recientes y no requiere cuenta. "
-            "Vuelva a consultar el predio para generar PDF, DXF o un enlace público."
-        ),
+        "error": "auth_required",
+        "message": "Inicie sesión para usar el historial y el análisis en portafolio.",
     })
+
 
 @app.get("/api/portfolio/lots")
 async def portfolio_lots_endpoint(request: Request):
-    return _beta_local_history_response()
+    user = await get_current_user(request)
+    if not user:
+        return _auth_required()
+    rows = await db.get_portfolio_data(user["id"])
+    return {
+        "ok": True,
+        "data": rows,
+        "entitlements": _account_entitlements(user.get("plan") or "free"),
+    }
 
 
 @app.get("/api/portfolio/market-defaults")
@@ -1368,27 +1545,93 @@ async def portfolio_market_defaults():
 
 @app.get("/api/analyses")
 async def list_analyses_endpoint(request: Request):
-    return _beta_local_history_response()
+    user = await get_current_user(request)
+    if not user:
+        return _auth_required()
+    rows = await db.list_analyses(user["id"])
+    return {"ok": True, "data": rows}
 
 
 @app.get("/api/analyses/{analysis_id}")
 async def get_analysis_endpoint(analysis_id: str, request: Request):
-    return _beta_local_history_response()
+    user = await get_current_user(request)
+    if not user:
+        return _auth_required()
+    row = await db.get_analysis(analysis_id, user["id"])
+    if not row:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
+    return {"ok": True, "data": row}
 
 
 @app.patch("/api/analyses/{analysis_id}")
 async def update_analysis_endpoint(analysis_id: str, request: Request):
-    return _beta_local_history_response()
+    user = await get_current_user(request)
+    if not user:
+        return _auth_required()
+    row = await db.get_analysis(analysis_id, user["id"])
+    if not row:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"ok": False, "message": "JSON inválido"})
+    if "tags" in body:
+        if not isinstance(body["tags"], list):
+            return JSONResponse(status_code=400, content={
+                "ok": False, "error": "validation_error",
+                "message": "Las etiquetas deben enviarse como una lista.",
+            })
+        tags = [str(tag).strip()[:60] for tag in body["tags"] if str(tag).strip()][:20]
+        await db.update_analysis_tags(analysis_id, user["id"], tags)
+    if "notas" in body or "notes" in body:
+        notas = str(body.get("notas", body.get("notes", "")))[:5000]
+        await db.update_analysis_notas(analysis_id, user["id"], notas)
+    return {"ok": True}
 
 
 @app.delete("/api/analyses/{analysis_id}")
 async def delete_analysis_endpoint(analysis_id: str, request: Request):
-    return _beta_local_history_response()
+    user = await get_current_user(request)
+    if not user:
+        return _auth_required()
+    row = await db.get_analysis(analysis_id, user["id"])
+    if not row:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
+    await db.delete_analysis(analysis_id, user["id"])
+    return {"ok": True}
 
 
 @app.get("/api/analyses/{analysis_id}/report")
 async def analysis_report_endpoint(analysis_id: str, request: Request, preview: bool = Query(False)):
-    return _beta_local_history_response()
+    user = await get_current_user(request)
+    if not user:
+        return _auth_required()
+    row = await db.get_analysis(analysis_id, user["id"])
+    if not row:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
+    try:
+        stored = row.get("result_json") or {}
+        lu = stored.get("lookup_snapshot") or {}
+        result = stored.get("calc_result") or stored
+        if not isinstance(result, dict) or not result.get("metrics"):
+            return JSONResponse(status_code=422, content={
+                "ok": False,
+                "error": "legacy_analysis_incomplete",
+                "message": "Este análisis guardado no contiene un resultado completo. Vuelva a consultar el predio.",
+            })
+        address = result.get("direccion") or row.get("direccion") or f"Predio {row.get('lote_codigo') or 'consultado'}"
+        loop = asyncio.get_event_loop()
+        pdf_bytes = await loop.run_in_executor(
+            None,
+            lambda: pdf_report.generate_pdf(calc_result=result, lookup_snapshot=lu, address=address),
+        )
+    except Exception:
+        logger.exception("Saved analysis PDF generation failed", extra={"analysis_id": analysis_id})
+        return JSONResponse(status_code=500, content={
+            "ok": False, "error": "internal", "message": "No se pudo generar el informe guardado.",
+        })
+    disposition = "inline" if preview else 'attachment; filename="prefactibilidad.pdf"'
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": disposition})
 
 
 # ── DXF export ────────────────────────────────────────────────────────────────
@@ -1587,7 +1830,7 @@ async def risk_hazards_endpoint(
     }
 
 
-# ── Billing (stub — clean interface for future payment integration) ────────────
+# ── Billing ───────────────────────────────────────────────────────────────────
 
 @app.post("/api/billing/interest")
 async def billing_interest_endpoint(request: Request):
@@ -1605,11 +1848,126 @@ async def billing_interest_endpoint(request: Request):
 
 @app.post("/api/billing/upgrade")
 async def billing_upgrade_endpoint(request: Request):
-    # Stub: wire Stripe / MercadoPago here. Call db.set_plan(user_id, "pro") on webhook.
-    return JSONResponse(status_code=200, content={
-        "stub": True,
-        "message": "Pagos aún no disponibles. Te notificaremos cuando el plan Pro esté listo.",
-    })
+    return await billing_checkout_endpoint(request)
+
+
+@app.post("/api/billing/checkout")
+async def billing_checkout_endpoint(request: Request):
+    user = await get_current_user(request)
+    if not user:
+        return _auth_required()
+    if not _billing_live():
+        return JSONResponse(status_code=503, content={
+            "ok": False,
+            "error": "billing_disabled",
+            "message": "Todos los productos permanecen gratuitos durante la beta abierta.",
+        })
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    plan = str(body.get("plan") or "pro").strip().lower()
+    if plan not in {"pro", "team"}:
+        return JSONResponse(status_code=400, content={
+            "ok": False, "error": "invalid_plan", "message": "Seleccione Pro o Equipos.",
+        })
+    try:
+        checkout = await payments.create_subscription_checkout(user=user, plan=plan)
+        return {"ok": True, **checkout}
+    except payments.PaymentError as exc:
+        return JSONResponse(status_code=503, content={
+            "ok": False, "error": "billing_unavailable", "message": str(exc),
+        })
+
+
+@app.post("/api/billing/portal")
+async def billing_portal_endpoint(request: Request):
+    user = await get_current_user(request)
+    if not user:
+        return _auth_required()
+    try:
+        portal = await payments.create_billing_portal(user.get("stripe_customer_id") or "")
+        return {"ok": True, **portal}
+    except payments.PaymentError as exc:
+        return JSONResponse(status_code=400, content={
+            "ok": False, "error": "billing_portal_unavailable", "message": str(exc),
+        })
+
+
+@app.get("/api/billing/status")
+async def billing_status_endpoint(request: Request, session_id: str = Query(...)):
+    user = await get_current_user(request)
+    if not user:
+        return _auth_required()
+    try:
+        session = await payments.get_checkout_session(session_id)
+    except payments.PaymentError as exc:
+        return JSONResponse(status_code=400, content={"ok": False, "message": str(exc)})
+    owner = str(session.get("client_reference_id") or (session.get("metadata") or {}).get("user_id") or "")
+    if owner != str(user["id"]):
+        return JSONResponse(status_code=403, content={"ok": False, "error": "forbidden"})
+    refreshed = await db.get_profile(user["id"]) or user
+    return {
+        "ok": True,
+        "payment_status": session.get("payment_status"),
+        "checkout_status": session.get("status"),
+        "plan": refreshed.get("plan") or "free",
+        "subscription_status": refreshed.get("subscription_status"),
+    }
+
+
+@app.post("/api/stripe/webhook")
+async def stripe_webhook_endpoint(request: Request):
+    payload = await request.body()
+    try:
+        event = payments.verify_webhook(payload, request.headers.get("Stripe-Signature", ""))
+    except payments.PaymentError as exc:
+        return JSONResponse(status_code=400, content={"ok": False, "message": str(exc)})
+
+    event_type = str(event.get("type") or "")
+    obj = (((event.get("data") or {}).get("object")) or {})
+    try:
+        if event_type == "checkout.session.completed" and (obj.get("metadata") or {}).get("product") == "ainmo_subscription":
+            metadata = obj.get("metadata") or {}
+            user_id = str(metadata.get("user_id") or obj.get("client_reference_id") or "")
+            plan = str(metadata.get("plan") or "pro")
+            if user_id and plan in {"pro", "team"}:
+                await db.update_subscription(
+                    user_id,
+                    plan=plan,
+                    customer_id=str(obj.get("customer") or "") or None,
+                    subscription_id=str(obj.get("subscription") or "") or None,
+                    status="active",
+                )
+        elif event_type in {"customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"}:
+            metadata = obj.get("metadata") or {}
+            customer_id = str(obj.get("customer") or "") or None
+            subscription_id = str(obj.get("id") or "") or None
+            profile = None
+            user_id = str(metadata.get("user_id") or "")
+            if not user_id:
+                profile = await db.get_profile_by_subscription(
+                    customer_id=customer_id, subscription_id=subscription_id,
+                )
+                user_id = str((profile or {}).get("id") or "")
+            status = str(obj.get("status") or ("canceled" if event_type.endswith("deleted") else ""))
+            requested_plan = str(metadata.get("plan") or (profile or {}).get("plan") or "pro")
+            paid = status in {"active", "trialing", "past_due"}
+            plan = requested_plan if paid and requested_plan in {"pro", "team"} else "free"
+            if user_id:
+                await db.update_subscription(
+                    user_id,
+                    plan=plan,
+                    customer_id=customer_id,
+                    subscription_id=subscription_id,
+                    status=status,
+                    current_period_end=_unix_iso(obj.get("current_period_end")),
+                )
+    except Exception:
+        # Stripe retries non-2xx responses, so make persistence failures visible.
+        logger.exception("Stripe webhook persistence failed", extra={"event_type": event_type})
+        return JSONResponse(status_code=500, content={"ok": False, "error": "webhook_persistence_failed"})
+    return {"received": True}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1661,7 +2019,22 @@ async def create_share_endpoint(
     request: Request,
     include_proforma: bool = Query(False),
 ):
-    return _beta_local_history_response()
+    user = await get_current_user(request)
+    if not user:
+        return _auth_required()
+    row = await db.get_analysis(analysis_id, user["id"])
+    if not row:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
+    try:
+        token = await db.create_share_token(analysis_id, include_proforma)
+        app_url = os.environ.get("APP_URL", "").rstrip("/")
+        url = f"{app_url}/s/{token}" if app_url else f"/s/{token}"
+        return {"ok": True, "token": token, "url": url}
+    except Exception:
+        logger.exception("Share-token creation failed", extra={"analysis_id": analysis_id})
+        return JSONResponse(status_code=500, content={
+            "ok": False, "error": "internal", "message": "No se pudo crear el enlace público.",
+        })
 
 
 @app.get("/api/share/{token}")

@@ -31,6 +31,7 @@
 </script>
 <script type="module" src="/static/massing3d.js" id="massing3d-mod"></script>
 <script src="/static/nomenclatura.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&family=Syne:wght@700&display=swap');
 /* ── Design tokens ────────────────────────────────────────────── */
@@ -102,6 +103,18 @@ main{max-width:var(--col-max);margin:0 auto;padding:var(--sp-5) var(--sp-4) 80px
 .header-right{display:flex;align-items:center;gap:var(--sp-2)}
 .beta-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:4px 9px;color:var(--ink-6);font:500 var(--ts-xs)/1 var(--ff-mono);letter-spacing:.25px}
 .beta-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:#65d58b;box-shadow:0 0 0 3px rgba(101,213,139,.14)}
+.account-btn{border:1px solid rgba(255,255,255,.24);background:transparent;color:#fff;padding:6px 10px;border-radius:3px;font:600 var(--ts-xs) var(--ff-ui);cursor:pointer}
+.account-btn:hover{background:rgba(255,255,255,.08)}
+.account-menu{position:absolute;right:12px;top:48px;z-index:250;width:220px;background:var(--paper);border:var(--rule);box-shadow:0 14px 38px rgba(0,0,0,.2);padding:8px}
+.account-menu[hidden]{display:none}.account-menu-meta{padding:8px;color:var(--ink-3);font-size:var(--ts-xs);overflow-wrap:anywhere;border-bottom:var(--rule-light)}
+.account-menu a,.account-menu button{display:block;width:100%;padding:8px;border:0;background:transparent;text-align:left;color:var(--ink-1);font:500 var(--ts-sm) var(--ff-ui);text-decoration:none;cursor:pointer}
+.account-menu a:hover,.account-menu button:hover{background:var(--paper-1)}
+.auth-overlay{position:fixed;inset:0;z-index:1000;background:rgba(17,19,24,.62);display:grid;place-items:center;padding:18px}
+.auth-overlay[hidden]{display:none}.auth-card{width:min(420px,100%);background:var(--paper);border:1px solid var(--ink-0);padding:26px;position:relative}
+.auth-card h2{font-size:var(--ts-xl);margin-bottom:7px}.auth-card p{color:var(--ink-3);font-size:var(--ts-sm);line-height:1.55;margin-bottom:18px}
+.auth-close{position:absolute;right:12px;top:10px;border:0;background:none;font-size:24px;cursor:pointer;color:var(--ink-3)}
+.auth-google{width:100%;justify-content:center;margin-bottom:14px}.auth-divider{display:flex;align-items:center;gap:10px;color:var(--ink-4);font-size:var(--ts-xs);margin:4px 0 14px}.auth-divider::before,.auth-divider::after{content:"";height:1px;background:var(--ink-7);flex:1}
+.auth-email-row{display:flex;gap:7px}.auth-email-row input{min-width:0}.auth-message{min-height:20px;margin-top:10px!important;margin-bottom:0!important;color:var(--ink-2)!important}
 
 /* ── Card / Panel ─────────────────────────────────────────────────────────── */
 .card,.panel{background:var(--paper);border:var(--rule);margin-bottom:var(--sp-4);padding:var(--sp-4)}
@@ -114,9 +127,9 @@ main{max-width:var(--col-max);margin:0 auto;padding:var(--sp-5) var(--sp-4) 80px
 .form-col-full{grid-column:1/-1}
 label{display:block;font-size:var(--ts-sm);font-weight:var(--fw-5);margin-bottom:var(--sp-1);color:var(--ink-3)}
 label .hint{font-weight:var(--fw-4);font-size:var(--ts-xs);display:block;margin-top:1px;color:var(--ink-4)}
-input[type=number],input[type=text]{width:100%;padding:7px var(--sp-3);border:var(--rule);border-radius:var(--r1);font-size:var(--ts-base);font-family:var(--ff-ui);color:var(--ink-0);background:var(--paper)}
+input[type=number],input[type=text],input[type=email]{width:100%;padding:7px var(--sp-3);border:var(--rule);border-radius:var(--r1);font-size:var(--ts-base);font-family:var(--ff-ui);color:var(--ink-0);background:var(--paper)}
 input[type=number]{font-family:var(--ff-mono);font-variant-numeric:tabular-nums}
-input[type=number]:focus,input[type=text]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
+input[type=number]:focus,input[type=text]:focus,input[type=email]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
 .checkbox-row{display:flex;align-items:flex-start;gap:var(--sp-2)}
 .checkbox-row input[type=checkbox]{width:14px;height:14px;margin-top:2px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
 .checkbox-row label{margin:0;cursor:pointer;color:var(--ink-0);font-weight:var(--fw-5);font-size:var(--ts-base)}
@@ -146,6 +159,17 @@ input[type=number]:focus,input[type=text]:focus{outline:none;border-color:var(--
 .candidate-item:hover,.candidate-item:focus{border-color:var(--accent);background:var(--accent-bg);outline:none}
 .candidate-label{font-size:var(--ts-base);font-weight:var(--fw-5)}
 .candidate-meta{grid-column:2;font-family:var(--ff-mono);font-size:var(--ts-xs);color:var(--ink-4)}
+.candidate-score{font-family:var(--ff-mono);font-size:var(--ts-2xs);color:var(--ink-2);margin-top:3px}
+.candidate-match{display:inline-flex;width:max-content;margin-top:3px;padding:2px 6px;border:1px solid var(--c-a-b);background:var(--c-a-bg);color:var(--c-a-fg);font:600 var(--ts-2xs)/1.3 var(--ff-mono);text-transform:uppercase}
+.listing-hints{margin:-2px 0 var(--sp-2);border-bottom:var(--rule)}
+.listing-hints>summary{cursor:pointer;list-style:none;color:var(--ink-3);font-size:var(--ts-xs);padding:3px 0 7px}
+.listing-hints>summary::-webkit-details-marker{display:none}
+.listing-hints>summary::before{content:'＋ ';font-family:var(--ff-mono)}
+.listing-hints[open]>summary::before{content:'− '}
+.listing-hints-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:0 0 9px}
+.listing-hints-grid label{font-size:var(--ts-2xs);margin:0;color:var(--ink-4)}
+.listing-hints-grid input{margin-top:3px;padding:6px!important;font-size:var(--ts-xs)!important;min-width:0}
+.intersection-note{font-size:var(--ts-sm);line-height:1.45;color:var(--ink-2);padding:var(--sp-2) var(--sp-3);background:var(--c-m-bg);border:1px solid var(--c-m-b);margin-bottom:var(--sp-2)}
 .manual-coords-toggle{margin-top:var(--sp-3);text-align:right}
 .manual-coords-toggle button{background:none;border:none;color:var(--ink-3);font-size:var(--ts-sm);font-family:var(--ff-ui);cursor:pointer;text-decoration:underline;padding:0}
 .manual-coords-form{margin-top:var(--sp-4);padding-top:var(--sp-4);border-top:var(--rule)}
@@ -166,6 +190,17 @@ input[type=number]:focus,input[type=text]:focus{outline:none;border-color:var(--
 .bri-header strong{font-size:var(--ts-sm);font-weight:var(--fw-7);color:var(--ink-1)}
 .bri-desc{font-size:var(--ts-sm);line-height:1.55;color:var(--ink-2);margin-bottom:var(--sp-2)}
 .bri-cite{font-size:var(--ts-xs);color:var(--ink-4);font-family:var(--ff-mono)}
+.official-findings{border:var(--rule-heavy);background:var(--paper);padding:var(--sp-4);margin:var(--sp-4) 0}
+.official-findings h2{font-size:var(--ts-lg);margin:0 0 var(--sp-1)}
+.official-findings-intro{font-size:var(--ts-sm);color:var(--ink-3);margin:0 0 var(--sp-3)}
+.official-findings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--sp-2)}
+.official-finding{border:var(--rule);border-left:4px solid var(--ink-5);padding:var(--sp-3);min-width:0}
+.official-finding[data-state="resuelto"]{border-left-color:var(--c-a-b);background:var(--c-a-bg)}
+.official-finding[data-state="requiere_concepto"]{border-left-color:var(--c-m-b);background:var(--c-m-bg)}
+.official-finding[data-state="insuficiente"]{border-left-color:var(--ink-4);background:var(--paper-2)}
+.official-finding-title{font-weight:var(--fw-7);font-size:var(--ts-sm);margin-bottom:4px}
+.official-finding-text{font-size:var(--ts-sm);line-height:1.45;color:var(--ink-2)}
+.official-finding-source{font:var(--ts-2xs) var(--ff-mono);color:var(--ink-4);margin-top:6px;overflow-wrap:anywhere}
 .spinner{width:24px;height:24px;border:2px solid var(--ink-6);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto var(--sp-3)}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes skel{0%{background-position:-300px 0}100%{background-position:calc(300px + 100%) 0}}
@@ -598,6 +633,13 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
     </div>
     <div class="header-right">
       <span class="beta-badge">Beta abierta</span>
+      <button class="account-btn" id="account-btn" type="button" onclick="handleAccountButton()">Iniciar sesión</button>
+      <div class="account-menu" id="account-menu" hidden>
+        <div class="account-menu-meta" id="account-menu-meta"></div>
+        <a href="/dashboard">Portafolio y análisis por lotes</a>
+        <a href="/settings">Cuenta y configuración</a>
+        <button type="button" onclick="signOutAinmo()">Cerrar sesión</button>
+      </div>
     </div>
   </div>
 </header>
@@ -639,6 +681,14 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
       <div class="sp-chips">
         <button class="ejemplo-chip" onclick="loadEjemplo()">✦ ejemplo Consolidación</button>
       </div>
+      <details class="listing-hints" id="listing-hints">
+        <summary>Datos del aviso para identificar el lote (opcional)</summary>
+        <div class="listing-hints-grid">
+          <label>Área (m²)<input type="number" id="listing-area" min="1" step="0.1" placeholder="332"></label>
+          <label>Frente (m)<input type="number" id="listing-frontage" min="1" step="0.1" placeholder="12"></label>
+          <label>Fondo (m)<input type="number" id="listing-depth" min="1" step="0.1" placeholder="37"></label>
+        </div>
+      </details>
       <div id="sp-history" class="sp-history" style="display:none"></div>
       <div class="sp-vis">
         <input type="checkbox" id="vis-check">
@@ -683,6 +733,21 @@ button:focus-visible,a:focus-visible{border-radius:var(--r1)}
     </div>
   </div>
 
+</div>
+
+<div class="auth-overlay" id="auth-modal" hidden role="dialog" aria-modal="true" aria-labelledby="auth-title">
+  <div class="auth-card">
+    <button class="auth-close" type="button" onclick="closeAuthModal()" aria-label="Cerrar">×</button>
+    <h2 id="auth-title">Guarde sus análisis</h2>
+    <p>La consulta individual sigue abierta. Inicie sesión para guardar predios, compararlos y continuar desde cualquier dispositivo.</p>
+    <button class="btn btn-primary auth-google" type="button" onclick="signInWithGoogle()">Continuar con Google</button>
+    <div class="auth-divider">o reciba un enlace por correo</div>
+    <div class="auth-email-row">
+      <input type="email" id="auth-email" placeholder="usted@empresa.com" autocomplete="email">
+      <button class="btn btn-secondary" type="button" onclick="sendMagicLink()">Enviar</button>
+    </div>
+    <p class="auth-message" id="auth-message" aria-live="polite"></p>
+  </div>
 </div>
 
 <!-- Share modal -->
@@ -751,6 +816,7 @@ let _selectedChip = null;       // exact CHIP selected by the geocoder, if any
 let _lastResolvedChip = null;   // verified CHIP preserved for report/PDF export
 let _activeSearchAddress = '';  // exact text entered before geocoding
 let _selectedAddressContext = null; // searched/resolved identity for selected candidate
+let _intersectionMeta = null;  // official-axis resolution details for current candidate list
 let _hasAnalyzed = false;       // true after first successful analysis (hides welcome card)
 let _massingInst = null;        // active buildMassing() instance (disposed on new lookup)
 let _massingView = '3d';        // '3d' | '2d'
@@ -766,10 +832,139 @@ let _suggestSeq = 0;            // prevents out-of-order dropdown renders
 let _addressSuggestions = [];
 let _suggestActiveIndex = -1;
 let _resultNavObserver = null;  // scroll-spy for result-section navigation
+let _supabaseClient = null;
+let _authSession = null;
+let _accountProfile = null;
+let _currentAnalysisId = null;
+let _publicConfig = {};
 
 function _authHeaders() {
-  // Public beta: every active tool endpoint is anonymous.
-  return {};
+  const token = _authSession?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function _setAuthMessage(message, isError = false) {
+  const el = document.getElementById('auth-message');
+  if (!el) return;
+  el.textContent = message || '';
+  el.style.color = isError ? 'var(--c-r-fg)' : 'var(--ink-2)';
+}
+
+function openAuthModal() {
+  document.getElementById('account-menu').hidden = true;
+  document.getElementById('auth-modal').hidden = false;
+  _setAuthMessage('');
+  setTimeout(() => document.getElementById('auth-email')?.focus(), 0);
+}
+
+function closeAuthModal() {
+  document.getElementById('auth-modal').hidden = true;
+}
+
+function handleAccountButton() {
+  if (!_authSession) return openAuthModal();
+  const menu = document.getElementById('account-menu');
+  menu.hidden = !menu.hidden;
+}
+
+function _rememberAuthReturn() {
+  const params = new URLSearchParams(location.search);
+  const requested = params.get('next');
+  const target = requested && requested.startsWith('/') ? requested : `${location.pathname}${location.search}`;
+  sessionStorage.setItem('ainmo_auth_return', target);
+}
+
+async function signInWithGoogle() {
+  if (!_supabaseClient) return _setAuthMessage('El inicio de sesión no está configurado todavía.', true);
+  _rememberAuthReturn();
+  const { error } = await _supabaseClient.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: `${location.origin}/app?auth=callback` },
+  });
+  if (error) _setAuthMessage(error.message || 'No se pudo iniciar sesión con Google.', true);
+}
+
+async function sendMagicLink() {
+  if (!_supabaseClient) return _setAuthMessage('El inicio de sesión no está configurado todavía.', true);
+  const email = document.getElementById('auth-email')?.value?.trim();
+  if (!email || !email.includes('@')) return _setAuthMessage('Ingrese un correo válido.', true);
+  _rememberAuthReturn();
+  _setAuthMessage('Enviando…');
+  const { error } = await _supabaseClient.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: `${location.origin}/app?auth=callback` },
+  });
+  _setAuthMessage(error ? (error.message || 'No se pudo enviar el enlace.') : 'Revise su correo para continuar.', !!error);
+}
+
+async function signOutAinmo() {
+  if (_supabaseClient) await _supabaseClient.auth.signOut();
+  _authSession = null;
+  _accountProfile = null;
+  document.getElementById('account-menu').hidden = true;
+  _renderAccountState();
+}
+
+async function _loadAccountProfile() {
+  if (!_authSession) { _accountProfile = null; return; }
+  try {
+    const response = await fetch('/api/me', { headers: _authHeaders() });
+    _accountProfile = response.ok ? await response.json() : null;
+  } catch (_) {
+    _accountProfile = null;
+  }
+}
+
+function _renderAccountState() {
+  const button = document.getElementById('account-btn');
+  const meta = document.getElementById('account-menu-meta');
+  if (!button || !meta) return;
+  if (!_authSession) {
+    button.textContent = 'Iniciar sesión';
+    meta.textContent = '';
+    return;
+  }
+  const email = _accountProfile?.email || _authSession.user?.email || '';
+  const name = _accountProfile?.name || _authSession.user?.user_metadata?.full_name || email.split('@')[0] || 'Cuenta';
+  const plan = _publicConfig.open_beta
+    ? 'BETA ABIERTA'
+    : (_accountProfile?.plan || 'free').toUpperCase();
+  button.textContent = name.split(/\s+/)[0];
+  meta.textContent = `${email} · ${plan}`;
+}
+
+async function initAinmoAuth() {
+  try {
+    const params = new URLSearchParams(location.search);
+    const configResponse = await fetch('/api/config');
+    const config = await configResponse.json();
+    _publicConfig = config;
+    if (!config.supabase_url || !config.supabase_anon_key || !window.supabase) {
+      _renderAccountState();
+      if (params.get('login') === '1') openAuthModal();
+      return;
+    }
+    _supabaseClient = window.supabase.createClient(config.supabase_url, config.supabase_anon_key);
+    const { data } = await _supabaseClient.auth.getSession();
+    _authSession = data.session;
+    await _loadAccountProfile();
+    _renderAccountState();
+    _supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+      _authSession = session;
+      await _loadAccountProfile();
+      _renderAccountState();
+    });
+    if (_authSession && params.get('auth') === 'callback') {
+      const target = sessionStorage.getItem('ainmo_auth_return') || '/app';
+      sessionStorage.removeItem('ainmo_auth_return');
+      location.replace(target);
+      return;
+    }
+    if (!_authSession && params.get('login') === '1') openAuthModal();
+  } catch (error) {
+    console.warn('[ainmo] optional authentication unavailable', error);
+    _renderAccountState();
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1008,6 +1203,7 @@ async function submitGeoSearch() {
   if (!q) return;
   _activeSearchAddress = q;
   _selectedAddressContext = null;
+  _intersectionMeta = null;
 
   _geoSearchInFlight = true;
   const btn = document.getElementById('geo-btn');
@@ -1028,6 +1224,7 @@ async function submitGeoSearch() {
   _lastResolvedChip = null;
   if (_lotLayer) { _map.removeLayer(_lotLayer); _lotLayer = null; }
   if (_markerLayer) { _map.removeLayer(_markerLayer); _markerLayer = null; }
+  _clearGeoCandidateLots();
   _confirmedCoords = null;
   _expectedLotCodigo = null;
   _selectedChip = null;
@@ -1036,7 +1233,14 @@ async function submitGeoSearch() {
   // to Bogotá and appends "Bogotá, Colombia" to Nominatim internally.
   // Appending city text corrupts the Catastro cross-street LIKE query, causing
   // zero rows for addresses like "CL 90 # 11-73" (PDOTEXTO '11 73 BOGOTA%' ≠ '11 73').
-  const url = `/api/geocode?q=${encodeURIComponent(q)}`;
+  const geocodeParams = new URLSearchParams({ q });
+  const listingArea = parseFloat(document.getElementById('listing-area')?.value || '');
+  const listingFrontage = parseFloat(document.getElementById('listing-frontage')?.value || '');
+  const listingDepth = parseFloat(document.getElementById('listing-depth')?.value || '');
+  if (Number.isFinite(listingArea) && listingArea > 0) geocodeParams.set('area_m2', listingArea);
+  if (Number.isFinite(listingFrontage) && listingFrontage > 0) geocodeParams.set('frente_m', listingFrontage);
+  if (Number.isFinite(listingDepth) && listingDepth > 0) geocodeParams.set('fondo_m', listingDepth);
+  const url = `/api/geocode?${geocodeParams}`;
 
   try {
     const res = await fetch(url);
@@ -1051,11 +1255,13 @@ async function submitGeoSearch() {
     } else if (json.candidates.length === 0) {
       showGeoError(null, q, 'no_results');
     } else {
-      const hasNear = json.candidates.some(c => c.near_match);
-      if (json.candidates.length === 1 && !hasNear) {
+      const isIntersection = json.resolution === 'intersection_candidates';
+      const hasNear = !isIntersection && json.candidates.some(c => c.near_match);
+      _intersectionMeta = isIntersection ? (json.intersection || {}) : null;
+      if (json.candidates.length === 1 && !hasNear && !isIntersection) {
         _showGeoConfirm(json.candidates[0]);
       } else {
-        _showGeoCandidates(json.candidates, hasNear);
+        _showGeoCandidates(json.candidates, hasNear, _intersectionMeta);
       }
     }
   } catch (err) {
@@ -1072,10 +1278,12 @@ function _showGeoConfirm(candidate) {
   _expectedLotCodigo = candidate.lotcodigo || null;
   _selectedChip = candidate.chip || null;
   const searched = _activeSearchAddress || document.getElementById('addr-input')?.value?.trim() || candidate.label;
+  const isIntersection = candidate.match_type === 'intersection_candidate';
   _selectedAddressContext = {
     searched,
     resolved: candidate.label,
-    nearMatch: candidate.near_match === true,
+    nearMatch: !isIntersection && candidate.near_match === true,
+    searchMode: isIntersection ? 'intersection' : null,
     matchType: candidate.match_type || null,
     chip: candidate.chip || null,
   };
@@ -1088,6 +1296,7 @@ function _showGeoConfirm(candidate) {
     <div class="geo-confirm">
       <div class="geo-confirm-addr">✓ ${escHtml(candidate.label)}</div>
       <div class="geo-confirm-meta">${candidate.lat.toFixed(5)}, ${candidate.lng.toFixed(5)} — ${src} · ${quality}${lotMeta}</div>
+      ${isIntersection ? '<div class="intersection-note" style="margin-top:8px;margin-bottom:0">Identificación aproximada desde una intersección. Confirme la dirección exacta o el CHIP antes de usar el informe para una decisión.</div>' : ''}
       <div class="geo-confirm-actions">
         <button class="btn btn-primary" onclick="runWithConfirmed()">Consultar edificabilidad</button>
         <button class="btn btn-ghost btn-sm" onclick="resetGeoResults()">Cambiar dirección</button>
@@ -1095,29 +1304,46 @@ function _showGeoConfirm(candidate) {
     </div>`;
 }
 
-function _showGeoCandidates(candidates, isNear) {
+function _showGeoCandidates(candidates, isNear, intersection = null) {
   _geoCandidates = candidates;
   _confirmedCoords = null;
   const items = candidates.map((c, i) => {
     const src = c.source === 'catastro' ? 'Catastro' : 'OSM';
     const quality = _geoQualityLabel(c);
     const lotMeta = c.lotcodigo ? ` · lote ${escHtml(c.lotcodigo)}` : '';
-    return `<button class="candidate-item" type="button" onclick="_pickCandidate(${i})">
+    const area = c.area_m2 != null ? ` · ${Number(c.area_m2).toLocaleString('es-CO', {maximumFractionDigits:1})} m²` : '';
+    const distanceReference = intersection?.kind === 'between' ? 'corredor' : 'cruce';
+    const distance = c.distance_m != null ? ` · ${Number(c.distance_m).toLocaleString('es-CO', {maximumFractionDigits:1})} m del ${distanceReference}` : '';
+    const frontage = c.frontage_estimate_m != null ? ` · frente geométrico ≈ ${Number(c.frontage_estimate_m).toLocaleString('es-CO', {maximumFractionDigits:1})} m` : '';
+    const score = c.ranking_score || {};
+    const scoreText = score.strategy === 'area_then_distance'
+      ? `Puntaje de orden #${score.rank || i + 1}: Δ área ${Number(score.area_difference_m2 || 0).toLocaleString('es-CO', {maximumFractionDigits:1})} m² · distancia ${Number(score.distance_m || 0).toLocaleString('es-CO', {maximumFractionDigits:1})} m`
+      : `Puntaje de orden #${score.rank || i + 1}: distancia ${Number(score.distance_m ?? c.distance_m ?? 0).toLocaleString('es-CO', {maximumFractionDigits:1})} m`;
+    const likelyMatch = c.likely_match ? `<span class="candidate-match">Coincidencia probable</span>` : '';
+    return `<button class="candidate-item" type="button" onclick="_pickCandidate(${i})" onmouseenter="_highlightGeoCandidate(${i})" onfocus="_highlightGeoCandidate(${i})">
       <span class="candidate-label">${escHtml(c.label)}</span>
-      <span class="candidate-meta">${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} — ${src} · ${quality}${lotMeta}</span>
+      <span class="candidate-meta">${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} — ${src} · ${quality}${lotMeta}${area}${distance}${frontage}</span>
+      <span class="candidate-score">${escHtml(scoreText)}</span>
+      ${likelyMatch}
     </button>`;
   }).join('');
   const nearNote = isNear
     ? `<p class="geo-near-note">No encontramos ese número exacto. Estos son predios en el mismo bloque — seleccione el más cercano o ingrese las coordenadas manualmente.</p>`
     : '';
+  const intersectionNote = intersection ? `<div class="intersection-note">
+    Una intersección puede tocar varios predios. Seleccione el lote; Ainmo no escogerá uno automáticamente.
+    ${(intersection.unresolved_references || []).length ? `<br><strong>Referencia no ubicada literalmente:</strong> ${escHtml(intersection.unresolved_references.join(', '))}. Los candidatos se muestran junto al cruce oficial que sí fue localizado.` : ''}
+  </div>` : '';
   const div = document.getElementById('geo-results');
   div.style.display = 'block';
   div.innerHTML = `
     <div class="geo-disambiguation">
+      ${intersectionNote}
       ${nearNote}
       <p class="geo-disambig-title">${isNear ? 'Resultados aproximados' : `${candidates.length} resultado${candidates.length > 1 ? 's' : ''} — seleccione:`}:</p>
       <div class="candidate-list">${items}</div>
     </div>`;
+  if (intersection) _drawGeoCandidateLots(candidates, intersection.points || []);
 }
 
 function _geoQualityLabel(candidate) {
@@ -1126,13 +1352,16 @@ function _geoQualityLabel(candidate) {
     case 'exact_address': return 'coincidencia exacta';
     case 'same_block': return 'misma cuadra, número distinto';
     case 'osm_address': return 'dirección OSM, confirmar';
+    case 'intersection_candidate': return 'candidato por intersección';
     default: return 'coincidencia por verificar';
   }
 }
 
 function _pickCandidate(i) {
   document.getElementById('geo-results').style.display = 'none';
-  _showGeoConfirm(_geoCandidates[i]);
+  const candidate = _geoCandidates[i];
+  _showGeoConfirm(candidate);
+  _drawGeoCandidateLots([candidate], _intersectionMeta?.points || []);
 }
 
 function showGeoError(msg, query, kind) {
@@ -1175,6 +1404,8 @@ function resetGeoResults() {
   _expectedLotCodigo = null;
   _selectedChip = null;
   _selectedAddressContext = null;
+  _intersectionMeta = null;
+  _clearGeoCandidateLots();
   const div = document.getElementById('geo-results');
   div.style.display = 'none';
   div.innerHTML = '';
@@ -1230,6 +1461,7 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
   if (requestSearchedAddress) params.set('searched_address', requestSearchedAddress);
   if (requestResolvedAddress) params.set('resolved_address', requestResolvedAddress);
   if (requestAddressContext?.nearMatch) params.set('near_match', 'true');
+  if (requestAddressContext?.searchMode) params.set('search_mode', requestAddressContext.searchMode);
   if (requestExpectedLotCodigo) params.set('expected_lotcodigo', requestExpectedLotCodigo);
   if (requestChip) params.set('searched_chip', requestChip);
   if (scenarioOnly)      params.set('scenario_only', 'true');
@@ -1256,6 +1488,12 @@ async function runLookup(lat, lng, vis, anu, frente, anchoVia, scenarioOnly = fa
   try {
     _lastRaw = json;
     if (json.ok) {
+      _currentAnalysisId = json.meta?.analysis_id || null;
+      if (json.meta?.usage_limit_reached) {
+        showToast('El resultado está disponible, pero no se guardó en la nube porque alcanzó el límite mensual.', 'err');
+      } else if (json.meta?.cloud_saved) {
+        _loadAccountProfile().then(_renderAccountState);
+      }
       _lastLookupCoords = { lat, lng, vis };
       _lastCalcData = json.data;
       if (!_hasAnalyzed) {
@@ -1752,6 +1990,32 @@ function phSummaryCard(d) {
   </aside>`;
 }
 
+function officialFindingsPanel(d, compact = false) {
+  const findings = Object.values(d.hallazgos_cartograficos || {}).filter(Boolean);
+  if (!findings.length) return '';
+  const cards = findings.map(item => {
+    const state = item.estado || 'insuficiente';
+    const source = [item.fuente, item.capa ? `capa ${item.capa}` : '', item.fecha_copia ? `copia ${item.fecha_copia}` : '']
+      .filter(Boolean).join(' · ');
+    const action = item.que_se_necesita
+      ? `<div class="official-finding-text" style="margin-top:5px"><strong>Se necesita:</strong> ${escHtml(item.que_se_necesita)}${item.quien_lo_resuelve ? ` — ${escHtml(item.quien_lo_resuelve)}` : ''}</div>`
+      : '';
+    const query = item.consulta_url
+      ? `<details class="official-finding-source"><summary>Ver consulta oficial</summary><a href="${escHtml(item.consulta_url)}" target="_blank" rel="noopener">Abrir respuesta ArcGIS</a></details>`
+      : '';
+    return `<article class="official-finding" data-state="${escHtml(state)}">
+      <div class="official-finding-title">${escHtml(item.etiqueta || item.clave)} ${AinmoFigures.badge(state)}</div>
+      <div class="official-finding-text">${escHtml(item.hallazgo || item.motivo || 'Hallazgo no disponible.')}</div>
+      ${action}<div class="official-finding-source">${escHtml(source)}</div>${query}
+    </article>`;
+  }).join('');
+  return `<section class="official-findings" aria-label="Cruces con cartografía oficial">
+    <h2>Cruces cartográficos del predio</h2>
+    ${compact ? '' : '<p class="official-findings-intro">Hallazgos por intersección espacial; no sustituyen un concepto oficial ni una licencia.</p>'}
+    <div class="official-findings-grid">${cards}</div>
+  </section>`;
+}
+
 function showResult(d, lat, lng, vis, anu, requestAddress = '') {
   const parts = [];
   const _tratUpper = (d.tratamiento || '').toUpperCase().replace('Ó','O').replace('Á','A').replace('É','E').replace('Ú','U');
@@ -1779,7 +2043,14 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
       <strong>Buscó <span class="notranslate" translate="no">${escHtml(searchedAddressLabel)}</span>.</strong> No existe. Analizando
       <strong><span class="notranslate" translate="no">${escHtml(resolvedAddressLabel)}</span></strong> (${escHtml(addressResolution.relation || 'mismo bloque')}).
     </div>`);
+  } else if (addressResolution?.approximate_identification && addressResolution?.method === 'intersection') {
+    parts.push(`<div class="address-substitution-banner" role="alert">
+      <strong>Predio elegido desde la intersección <span class="notranslate" translate="no">${escHtml(formatAddressLabel(addressResolution.searched_address))}</span>.</strong>
+      Analizando <strong><span class="notranslate" translate="no">${escHtml(formatAddressLabel(addressResolution.resolved_address))}</span></strong>.
+      ${escHtml(addressResolution.motivo || 'La identificación es aproximada y debe confirmarse con la dirección exacta o el CHIP.')}
+    </div>`);
   }
+  parts.push(officialFindingsPanel(d));
   parts.push(cadastralIdentityBlock(d));
   parts.push(phSummaryCard(d));
   if (d.figuras) parts.push(AinmoFigures.summary(d));
@@ -1808,6 +2079,7 @@ function showResult(d, lat, lng, vis, anu, requestAddress = '') {
   // order as the navigation rail below. This prevents scroll-spy from
   // highlighting one tab while another section is actually visible.
   const restrictionParts = [];
+  restrictionParts.push(officialFindingsPanel(d, true));
   if (d.figuras) restrictionParts.push(AinmoFigures.grid(d, 'restricciones'));
   const missingCoverage = Object.entries(d.cobertura_restricciones_detalle || {})
     .filter(([, item]) => item?.codigo !== 'consultado');
@@ -2110,7 +2382,8 @@ function buildingProfile(d) {
   const ant = d.antejardin || {};
   const pisos = m.altura_base_pisos?.valor ?? m.altura_maxima_pisos?.valor ?? null;
   const antM  = (ant.dimension_m != null && ant.dimension_m > 0) ? ant.dimension_m : 0;
-  const retM  = m.retroceso_fachada_A_m?.valor ?? null;
+  const facadeLimitMetric = m.altura_limite_fachada_A_m || m.retroceso_fachada_A_m || {};
+  const retM  = facadeLimitMetric.valor ?? null;
   const postM = m.aislamiento_posterior_m?.valor ?? null;
   const latM  = (m.aislamiento_lateral_m?.valor > 0) ? m.aislamiento_lateral_m.valor : null;
   const isHBC = bc === 'height' || bc === 'footprint_and_height';
@@ -2372,7 +2645,7 @@ function acquisitionBrief(d) {
   if (d.antejardin?.confianza === 'requiere_input') questions.push('Confirmar antejardín en el mapa CU-5.5 antes de modelar la huella.');
   if (m.altura_con_bonus_pisos?.confianza === 'requiere_input') questions.push('Medir el frente y el perfil vial para validar el escenario de altura adicional.');
   if (needsModel) questions.push('Modelar la volumetría completa: el decreto deja IC, IO o altura como resultantes.');
-  if (m.retroceso_fachada_A_m?.confianza === 'media') questions.push('Levantar el perfil vial total; el GIS aporta calzada, pero puede omitir andenes y separadores.');
+  if ((m.altura_limite_fachada_A_m || m.retroceso_fachada_A_m)?.confianza === 'media') questions.push('Levantar el perfil vial total; el GIS aporta calzada, pero puede omitir andenes y separadores.');
   if (hardStop) questions.push('Solicitar concepto de la autoridad competente sobre la restricción identificada.');
   if (d.equipamiento_decreto_253) questions.push('Verificar las excepciones y transiciones de los Arts. 249.4 a 249.11 incorporados por el D.253/2026.');
   questions.push('Construir flujo de caja con financiación, impuestos, cronograma y velocidad de ventas; el VRL mostrado es estático.');
@@ -2967,7 +3240,7 @@ function setbacksCard(d) {
 
   if (isRenovacion) {
     rows.push(retrocesoCellHtml(
-      m.retroceso_fachada_A_m,
+      m.altura_limite_fachada_A_m || m.retroceso_fachada_A_m,
       '2.5',
       'Anexo 5 Cap. 1.2.2.E.1.1 · Art. 307 Decreto 555/2021'
     ));
@@ -3004,7 +3277,7 @@ function setbacksCard(d) {
     ));
   } else if (isConsol) {
     rows.push(retrocesoCellHtml(
-      m.retroceso_fachada_A_m,
+      m.altura_limite_fachada_A_m || m.retroceso_fachada_A_m,
       '2.5',
       ed.retroceso_fachada?.articulo || 'Anexo 5 Cap. 1.2.2.E.1.1 Decreto 555/2021'
     ));
@@ -3019,7 +3292,7 @@ function setbacksCard(d) {
   } else {
     // Desarrollo
     rows.push(retrocesoCellHtml(
-      m.retroceso_fachada_A_m,
+      m.altura_limite_fachada_A_m || m.retroceso_fachada_A_m,
       '2.0',
       ed.retroceso_fachada?.articulo || 'Art. 281 / Anexo 5 Cap. 1.2.2.E.1 Decreto 555/2021'
     ));
@@ -3584,7 +3857,8 @@ function formulaTrace(steps) {
     area_lote: 'Área del lote', area_construible_max_m2: 'Área construible máxima',
     planta_maxima_m2: 'Huella máxima', altura_base_pisos: 'Altura base',
     aislamiento_posterior_m: 'Aislamiento posterior', aislamiento_lateral_m: 'Aislamiento lateral',
-    retroceso_fachada_A_m: 'Altura máxima de fachada', ancho_via_m: 'Ancho total de la vía',
+    altura_limite_fachada_A_m: 'Altura límite de fachada',
+    retroceso_fachada_A_m: 'Altura límite de fachada', ancho_via_m: 'Ancho total de la vía',
     frente_m: 'Frente del lote', anu_m2: 'Área neta urbanizable'
   };
   const traceLabel = key => traceLabels[key] || String(key).replaceAll('_', ' ').replace(/^./, c => c.toUpperCase());
@@ -4220,6 +4494,8 @@ let _map = null;
 let _lotLayer = null;
 let _markerLayer = null;
 let _tratLayer = null;
+let _candidateLayerGroup = null;
+let _candidatePolygonLayers = [];
 
 const TRAT_COLORS = {
   // Values match the TRATAMIENTO field exactly (no accents in ArcGIS data)
@@ -4325,8 +4601,10 @@ function _initMap() {
     _expectedLotCodigo = null;
     _activeSearchAddress = '';
     _selectedAddressContext = null;
+    _intersectionMeta = null;
     _selectedChip = null;
     _lastResolvedChip = null;
+    _clearGeoCandidateLots();
     // A direct parcel click starts a coordinate lookup, not another lookup for
     // the address that happened to be searched previously.
     const addressInput = document.getElementById('addr-input');
@@ -4337,9 +4615,57 @@ function _initMap() {
   });
 }
 
+function _clearGeoCandidateLots() {
+  if (_candidateLayerGroup && _map) _map.removeLayer(_candidateLayerGroup);
+  _candidateLayerGroup = null;
+  _candidatePolygonLayers = [];
+}
+
+function _drawGeoCandidateLots(candidates, intersectionPoints = []) {
+  _initMap();
+  _clearGeoCandidateLots();
+  const layers = [];
+  _candidatePolygonLayers = [];
+  candidates.forEach((candidate, index) => {
+    const rings = candidate?.polygon;
+    if (!rings?.length) return;
+    const latlngs = rings.map(ring => ring.map(([lng, lat]) => [lat, lng]));
+    const polygon = L.polygon(latlngs, {
+      color:'#C78A13', weight:2, fillColor:'#F5C96A', fillOpacity:.18,
+    });
+    polygon.bindTooltip(`${candidate.lotcodigo || 'Predio'}${candidate.area_m2 != null ? `<br>${Number(candidate.area_m2).toLocaleString('es-CO', {maximumFractionDigits:1})} m²` : ''}`);
+    const originalIndex = _geoCandidates.indexOf(candidate);
+    polygon.on('click', () => _pickCandidate(originalIndex >= 0 ? originalIndex : index));
+    layers.push(polygon);
+    _candidatePolygonLayers[index] = polygon;
+  });
+  intersectionPoints.forEach(point => {
+    layers.push(L.circleMarker([point.lat, point.lng], {
+      radius:5, color:'#111318', weight:2, fillColor:'#fff', fillOpacity:1,
+    }).bindTooltip('Intersección vial'));
+  });
+  if (!layers.length) return;
+  _candidateLayerGroup = L.layerGroup(layers).addTo(_map);
+  const bounds = L.featureGroup(layers).getBounds();
+  if (bounds.isValid()) _map.fitBounds(bounds, {padding:[32,32], maxZoom:20});
+}
+
+function _highlightGeoCandidate(index) {
+  _candidatePolygonLayers.forEach((layer, layerIndex) => {
+    if (!layer) return;
+    layer.setStyle(layerIndex === index
+      ? {color:'#1B48D4', weight:3, fillColor:'#1B48D4', fillOpacity:.28}
+      : {color:'#C78A13', weight:2, fillColor:'#F5C96A', fillOpacity:.14});
+  });
+  const selected = _candidatePolygonLayers[index];
+  if (selected) selected.bringToFront().openTooltip();
+}
+
 function updateMap(d, lat, lng) {
   _initMap();
   if (_map) _map.invalidateSize();
+
+  _clearGeoCandidateLots();
 
   // Remove previous layers
   if (_lotLayer)   { _map.removeLayer(_lotLayer);   _lotLayer   = null; }
@@ -4396,6 +4722,17 @@ function updateMap(d, lat, lng) {
 
 // Initialize map now that Leaflet is loaded
 _initMap();
+initAinmoAuth();
+document.getElementById('auth-modal')?.addEventListener('click', event => {
+  if (event.target.id === 'auth-modal') closeAuthModal();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    closeAuthModal();
+    const menu = document.getElementById('account-menu');
+    if (menu) menu.hidden = true;
+  }
+});
 </script>
 </body>
 </html>

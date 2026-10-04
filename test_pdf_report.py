@@ -159,6 +159,22 @@ def test_pdf_uses_resolved_near_match_address_and_discloses_substitution():
     assert "Analizando <strong>KR 7 # 32-12</strong> (mismo bloque)." in html
 
 
+def test_pdf_discloses_approximate_intersection_selection():
+    calculated, lookup = _fixture_payload()
+    calculated["direccion"] = "CL 82 15 35"
+    calculated["address_resolution"] = {
+        "near_match": False,
+        "approximate_identification": True,
+        "method": "intersection",
+        "searched_address": "Calle 82 con Carrera 15",
+        "resolved_address": "CL 82 15 35",
+    }
+    html = pdf_report.generate_html_preview(calculated, lookup, "CL 82 15 35")
+    assert "Predio elegido desde la intersección Calle 82 con Carrera 15." in html
+    assert "Analizando <strong>CL 82 15 35</strong>" in html
+    assert "Identificación aproximada" in html
+
+
 def test_address_identity_helper_titles_near_match_with_real_plate():
     result = {}
     api._apply_address_identity(

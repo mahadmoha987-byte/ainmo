@@ -1,4 +1,8 @@
 import asyncio
+import hashlib
+import hmac
+import json
+import time
 
 from fastapi.testclient import TestClient
 
@@ -9,8 +13,9 @@ from api import app
 client = TestClient(app)
 
 
-def test_public_config_only_enables_checkout_with_stripe_key(monkeypatch):
+def test_public_config_requires_explicit_launch_flag(monkeypatch):
     monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+    monkeypatch.delenv("AINMO_BILLING_ENABLED", raising=False)
     response = client.get("/api/config")
     assert response.status_code == 200
     assert response.json()["pdf_checkout_enabled"] is False
@@ -18,11 +23,22 @@ def test_public_config_only_enables_checkout_with_stripe_key(monkeypatch):
 
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_example")
     response = client.get("/api/config")
+    assert response.json()["stripe_configured"] is True
+    assert response.json()["pdf_checkout_enabled"] is False
+
+    monkeypatch.setenv("AINMO_BILLING_ENABLED", "true")
+    response = client.get("/api/config")
+    assert response.json()["open_beta"] is True
+    assert response.json()["pdf_checkout_enabled"] is False
+
+    monkeypatch.setenv("AINMO_OPEN_BETA", "false")
+    response = client.get("/api/config")
     assert response.json()["pdf_checkout_enabled"] is True
 
 
 def test_checkout_uses_cop_minor_units_and_binds_report_metadata(monkeypatch):
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_example")
+    monkeypatch.setenv("AINMO_BILLING_ENABLED", "true")
     captured = {}
 
     async def fake_request(method, path, *, data=None):
@@ -97,3 +113,39 @@ def test_checkout_success_page_is_noindex():
     assert response.status_code == 200
     assert response.headers["x-robots-tag"] == "noindex"
     assert "Confirmando su pago" in response.text
+
+
+def test_subscription_checkout_binds_user_plan_and_uses_recurring_price(monkeypatch):
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_example")
+    monkeypatch.setenv("AINMO_BILLING_ENABLED", "true")
+    monkeypatch.setitem(payments.SUBSCRIPTION_PLANS["pro"], "price_id", "price_pro_monthly")
+    captured = {}
+
+    async def fake_request(method, path, *, data=None):
+        captured.update({"method": method, "path": path, "data": data})
+        return {"id": "cs_test_subscription", "url": "https://checkout.stripe.test/subscription"}
+
+    monkeypatch.setattr(payments, "_stripe_request", fake_request)
+    result = asyncio.run(payments.create_subscription_checkout(
+        user={"id": "user-123", "email": "equipo@example.com"}, plan="pro",
+    ))
+
+    assert result["id"] == "cs_test_subscription"
+    assert captured["data"]["mode"] == "subscription"
+    assert captured["data"]["line_items[0][price]"] == "price_pro_monthly"
+    assert captured["data"]["metadata[user_id]"] == "user-123"
+    assert captured["data"]["metadata[plan]"] == "pro"
+    assert captured["data"]["subscription_data[metadata][user_id]"] == "user-123"
+
+
+def test_stripe_webhook_signature_is_verified(monkeypatch):
+    secret = "whsec_test"
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", secret)
+    payload = json.dumps({"id": "evt_1", "type": "customer.subscription.updated", "data": {"object": {}}}).encode()
+    timestamp = int(time.time())
+    digest = hmac.new(secret.encode(), f"{timestamp}.".encode() + payload, hashlib.sha256).hexdigest()
+
+    event = payments.verify_webhook(payload, f"t={timestamp},v1={digest}")
+
+    assert event["id"] == "evt_1"
+    assert event["type"] == "customer.subscription.updated"

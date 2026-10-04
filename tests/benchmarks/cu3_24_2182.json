@@ -1,0 +1,28 @@
+{
+  "lot": "008310012021",
+  "address": "CL 85 # 11-35",
+  "coordinate": {"lat": 4.667958459499999, "lng": -74.05200009700002},
+  "document": "CU3-24-2182",
+  "expected": {
+    "tratamiento": "RENOVACION",
+    "area_actividad_label": "Grandes Servicios Metropolitanos",
+    "antejardin_exigido": false,
+    "ice_max_sin_manzana": 5.0,
+    "parking_min_pct": 0.0,
+    "parking_max_pct": 20.0,
+    "parking_adicional_pct": 15.0,
+    "aislamiento_posterior_hasta_12m": 4,
+    "aislamiento_lateral_umbral_m": 11.4,
+    "sector_consolidado": true,
+    "area_desarrollo_naranja": "Distrito Creativo La 85",
+    "reserva_vial_parcial": true,
+    "proteccion_bic_100m": true,
+    "usos": {
+      "multifamiliar_colectiva": "P",
+      "comercios_basicos_tipo_3_mayor_4000m2": "NP",
+      "industria_pesada": "NP",
+      "industria_liviana": "P"
+    },
+    "cargas_ice5_cs_pct": 45
+  }
+}
