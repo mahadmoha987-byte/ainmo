@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Observatorio Ainmo — casos y datos de suelo en Bogotá</title>
+  <meta name="description" content="Casos reproducibles sobre norma urbana, cartografía y potencial de lotes en Bogotá, comparados con fuentes oficiales.">
+  <link rel="canonical" href="{{ canonical }}"><meta name="robots" content="index,follow">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <meta property="og:title" content="Observatorio Ainmo"><meta property="og:description" content="Casos reproducibles sobre suelo y norma urbana en Bogotá."><meta property="og:type" content="website">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Dosis:wght@400;500;600&family=Overpass:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/observatorio.css?v=20261004a">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-0D7DLCB9DL"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-0D7DLCB9DL');</script>
+</head>
+<body>
+  <a class="skip" href="#contenido">Saltar al contenido</a>
+  <nav class="site-nav" aria-label="Navegación principal"><div class="wide nav-inner"><a class="logo" href="/">ainmo</a><div class="nav-links"><a href="/bogota">Bogotá</a><a href="/guias">Guías</a><a aria-current="page" href="/observatorio">Observatorio</a><a class="nav-cta" href="/app">Analizar un predio ↗</a></div></div></nav>
+  <main id="contenido">
+    <header class="index-hero"><div class="content"><p class="eyebrow">OBSERVATORIO AINMO</p><h1>Casos que se pueden comprobar.</h1><p>Publicamos comparaciones, métodos y hallazgos sobre suelo urbano en Bogotá. Cada afirmación importante conserva el predio, la fuente y el límite de la respuesta.</p></div></header>
+    <section class="article-list content" aria-labelledby="latest-title">
+      <div class="list-heading"><p class="eyebrow">ÚLTIMAS LECTURAS</p><h2 id="latest-title">Evidencia antes que promesas</h2></div>
+      {% for article in articles %}
+      <article class="article-card">
+        <div><span>{{ article.kicker }}</span><p>{{ article.published_label }}</p></div>
+        <div><h3><a href="{{ article.path }}">{{ article.title }}</a></h3><p>{{ article.meta_description }}</p><p class="case-meta">{{ article.address }} · {{ article.locality }} · {{ article.lotcodigo }}</p><a class="read-link" href="{{ article.path }}">Ver comparación completa →</a></div>
+      </article>
+      {% endfor %}
+    </section>
+    <section class="principles"><div class="content"><p class="eyebrow">CRITERIO EDITORIAL</p><h2>No publicamos una conclusión sin mostrar cómo llegamos a ella.</h2><div class="principle-grid"><p><b>Predio identificable.</b><br>Dirección, código de lote y contexto visibles.</p><p><b>Fuente primaria.</b><br>Norma, concepto o cartografía oficial.</p><p><b>Límites expresos.</b><br>Lo pendiente nunca se presenta como resuelto.</p></div></div></section>
+  </main>
+  <footer><div class="wide footer-inner"><div><a class="logo" href="/">ainmo</a><p>Prefactibilidad urbanística con fuentes visibles.</p></div><div><a href="/app">Herramienta</a><a href="/observatorio">Observatorio</a><a href="/normativa">Actualidad normativa</a></div><div><span>Prefactibilidad, no concepto oficial ni licencia.</span></div></div></footer>
+</body>
+</html>

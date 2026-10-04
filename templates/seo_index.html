@@ -13,7 +13,7 @@
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-0D7DLCB9DL');</script>
 </head>
 <body>
-  <nav class="site-nav"><div class="wide nav-inner"><a class="logo" href="/">ainmo</a><div class="nav-links"><a href="/bogota">Bogotá</a><a href="/guias">Guías</a><a class="nav-cta" href="/app">Analizar un predio ↗</a></div></div></nav>
+  <nav class="site-nav"><div class="wide nav-inner"><a class="logo" href="/">ainmo</a><div class="nav-links"><a href="/bogota">Bogotá</a><a href="/guias">Guías</a><a href="/observatorio">Observatorio</a><a class="nav-cta" href="/app">Analizar un predio ↗</a></div></div></nav>
   <main>
     <header class="hero index-hero"><div class="content"><p class="eyebrow">BIBLIOTECA AINMO</p><h1>{{ heading }}</h1><p class="lede">{{ description }}</p></div></header>
     <section class="section content"><div class="index-grid">
@@ -23,5 +23,5 @@
       {% for page in sector_pages %}<a class="index-card" href="{{ page.path }}"><span>SECTOR CATASTRAL · {{ page.parent.name|upper }}</span><h2>{{ page.breadcrumb }}</h2><p>{{ page.meta_description }}</p><b>Leer y consultar un predio →</b></a>{% endfor %}
     </div></div></section>{% endif %}
   </main>
-  <footer><div class="wide footer-inner"><div><a class="logo" href="/">ainmo</a><p>Prefactibilidad urbanística con fuentes visibles.</p></div><div><a href="/app">Herramienta</a><a href="/normativa">Actualidad normativa</a></div><div><span>El acto oficial prevalece siempre.</span></div></div></footer>
+  <footer><div class="wide footer-inner"><div><a class="logo" href="/">ainmo</a><p>Prefactibilidad urbanística con fuentes visibles.</p></div><div><a href="/app">Herramienta</a><a href="/observatorio">Observatorio</a><a href="/normativa">Actualidad normativa</a></div><div><span>El acto oficial prevalece siempre.</span></div></div></footer>
 </body></html>

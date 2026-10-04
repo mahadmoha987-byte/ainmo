@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ article.title }} | Observatorio Ainmo</title>
+  <meta name="description" content="{{ article.meta_description }}">
+  <link rel="canonical" href="{{ article.canonical }}"><meta name="robots" content="index,follow">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <meta property="og:title" content="{{ article.title }}"><meta property="og:description" content="{{ article.meta_description }}"><meta property="og:type" content="article"><meta property="article:published_time" content="{{ article.published }}">
+  <script type="application/ld+json">{{ structured_data|tojson }}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Dosis:wght@400;500;600&family=Overpass:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/observatorio.css?v=20261004a">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-0D7DLCB9DL"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-0D7DLCB9DL');</script>
+</head>
+<body>
+  <a class="skip" href="#contenido">Saltar al contenido</a>
+  <nav class="site-nav" aria-label="Navegación principal"><div class="wide nav-inner"><a class="logo" href="/">ainmo</a><div class="nav-links"><a href="/observatorio">Observatorio</a><a href="/guias">Guías</a><a class="nav-cta" href="{{ article.app_url }}">Abrir este lote ↗</a></div></div></nav>
+  <main id="contenido">
+    <header class="article-hero"><div class="article-width"><nav class="crumbs" aria-label="Migas de pan"><a href="/">Inicio</a><span>/</span><a href="/observatorio">Observatorio</a><span>/</span>Caso 001</nav><p class="eyebrow">{{ article.kicker }}</p><h1>{{ article.title }}</h1><p class="dek">{{ article.dek }}</p><div class="byline"><span>Publicado {{ article.published_label }}</span><span>Lectura actualizada: {{ article.updated }}</span></div></div></header>
+
+    <section class="case-strip" aria-label="Identificación del caso"><div class="content case-grid"><dl><dt>Dirección</dt><dd>{{ article.address }}</dd></dl><dl><dt>Localidad</dt><dd>{{ article.locality }}</dd></dl><dl><dt>Código de lote</dt><dd>{{ article.lotcodigo }}</dd></dl><dl><dt>Documento de contraste</dt><dd>{{ article.concept }}</dd></dl></div></section>
+
+    <article class="article-width article-body">
+      <section class="result-block" aria-labelledby="result-title"><p class="eyebrow">RESULTADO DEL CONTRASTE</p><h2 id="result-title">Los nueve hallazgos comparados describen la misma condición del predio.</h2><div class="score-row"><strong>{{ article.summary.matches }}/{{ article.summary.compared }}</strong><p>coincidencias verificadas en esta comparación. Esto mide concordancia entre dos lecturas; no convierte a Ainmo en una certificación oficial.</p></div></section>
+
+      <section aria-labelledby="table-title"><div class="section-intro"><p class="eyebrow">HALLAZGO POR HALLAZGO</p><h2 id="table-title">Concepto oficial vs. Ainmo</h2><p>La columna de Ainmo reproduce el resultado del motor para el lote identificado. No se ajustó ningún valor a mano para hacer coincidir la tabla.</p></div><div class="table-wrap" tabindex="0" role="region" aria-label="Comparación entre concepto oficial y Ainmo"><table><thead><tr><th>Variable</th><th>Concepto {{ article.concept }}</th><th>Ainmo</th><th>Resultado</th></tr></thead><tbody>{% for row in article.comparison %}<tr><th scope="row">{{ row.field }}</th><td>{{ row.official }}</td><td>{{ row.ainmo }}<small>{{ row.note }}</small></td><td><span class="match">{{ row.status }}</span></td></tr>{% endfor %}</tbody></table></div></section>
+
+      <section class="reserve-callout" aria-labelledby="reserve-title"><div><p class="eyebrow">EL HALLAZGO MÁS MATERIAL</p><h2 id="reserve-title">Una reserva parcial cambia la lectura del lote.</h2></div><div><strong>76,6 m²</strong><p>del lote caen dentro de la reserva vial medida por Ainmo: 25,5 % del área. El concepto oficial también reporta la afectación parcial por la Av. José María Escrivá de Balaguer.</p><p>Dentro de la reserva, el artículo 379 limita la edificación a un piso, sin sótanos ni semisótanos y sin uso residencial. La delimitación debe verificarse antes de usar el dato para diseño, negociación o licencia.</p></div></section>
+
+      <section aria-labelledby="method-title"><div class="section-intro"><p class="eyebrow">MÉTODO</p><h2 id="method-title">Cómo hicimos la comparación</h2></div><ol class="method-list">{% for step in article.method %}<li><span>0{{ loop.index }}</span><p>{{ step }}</p></li>{% endfor %}</ol></section>
+
+      <section aria-labelledby="limits-title"><div class="section-intro"><p class="eyebrow">LO QUE SIGUE ABIERTO</p><h2 id="limits-title">Coincidir no elimina la debida diligencia.</h2></div><div class="limits-grid">{% for item in article.limits %}<article><h3>{{ item.title }}</h3><p>{{ item.body }}</p></article>{% endfor %}</div></section>
+
+      <section class="sources" aria-labelledby="sources-title"><div class="section-intro"><p class="eyebrow">FUENTES REVISADAS</p><h2 id="sources-title">Documentos detrás de esta lectura</h2></div><ol>{% for source in article.sources %}<li>{% if source.url %}<a href="{{ source.url }}" target="_blank" rel="noopener">{{ source.name }} ↗</a>{% else %}<strong>{{ source.name }}</strong>{% endif %}<p>{{ source.detail }}</p></li>{% endfor %}</ol></section>
+
+      <aside class="disclaimer"><strong>Alcance.</strong> Ainmo es una herramienta de prefactibilidad. Esta publicación documenta una comparación técnica; no es un concepto oficial, certificado, licencia ni asesoría jurídica, urbanística o financiera.</aside>
+    </article>
+
+    <section class="article-cta"><div class="content"><p class="eyebrow">REPRODUZCA LA CONSULTA</p><h2>Abra el mismo lote y revise cada fuente.</h2><p>La aplicación vuelve a consultar el predio y muestra el estado, motivo y trazabilidad de cada resultado.</p><a class="button" href="{{ article.app_url }}" data-track="open_benchmark_lot">Analizar CL 85 # 11-35 ↗</a></div></section>
+  </main>
+  <footer><div class="wide footer-inner"><div><a class="logo" href="/">ainmo</a><p>Prefactibilidad urbanística con fuentes visibles.</p></div><div><a href="/observatorio">Observatorio</a><a href="/bogota">Bogotá</a><a href="/normativa">Actualidad normativa</a></div><div><span>Prefactibilidad, no concepto oficial ni licencia.</span></div></div></footer>
+  <script>document.querySelectorAll('[data-track]').forEach(function(link){link.addEventListener('click',function(){if(typeof gtag==='function')gtag('event',link.dataset.track,{article_slug:'{{ article.slug }}'})})});</script>
+</body>
+</html>

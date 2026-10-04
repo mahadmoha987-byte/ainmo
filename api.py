@@ -23,6 +23,7 @@ import db, auth
 import home_news
 import normas_comunes as normas_comunes_mod
 import seo_pages
+import observatorio
 from cabida import proforma as proforma_mod
 from cabida.market_defaults import MARKET_DEFAULTS, get_sale_price_default
 from regulatory import context as regulatory_context
@@ -440,6 +441,61 @@ async def seo_guide(request: Request, slug: str):
     return _render_seo_page(request, "guia", slug)
 
 
+@app.get("/observatorio", include_in_schema=False)
+async def observatorio_index(request: Request):
+    return _templates.TemplateResponse(
+        request=request,
+        name="observatorio_index.html",
+        context={
+            "canonical": f"{observatorio.SITE_URL}/observatorio",
+            "articles": observatorio.article_list(),
+        },
+        headers={"Cache-Control": "public, max-age=900"},
+    )
+
+
+@app.get("/observatorio/{slug}", include_in_schema=False)
+async def observatorio_article(request: Request, slug: str):
+    article = observatorio.get_article(slug)
+    if article is None:
+        return Response(
+            content="Artículo no encontrado",
+            status_code=404,
+            headers={"X-Robots-Tag": "noindex"},
+            media_type="text/plain; charset=utf-8",
+        )
+    structured_data = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "Article",
+                "headline": article["title"],
+                "description": article["meta_description"],
+                "datePublished": article["published"],
+                "dateModified": article["updated"],
+                "inLanguage": "es-CO",
+                "mainEntityOfPage": article["canonical"],
+                "author": {"@type": "Organization", "name": "Ainmo"},
+                "publisher": {"@type": "Organization", "name": "Ainmo"},
+            },
+            {
+                "@type": "BreadcrumbList",
+                "itemListElement": [
+                    {"@type": "ListItem", "position": 1, "name": "Inicio", "item": f"{observatorio.SITE_URL}/"},
+                    {"@type": "ListItem", "position": 2, "name": "Observatorio", "item": f"{observatorio.SITE_URL}/observatorio"},
+                    {"@type": "ListItem", "position": 3, "name": article["title"], "item": article["canonical"]},
+                ],
+            },
+        ],
+    }
+    return _templates.TemplateResponse(
+        request=request,
+        name="observatorio_article.html",
+        context={"article": article, "structured_data": structured_data},
+        headers={"Cache-Control": "public, max-age=900"},
+    )
+
+
 @app.get("/app", include_in_schema=False)
 async def app_tool():
     return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))
@@ -609,6 +665,7 @@ async def sitemap_xml():
         {"loc": f"{seo_pages.SITE_URL}/guias", "lastmod": seo_pages.CONTENT_UPDATED},
         {"loc": f"{seo_pages.SITE_URL}/normativa", "lastmod": seo_pages.CONTENT_UPDATED},
         *seo_pages.sitemap_entries(),
+        *observatorio.sitemap_entries(),
         *[
             {"loc": f"{seo_pages.SITE_URL}/normativa/{slug}", "lastmod": seo_pages.CONTENT_UPDATED}
             for slug in _NORMATIVE_ARTICLES
