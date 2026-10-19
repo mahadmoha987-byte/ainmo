@@ -317,6 +317,11 @@ async def landing():
     return FileResponse(os.path.join(os.path.dirname(__file__), "landing.html"))
 
 
+@app.get("/empresa", include_in_schema=False)
+async def company_page():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "empresa.html"))
+
+
 def _seo_structured_data(page: dict) -> dict:
     """Structured data mirrors visible page content; no hidden claims."""
     parent_path = "/bogota" if page["kind"] in {"localidad", "sector"} else "/guias"
@@ -661,6 +666,7 @@ async def robots_txt():
 async def sitemap_xml():
     entries = [
         {"loc": f"{seo_pages.SITE_URL}/", "lastmod": seo_pages.CONTENT_UPDATED},
+        {"loc": f"{seo_pages.SITE_URL}/empresa", "lastmod": "2026-10-19"},
         {"loc": f"{seo_pages.SITE_URL}/bogota", "lastmod": seo_pages.CONTENT_UPDATED},
         {"loc": f"{seo_pages.SITE_URL}/guias", "lastmod": seo_pages.CONTENT_UPDATED},
         {"loc": f"{seo_pages.SITE_URL}/normativa", "lastmod": seo_pages.CONTENT_UPDATED},
