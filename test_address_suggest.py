@@ -4,6 +4,7 @@ import api
 import db
 import geocode
 import httpx
+import pytest
 from tools.import_address_index import (
     TreatmentGrid,
     TreatmentPolygon,
@@ -32,6 +33,28 @@ def test_catastro_display_address_formats_the_door_number():
         geocode.canonical_catastro_address("KR 1A", "6C 50 S")
         == "KR 1A # 6C-50 S"
     )
+
+
+@pytest.mark.parametrize(("query", "expected_via", "expected_text", "label"), [
+    ("cl 85", "CL 85", "", "CL 85 # 11-35"),
+    ("calle 85", "CL 85", "", "CL 85 # 11-35"),
+    ("cl 85 11 35", "CL 85", "11 35", "CL 85 # 11-35"),
+    ("cra 13", "KR 13", "", "KR 13 # 93-68"),
+])
+def test_catastro_prefix_suggestions_reuse_bogota_normalization(
+    monkeypatch, query, expected_via, expected_text, label,
+):
+    captured = {}
+
+    def fake_query(via, text, limit, *, exact):
+        captured.update(via=via, text=text, limit=limit, exact=exact)
+        return [{"label": label, "lotcodigo": "008310012021", "lat": 4.668, "lng": -74.052}]
+
+    monkeypatch.setattr(geocode, "_catastro_query", fake_query)
+    monkeypatch.setattr(geocode, "_anchor_candidates_to_linked_lots", lambda rows: rows)
+    rows = geocode.suggest_catastro_addresses(query, 6)
+    assert rows[0]["address"] == label
+    assert captured == {"via": expected_via, "text": expected_text, "limit": 24, "exact": False}
 
 
 def test_treatment_grid_returns_one_value_and_flags_conflicts():
@@ -111,7 +134,7 @@ def test_secondary_alias_is_compacted_only_after_deduplication():
     assert "source_snapshot_date" not in compact
 
 
-def test_incomplete_suggestion_query_never_hits_database(monkeypatch):
+def test_non_address_or_under_three_character_query_never_hits_database(monkeypatch):
     async def unexpected(*_args, **_kwargs):
         raise AssertionError("short queries must not hit Supabase")
 
@@ -121,9 +144,6 @@ def test_incomplete_suggestion_query_never_hits_database(monkeypatch):
         "Calle",
         "85",
         "Bogotá",
-        "CL 70",
-        "Calle 70A",
-        "Cra. 53 #5",
     ):
         result = asyncio.run(
             api.address_suggest_endpoint(
@@ -132,6 +152,22 @@ def test_incomplete_suggestion_query_never_hits_database(monkeypatch):
         )
         assert result["ok"] is True
         assert result["suggestions"] == []
+
+
+def test_numbered_road_prefix_starts_suggesting_after_three_characters(monkeypatch):
+    async def fake_search(query, **kwargs):
+        assert query == "CL 85"
+        assert kwargs["limit"] == 6
+        return [{
+            "address": "CL 85 # 11-35", "normalized_address": "CL 85 11 35",
+            "lot_code": "008310012021", "treatment": "RENOVACION",
+            "lat": 4.667958, "lng": -74.052, "locality": None, "neighborhood": None,
+        }], True
+
+    monkeypatch.setattr(api.db, "search_address_index", fake_search)
+    result = asyncio.run(api.address_suggest_endpoint(q="cl 85", lat=None, lng=None, recent_lots=""))
+    assert result["suggestions"][0]["address"] == "CL 85 # 11-35"
+    assert result["data_source"] == "address_index"
 
 
 def test_suggestion_endpoint_normalizes_and_forwards_valid_ranking_context(monkeypatch):
@@ -170,7 +206,7 @@ def test_suggestion_endpoint_normalizes_and_forwards_valid_ranking_context(monke
         "lat": 4.668,
         "lng": -74.052,
         "recent_lot_codes": ["001234567890"],
-        "limit": 8,
+        "limit": 6,
     }
 
 
@@ -237,6 +273,7 @@ def test_suggestion_database_incident_preserves_existing_search(monkeypatch):
         raise RuntimeError("temporary database incident")
 
     monkeypatch.setattr(api.db, "search_address_index", broken_search)
+    monkeypatch.setattr(geocode, "suggest_catastro_addresses", lambda *_args: [])
     result = asyncio.run(
         api.address_suggest_endpoint(
             q="Calle 85 # 11-5", lat=4.668, lng=-74.052, recent_lots=""
@@ -245,6 +282,23 @@ def test_suggestion_database_incident_preserves_existing_search(monkeypatch):
     assert result["ok"] is True
     assert result["suggestions"] == []
     assert result["index_ready"] is False
+    assert result["data_source"] == "catastro_prefix"
+
+
+def test_unavailable_index_falls_back_to_catastro_prefix(monkeypatch):
+    async def unavailable_index(*_args, **_kwargs):
+        return [], False
+
+    monkeypatch.setattr(api.db, "search_address_index", unavailable_index)
+    monkeypatch.setattr(geocode, "suggest_catastro_addresses", lambda query, limit: [{
+        "address": "KR 13 # 93-68", "normalized_address": "KR 13 93 68",
+        "lot_code": "008307029017", "treatment": None, "lat": 4.676424,
+        "lng": -74.049355, "locality": None, "neighborhood": None,
+    }])
+    result = asyncio.run(api.address_suggest_endpoint(q="cra 13", lat=None, lng=None, recent_lots=""))
+    assert result["ok"] is True
+    assert result["data_source"] == "catastro_prefix"
+    assert result["suggestions"][0]["address"] == "KR 13 # 93-68"
 
 
 def test_suggestion_database_retries_one_transient_timeout(monkeypatch):

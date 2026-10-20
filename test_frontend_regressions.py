@@ -97,6 +97,14 @@ def test_result_sections_are_emitted_in_navigation_order_as_peers():
     assert '<section class="result-anchor-section" id="result-modelo-3d"' in HTML
 
 
+def test_address_autocomplete_has_visible_loading_and_empty_states():
+    assert "setTimeout(() => _requestAddressSuggestions(query), 250)" in HTML
+    assert "suggestions.slice(0, 6)" in HTML
+    assert "_renderAddressSuggestionState('Buscando…', true)" in HTML
+    assert "Sin coincidencias. Pruebe con la dirección completa o el CHIP." in HTML
+    assert 'class="address-suggestion-state" role="status"' in HTML
+
+
 def test_osm_tiles_use_native_zoom_ceiling():
     assert "maxNativeZoom: 19" in HTML
 

@@ -837,20 +837,16 @@ async def address_suggest_endpoint(
         and tokens[0] in {"AC", "AK", "AV", "CL", "DG", "KR", "TV"}
         and any(character.isdigit() for character in " ".join(tokens[1:]))
     )
-    # A road name alone can match tens of thousands of plates and is not yet
-    # useful for choosing a lot. Wait for road, cross street and at least the
-    # beginning of the door number before asking the citywide index.
-    has_property_prefix = len(tokens) >= 4
     if (
         len(normalized) < 3
         or not has_numbered_bogota_road
-        or not has_property_prefix
     ):
         return {
             "ok": True,
             "suggestions": [],
             "normalized_query": normalized,
             "index_ready": True,
+            "data_source": None,
             "elapsed_ms": round((time.perf_counter() - started) * 1_000, 1),
         }
 
@@ -866,12 +862,25 @@ async def address_suggest_endpoint(
             lat=lat,
             lng=lng,
             recent_lot_codes=recent,
-            limit=8,
+            limit=6,
         )
     except Exception:
         # Autocomplete is additive. A database/index incident must never take
         # down the existing submit-to-geocode workflow.
         suggestions, index_ready = [], False
+
+    data_source = "address_index" if index_ready else "catastro_prefix"
+    source_ready = index_ready
+    if not index_ready:
+        try:
+            suggestions = await asyncio.to_thread(
+                geocode.suggest_catastro_addresses, q, 6,
+            )
+            source_ready = True
+        except Exception:
+            logger.exception("Catastro prefix autocomplete failed")
+            suggestions = []
+            source_ready = False
 
     # Typeahead is a direct route into a cadastral calculation, so it is
     # intentionally stricter than the explicit geocoder. Keep only exact
@@ -890,10 +899,11 @@ async def address_suggest_endpoint(
         safe["match_type"] = match_type
         safe_suggestions.append(safe)
     return {
-        "ok": True,
-        "suggestions": safe_suggestions,
+        "ok": source_ready,
+        "suggestions": safe_suggestions[:6],
         "normalized_query": normalized,
         "index_ready": index_ready,
+        "data_source": data_source,
         "elapsed_ms": round((time.perf_counter() - started) * 1_000, 1),
     }
 

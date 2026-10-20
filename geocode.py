@@ -703,6 +703,47 @@ def _anchor_candidates_to_linked_lots(candidates: list[dict]) -> list[dict]:
     return candidates
 
 
+def suggest_catastro_addresses(raw_query: str, limit: int = 6) -> list[dict]:
+    """Return official Catastro completions for a partial Bogotá address."""
+    normalized_query = normalize_address_search(raw_query)
+    parsed = _parse_address(normalize_address(raw_query))
+    safe_limit = min(max(int(limit), 1), 6)
+    if len(normalized_query) < 3 or not parsed or not re.search(r"\d", parsed[0]):
+        return []
+
+    pdonvial, pdotexto = parsed
+    candidates = _catastro_query(
+        pdonvial, pdotexto, limit=max(24, safe_limit * 4), exact=False,
+    )
+    candidates = _anchor_candidates_to_linked_lots(candidates)
+    suggestions: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for candidate in candidates:
+        address = str(candidate.get("label") or "").strip()
+        normalized_address = normalize_address_search(address)
+        lot_code = str(candidate.get("lotcodigo") or "").strip()
+        if (not address or not normalized_address.startswith(normalized_query)
+                or not re.fullmatch(r"\d{12}", lot_code)):
+            continue
+        key = (normalized_address, lot_code)
+        if key in seen:
+            continue
+        seen.add(key)
+        suggestions.append({
+            "address": address,
+            "normalized_address": normalized_address,
+            "lot_code": lot_code,
+            "lat": candidate.get("lat"),
+            "lng": candidate.get("lng"),
+            "locality": None,
+            "neighborhood": None,
+            "treatment": None,
+        })
+        if len(suggestions) >= safe_limit:
+            break
+    return suggestions
+
+
 def _catastro_chip_query(chip: str) -> list[dict]:
     """Resolve a UAECD CHIP to its containing cadastral lot.
 

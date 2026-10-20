@@ -438,6 +438,7 @@ body{overflow:hidden}
 .address-suggestion-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .address-suggestion-place{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .address-suggestion-lot{margin-left:auto;white-space:nowrap}
+.address-suggestion-state{padding:10px var(--sp-3);color:var(--ink-3);font-size:var(--ts-sm);line-height:1.45;background:var(--paper)}
 .sp-go{padding:8px 13px;background:var(--ink-0);color:var(--paper);border:none;cursor:pointer;font-size:var(--ts-md);font-weight:var(--fw-5);flex-shrink:0;line-height:1}
 .sp-go:hover{background:var(--ink-1)}
 .address-help{position:relative;flex:0 0 auto}
@@ -1016,16 +1017,30 @@ function _suggestTreatmentMeta(treatment) {
   };
 }
 
+function _renderAddressSuggestionState(message, loading = false) {
+  _addressSuggestions = [];
+  _suggestActiveIndex = -1;
+  const input = document.getElementById('addr-input');
+  const list = document.getElementById('address-suggestions');
+  const status = document.getElementById('address-suggest-status');
+  if (!input || !list) return;
+  list.innerHTML = '<div class="address-suggestion-state" role="status">' + escHtml(message) + '</div>';
+  list.hidden = false;
+  input.setAttribute('aria-expanded', 'true');
+  input.removeAttribute('aria-activedescendant');
+  input.setAttribute('aria-busy', loading ? 'true' : 'false');
+  if (status) status.textContent = message;
+}
+
 function _renderAddressSuggestions(suggestions) {
-  _addressSuggestions = Array.isArray(suggestions) ? suggestions.slice(0, 8) : [];
+  _addressSuggestions = Array.isArray(suggestions) ? suggestions.slice(0, 6) : [];
   _suggestActiveIndex = -1;
   const input = document.getElementById('addr-input');
   const list = document.getElementById('address-suggestions');
   const status = document.getElementById('address-suggest-status');
   if (!input || !list) return;
   if (!_addressSuggestions.length) {
-    _closeAddressSuggestions(false);
-    if (status) status.textContent = 'Sin sugerencias. Presione Enter para buscar la dirección completa.';
+    _renderAddressSuggestionState('Sin coincidencias. Pruebe con la dirección completa o el CHIP.');
     return;
   }
   list.innerHTML = _addressSuggestions.map((suggestion, index) => {
@@ -1086,6 +1101,7 @@ async function _requestAddressSuggestions(query) {
     .slice(0, 6);
   if (recentLots.length) params.set('recent_lots', recentLots.join(','));
   _setSuggestLoading(true);
+  _renderAddressSuggestionState('Buscando…', true);
   try {
     const response = await fetch('/api/address-suggest?' + params.toString(), { signal });
     if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -1096,14 +1112,14 @@ async function _requestAddressSuggestions(query) {
       showGeoError(null, query, 'outside_bogota');
       return;
     }
-    if (!json.ok || json.index_ready === false) {
-      _closeAddressSuggestions(false);
+    if (!json.ok) {
+      _renderAddressSuggestionState('No se pudieron cargar sugerencias. Presione Enter para buscar la dirección completa.');
       return;
     }
     _renderAddressSuggestions(json.suggestions);
   } catch (error) {
     if (error.name !== 'AbortError' && requestSeq === _suggestSeq) {
-      _closeAddressSuggestions(false);
+      _renderAddressSuggestionState('No se pudieron cargar sugerencias. Presione Enter para buscar la dirección completa.');
     }
   } finally {
     if (requestSeq === _suggestSeq) _setSuggestLoading(false);
